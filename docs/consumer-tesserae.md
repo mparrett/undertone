@@ -39,3 +39,21 @@ on tesserae branch `spike/undertone-audio`, and the engine changes are on undert
 5. **Latency for hits during play is not yet judged.** The ~130 ms tuned in
    `engine/latency.go` is fine for clears and losses. Whether it is fine for paddle bounces
    needs an ear in play.
+6. **There was no music-against-sfx balance.** Every Param shapes the score, so nothing could
+   turn the bed down under the one-shots. Playtesting asked for exactly that in the first
+   session. Resolved by #5: `Synth.SetMusicGain` and `audio/set-music-gain`, a mixer control
+   that leaves the derivation alone. At 1 the render is byte-identical.
+7. **The moods have too little range for an arcade game.** All five are ambient beds, and
+   percussion exists only inside `village`. tesserae has eight chapter themes and only a couple
+   map cleanly: aurora for the opening, dungeon for the heart. The rest were the nearest fit,
+   and only chapter III, mapped to village, has drums. What would have helped, in the direction
+   of the `MoodSpec` work on `designer-spike` (moods as data that a consumer brings):
+   - **Percussion as a property any mood can have,** not a mood of its own. A groove, drum gain
+     and busy setting that respond to level and tension, the way BPM and pads already do.
+     Merging `:groove` over another mood with `set-parameters` works today, but the derivation
+     doesn't know about it, so tension doesn't move it.
+   - **Moods a consumer can add from lg.** Today a mood is a row in `engine/mood.go` mirrored
+     in `ambience.lg`, and a patch bank only Go can name. A `MoodSpec` registered at runtime
+     that names a built-in palette would cover most of what tesserae wanted without a fork.
+   - **Wider settings at the ends:** faster and brighter (a boss, a rally) and sparser (a
+     puzzle level like the Orrery). Today tension mostly adds BPM and a pulse.

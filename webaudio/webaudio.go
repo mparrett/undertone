@@ -63,6 +63,13 @@ type Player struct {
 	shared     bool
 	data, ctrl js.Value
 	cap        int
+
+	// Made once, not per slice: under TinyGo every js.Value that holds a JS
+	// object carries a finalizer, and ~86 new ones a second force a full
+	// collection of the guest VM's heap often enough to stall the page
+	// (TinyGo 0.42, 2026-10-15).
+	atomics js.Value
+	views   []js.Value // data.subarray for each slice-sized slot of the ring
 }
 
 // The worklet never allocates while playing: its ring is sized once, and an
@@ -145,6 +152,7 @@ func Open(src io.Reader, opt Options) (*Player, error) {
 		samples, ctrl := sab.New(p.cap*8), sab.New(12)
 		p.data = js.Global().Get("Uint8Array").New(samples)
 		p.ctrl = js.Global().Get("Int32Array").New(ctrl)
+		p.cacheViews()
 		p.node = js.Global().Get("AudioWorkletNode").New(ctx, "undertone-shared", map[string]any{
 			"outputChannelCount": []any{2},
 			"processorOptions":   map[string]any{"cap": p.cap, "data": samples, "ctrl": ctrl},
@@ -188,6 +196,18 @@ func (p *Player) listen() {
 	p.node.Get("port").Set("onmessage", onStats)
 }
 
+// cacheViews keeps the handles the shared-ring hot path touches. The write
+// index moves a whole slice at a time and cap is a whole number of slices, so
+// one view per slot covers every write.
+func (p *Player) cacheViews() {
+	p.atomics = js.Global().Get("Atomics")
+	n := p.opt.Slice
+	p.views = make([]js.Value, p.cap/n)
+	for i := range p.views {
+		p.views[i] = p.data.Call("subarray", i*n*8, (i+1)*n*8)
+	}
+}
+
 func (p *Player) target() int64 {
 	return int64(p.opt.Queue) * int64(p.opt.SampleRate) / int64(time.Second)
 }
@@ -197,8 +217,7 @@ func (p *Player) target() int64 {
 // the likely cause of the irregular artifacts in an earlier bench worklet.
 func (p *Player) queued() int64 {
 	if p.shared {
-		atomics := js.Global().Get("Atomics")
-		w, r := atomics.Call("load", p.ctrl, 0).Int(), atomics.Call("load", p.ctrl, 1).Int()
+		w, r := p.atomics.Call("load", p.ctrl, 0).Int(), p.atomics.Call("load", p.ctrl, 1).Int()
 		return int64((w - r + p.cap) % p.cap)
 	}
 	return p.sent.Load() - p.played.Load()
@@ -241,9 +260,9 @@ func (p *Player) push() error {
 		binary.LittleEndian.PutUint32(f[4*i:], math.Float32bits(s))
 	}
 	if p.shared {
-		w := js.Global().Get("Atomics").Call("load", p.ctrl, 0).Int()
-		js.CopyBytesToJS(p.data.Call("subarray", w*8, (w+n)*8), f)
-		js.Global().Get("Atomics").Call("store", p.ctrl, 0, (w+n)%p.cap)
+		w := p.atomics.Call("load", p.ctrl, 0).Int()
+		js.CopyBytesToJS(p.views[w/n], f)
+		p.atomics.Call("store", p.ctrl, 0, (w+n)%p.cap)
 		return nil
 	}
 	a := js.Global().Get("Float32Array").New(n * 2)
@@ -257,7 +276,7 @@ func (p *Player) push() error {
 // playback began.
 func (p *Player) Underruns() int64 {
 	if p.shared {
-		return int64(js.Global().Get("Atomics").Call("load", p.ctrl, 2).Int())
+		return int64(p.atomics.Call("load", p.ctrl, 2).Int())
 	}
 	return p.underruns.Load()
 }

@@ -140,6 +140,26 @@ var moods = []mood{
 		busy:     lin(0.2, 0.12).atMost(0.8),
 		swing:    0.1,
 	},
+	// Industrial, after the bed of "Hurt": detuned saws grinding through
+	// resonant filters that never sit still, a hiss bed played like an
+	// instrument, a tritone where other moods have a fifth, and the odd
+	// clang. Level sinks it: slower, lower, phrygian turning locrian, the
+	// noise and the second drone coming up. Its tension pulse is a filter
+	// envelope with teeth rather than a heartbeat.
+	{
+		name:     "rust",
+		scales:   scalesForRust,
+		bpm:      lin(58, -2).atLeast(44),
+		rootBase: 45, rootStep: -1,
+		drone:   lin(0.6, 0.04).atMost(0.85),
+		fifth:   lin(0.15, 0.08).atMost(0.55),
+		pad:     lin(0.35, 0.03).atMost(0.6),
+		bell:    lin(0.06, 0),
+		air:     lin(0.35, 0.05).atMost(0.7),
+		calm:    -6, // a tritone from the start
+		palette: rustPalette,
+		leads:   rustLeads,
+	},
 	// Candidates for later moods, on the dark-to-bright axis:
 	//   - Past dungeon, darker (Void, Below or Hades): lower and slower
 	//     than depth reaches today, perhaps with a new low patch.

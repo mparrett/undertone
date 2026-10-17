@@ -18,6 +18,8 @@ floats, in the style of sointu and 4klang.
 | `pluck` | transpose, feedback | push a Karplus-Strong string |
 | `mul` | | pop two, push the product |
 | `lpf`, `hpf` | cutoff Hz | one-pole filter on the top |
+| `svf` | cutoff Hz, resonance, mode (0 low, 1 band, 2 high), depth octaves | filter the top; a nonzero depth first pops a modulation value |
+| `lfo` | rate Hz, shape (0 sine, 1 triangle, 2 sample-and-hold) | push -1..1 |
 | `send` | amount | add the top to the delay bus |
 | `out` | gain, pan | pop and mix |
 
@@ -42,16 +44,14 @@ thins the pad and lead, and drives the drums.
 
 ## Limits
 
-**Nothing moves within a note.** A unit's parameters are fixed for the life
-of a note. The one exception is the oscillator's pitch sweep, an exponential
-glide from `sweep semis` back to the note. There is no LFO and no way to route
-one value into another unit's parameter. The filters go further and cache their
-coefficient at the note's first sample, so even a host that rewrote a patch
-mid-note would not move the cutoff.
+**Only the svf's cutoff moves within a note.** An `lfo` or `env` can sweep an
+`svf`, and the oscillator has its pitch sweep. Nothing else is modulated: no
+pitch vibrato, no level tremolo, no pulse width. Generalizing the svf's
+modulation input to other ops is the next step if a patch needs it.
 
-**The filters are gentle.** One pole is 6 dB per octave with no resonance. That
-is fine for darkening a drone and useless for the squelch, whistle and
-self-oscillation that define industrial synth parts.
+**Resonance stops short of self-oscillation.** The `svf` tops out at a Q of
+5, so a voice always dies with its envelope; a filter that sings on its own
+would need a voice that outlives its env.
 
 **Distortion only happens on the mix.** The final `tanh` is a safety limiter. No
 voice can be overdriven, folded, clipped, bit-reduced or sample-held on its own.
@@ -80,8 +80,8 @@ us:
 
 | need | sointu units | ours |
 |---|---|---|
-| modulation | `send` to any parameter of any unit, `oscillator` with `lfo`, `loadval` | none |
-| resonant filtering | `filter` (state-variable: frequency, resonance, low/band/high) | `lpf`, `hpf` |
+| modulation | `send` to any parameter of any unit, `oscillator` with `lfo`, `loadval` | `lfo` or `env` into `svf` cutoff |
+| resonant filtering | `filter` (state-variable: frequency, resonance, low/band/high) | `svf` |
 | grit | `distort` (drive), `hold` (sample-rate reduction), `crush` (bit depth), `clip` | mix `tanh` only |
 | space | `delay` (feedback, damp, note tracking, many taps, reverb by combs) | one delay bus |
 | richer sources | `oscillator` color, shape, detune, unison; `noise` shape | four shapes |
@@ -103,18 +103,20 @@ modulation, resonant filtering and grit cover most of the gap.
 | syncopation and stutter | drum programming everywhere | ratchets and off-grid hits in the grooves |
 | a dark room | the long tails of "Hurt" | a damped reverb send |
 
-## Candidate additions
+## Additions
 
-Each keeps the VM's shape: data patches, a fixed stack, no allocation on the
+`svf` and `lfo` are in, with the `rust` mood as their first user: resonant
+saws swept by slow lfos, a sample-and-hold noise bed and a filter-envelope
+pulse. The rest are candidates. Each keeps the VM's shape: data patches, a fixed stack, no allocation on the
 audio thread, and validation that `ShotSpec` and the fuzz test can extend.
 
-1. **`svf`: a state-variable filter.** Cutoff, resonance, mode (low, band,
+1. **`svf`: a state-variable filter** (done). Cutoff, resonance, mode (low, band,
    high) and a modulation depth in octaves, which fills the unit's four
    parameters. It uses the trapezoidal form from Zavalishin and Simper below,
    which stays stable under fast cutoff changes. With a nonzero depth it pops a
    value `m` from the stack and runs at `cutoff × 2^(m × depth)` Hz, so an `env`
    or `lfo` pushed before it becomes a filter envelope or a sweep.
-2. **`lfo`: a slow source.** Rate in Hz (or rows, to stay on the grid), shape
+2. **`lfo`: a slow source** (done, in Hz; rows would keep it on the grid). Shape
    sine, triangle or sample-and-hold. It pushes a value in -1..1. Random steps
    from sample-and-hold are a staple of the industrial sound.
 3. **`drive`: a waveshaper.** `tanh(k·x)` with a bias for even harmonics.
@@ -125,10 +127,11 @@ audio thread, and validation that `ShotSpec` and the fuzz test can extend.
 6. **Groove ratchets and off-grid hits**, as groove syntax, so syncopation stays
    data.
 
-The cost to watch is per-sample math: today `lpf` calls `exp` once per note,
-while a modulated `svf` needs a coefficient per sample. Computing it at control
-rate (every 16 or 32 samples) or with a polynomial `tan` keeps it cheap. Existing
-patches do not use the new ops, so the golden renders stay byte-identical.
+The cost to watch is per-sample math. A fixed `svf` computes its coefficient
+once per note, as `lpf` does; a swept one recomputes it every 16 samples. On
+2026-10-17 that rendered `rust` at about the cost of `dungeon` natively, where a
+coefficient every sample doubled it. The new ops left the golden renders of the
+other moods byte-identical.
 
 ## Fitting the knobs
 

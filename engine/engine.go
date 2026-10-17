@@ -30,6 +30,8 @@ const (
 	opOut          // p: gain, pan 0..1; pop x -> accumulate to L/R
 	opPluck        // p: transpose semis, feedback; Karplus-Strong string -> push sample
 	opHpf          // p: cutoff Hz; pop x -> push highpassed x
+	opSvf          // p: cutoff Hz, resonance 0..1, mode (0 low, 1 band, 2 high), depth octaves; [pop m;] pop x -> push filtered x
+	opLfo          // p: rate Hz, shape (0 sine, 1 triangle, 2 sample-and-hold) -> push -1..1
 )
 
 const (
@@ -49,11 +51,12 @@ type Patch []Unit
 // per-voice, per-unit mutable state
 type ustate struct {
 	phase, env, lp, sweep float64
-	stage                 int // env: 0 attack, 1 decay, 2 sustain, 3 release
+	ic2                   float64 // svf: the second integrator (lp holds the first)
+	stage                 int     // env: 0 attack, 1 decay, 2 sustain, 3 release
 	rng                   uint64
 	ks                    []float64 // Karplus-Strong delay line, allocated on first sample
-	kpos                  int
-	k                     float64 // cached per-note coefficient: osc phase increment (no sweep) or lpf c
+	kpos                  int       // pluck: read position; swept svf: control-rate counter
+	k                     float64   // cached per-note coefficient: osc phase increment (no sweep) or lpf c
 	kset                  bool
 }
 
@@ -95,13 +98,23 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 	for i := range v.units {
 		u := &v.units[i]
 		if legato {
-			*u = ustate{phase: u.phase, env: u.env, lp: u.lp, ks: u.ks[:0]}
+			*u = ustate{phase: u.phase, env: u.env, lp: u.lp, ic2: u.ic2, ks: u.ks[:0]}
 		} else {
 			*u = ustate{ks: u.ks[:0]}
 		}
 		u.sweep = 1
 		u.rng = seed*2862933555777941757 + uint64(i) + 3037000493
+		// a sample-and-hold lfo's first value; legato keeps the held one
+		if !legato && patch[i].op == opLfo {
+			u.lp = u.noise()
+		}
 	}
+}
+
+// noise steps the unit's LCG and returns a sample in -1..1.
+func (s *ustate) noise() float64 {
+	s.rng = s.rng*6364136223846793005 + 1442695040888963407
+	return float64(int64(s.rng>>11))/(1<<52) - 1
 }
 
 // level is the voice's loudest envelope times its gain: how much it would
@@ -185,8 +198,7 @@ func (v *Voice) run(l, r, delay *float64) {
 					x = -1
 				}
 			case shpNoise:
-				s.rng = s.rng*6364136223846793005 + 1442695040888963407
-				x = float64(int64(s.rng>>11))/(1<<52) - 1
+				x = s.noise()
 			}
 			stack[sp] = x
 			sp++
@@ -210,6 +222,65 @@ func (v *Voice) run(l, r, delay *float64) {
 			}
 			s.lp += s.k * (stack[sp-1] - s.lp)
 			stack[sp-1] -= s.lp
+		case opSvf:
+			// A state-variable filter in the trapezoidal form (Zavalishin,
+			// Simper), which stays stable while its cutoff moves every
+			// sample. A nonzero depth takes a modulation value from the
+			// top of the stack and moves the cutoff by that many octaves
+			// per unit, so an env or lfo pushed before it sweeps it.
+			fc := u.p[0]
+			if u.p[3] != 0 {
+				// tan and exp2 every 16th sample (0.36 ms) halve a swept
+				// filter's cost; a sweep that fast is still smooth
+				sp--
+				if s.kpos == 0 {
+					fc *= math.Exp2(stack[sp] * u.p[3])
+					fc = max(20, min(fc, 0.45*SampleRate))
+					s.k = math.Tan(math.Pi * fc / SampleRate)
+				}
+				s.kpos = (s.kpos + 1) & 15
+			} else if !s.kset {
+				s.k = math.Tan(math.Pi * min(fc, 0.45*SampleRate) / SampleRate)
+				s.kset = true
+			}
+			// resonance 1 leaves k at 0.2, a Q of 5: it rings and whistles
+			// but never self-oscillates, so a voice still dies with its env,
+			// and the lowpass peak at the cutoff stays within 14 dB
+			g, k := s.k, 2-1.8*u.p[1]
+			a1 := 1 / (1 + g*(g+k))
+			a2 := g * a1
+			x := stack[sp-1]
+			v3 := x - s.ic2
+			v1 := a1*s.lp + a2*v3
+			v2 := s.ic2 + a2*s.lp + g*a2*v3
+			s.lp, s.ic2 = flush(2*v1-s.lp), flush(2*v2-s.ic2)
+			switch int(u.p[2]) {
+			case 0:
+				stack[sp-1] = v2
+			case 1:
+				// scaled by k for unity gain at the cutoff, whatever
+				// the resonance: narrower, not louder
+				stack[sp-1] = k * v1
+			default:
+				stack[sp-1] = x - k*v1 - v2
+			}
+		case opLfo:
+			var x float64
+			switch int(u.p[1]) {
+			case 0:
+				x = math.Sin(2 * math.Pi * s.phase)
+			case 1:
+				x = 1 - 4*math.Abs(s.phase-0.5)
+			default:
+				x = s.lp
+			}
+			s.phase += u.p[0] / SampleRate
+			if s.phase >= 1 {
+				s.phase -= 1
+				s.lp = s.noise()
+			}
+			stack[sp] = x
+			sp++
 		case opPluck:
 			// Karplus-Strong: a noise burst circulating in a delay line
 			// the length of the period, averaged (lowpassed) each pass.
@@ -226,8 +297,7 @@ func (v *Voice) run(l, r, delay *float64) {
 					s.ks = make([]float64, n)
 				}
 				for i := range s.ks {
-					s.rng = s.rng*6364136223846793005 + 1442695040888963407
-					s.ks[i] = float64(int64(s.rng>>11))/(1<<52) - 1
+					s.ks[i] = s.noise()
 				}
 			}
 			x := s.ks[s.kpos]
@@ -471,6 +541,63 @@ var air = Patch{
 	{opOut, [4]float64{1.1, 0.5}},
 }
 
+// ---- the rust palette (industrial) ----
+// Resonant filters that move within a note, so the bed breathes and grinds
+// instead of sitting still.
+
+// rust: detuned saws through a resonant lowpass, each side swept by its own
+// slow lfo at a different rate, so the pair drifts in and out of phase
+var rust = Patch{
+	{opEnv, [4]float64{3, 2, 1, 4}},
+	{opOsc, [4]float64{-0.08, shpSaw, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLfo, [4]float64{0.07, 0}},
+	{opSvf, [4]float64{260, 0.75, 0, 1.2}},
+	{opSend, [4]float64{0.15, 0, 0, 0}},
+	{opOut, [4]float64{0.45, 0.35}},
+	{opEnv, [4]float64{3, 2, 1, 4}},
+	{opOsc, [4]float64{0.08, shpSaw, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLfo, [4]float64{0.05, 1}},
+	{opSvf, [4]float64{260, 0.75, 0, 1.2}},
+	{opSend, [4]float64{0.15, 0, 0, 0}},
+	{opOut, [4]float64{0.45, 0.65}},
+}
+
+// smear: a pulse pad in a wandering bandpass, more vowel than chord
+var smear = Patch{
+	{opEnv, [4]float64{1.5, 2, 0.5, 2.5}},
+	{opOsc, [4]float64{0, shpPulse, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLfo, [4]float64{0.2, 1}},
+	{opSvf, [4]float64{700, 0.6, 1, 1}},
+	{opSend, [4]float64{0.35, 0, 0, 0}},
+	{opOut, [4]float64{0.5, 0.5}},
+}
+
+// hiss: noise as an instrument, a tape-hiss bed whose band jumps somewhere
+// new a couple of times a second
+var hiss = Patch{
+	{opEnv, [4]float64{2, 2.5, 0.5, 3.5}},
+	{opOsc, [4]float64{0, shpNoise, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLfo, [4]float64{2.3, 2}},
+	{opSvf, [4]float64{1500, 0.7, 1, 1.3}},
+	{opSend, [4]float64{0.4, 0, 0, 0}},
+	{opOut, [4]float64{0.55, 0.5}},
+}
+
+// grind: the tension pulse with teeth, a saw whose resonant lowpass snaps
+// open on each hit and closes as it decays: a filter envelope
+var grind = Patch{
+	{opEnv, [4]float64{0.002, 0.18, 0, 0.08}},
+	{opOsc, [4]float64{0, shpSaw, 0, 1}},
+	{opMul, [4]float64{}},
+	{opEnv, [4]float64{0.001, 0.09, 0, 0.05}},
+	{opSvf, [4]float64{90, 0.8, 0, 4}},
+	{opOut, [4]float64{0.8, 0.5}},
+}
+
 // ---- parameters: the (seed, depth) -> music map ----
 // The kaiju-elements trick: taste lives in hand-tuned option tables,
 // the seed just picks. Depth darkens the pick.
@@ -549,6 +676,7 @@ var overworldLeads = []string{"bell", "bell", "kalimba", "kalimba", "reed", "plu
 var meadowLeads = []string{"bell", "kalimba", "kalimba", "reed", "pluck", "pluck"}
 var auroraLeads = []string{"chime", "chime", "bell", "bell", "kalimba"}
 var villageLeads = []string{"kalimba", "kalimba", "pluck", "pluck", "reed"}
+var rustLeads = []string{"clang", "clang", "pluck", "chime"}
 
 // pickLead draws from a separate rng stream so the pattern content for a
 // given seed is unchanged — only the instrument varies.
@@ -571,6 +699,7 @@ type Palette struct {
 var dungeonPalette = Palette{Drone: drone, Fifth: pad, Pad: pad, Bell: bell, Air: air, Pulse: pulse}
 var overworldPalette = Palette{Drone: bed, Fifth: pad, Pad: pad, Bell: bell, Air: breeze, Pulse: pulse}
 var auroraPalette = Palette{Drone: bed, Fifth: veil, Pad: veil, Bell: bell, Air: breeze, Pulse: pulse}
+var rustPalette = Palette{Drone: rust, Fifth: smear, Pad: smear, Bell: bell, Air: hiss, Pulse: grind}
 
 var scalesByDarkness = [][]int{
 	{0, 2, 3, 5, 7, 9, 10}, // dorian
@@ -591,6 +720,12 @@ var scalesForVillage = [][]int{
 
 var scalesForAurora = [][]int{
 	{0, 2, 4, 6, 7, 9, 11}, // lydian, all the way up
+}
+
+var scalesForRust = [][]int{
+	{0, 1, 3, 5, 7, 8, 10}, // phrygian
+	{0, 1, 3, 5, 7, 8, 10}, // phrygian
+	{0, 1, 3, 5, 6, 8, 10}, // locrian
 }
 
 // The meadow stays major longer and turns lydian only high up: its

@@ -35,6 +35,7 @@ var palettes = map[string]Palette{
 	"dungeon":   dungeonPalette,
 	"overworld": overworldPalette,
 	"aurora":    auroraPalette,
+	"rust":      rustPalette,
 }
 
 // GrooveNames lists the grooves a MoodSpec can name, sorted.
@@ -58,7 +59,7 @@ func LeadNames() []string {
 }
 
 // PaletteNames lists the patch banks a MoodSpec can name.
-func PaletteNames() []string { return []string{"dungeon", "overworld", "aurora"} }
+func PaletteNames() []string { return []string{"dungeon", "overworld", "aurora", "rust"} }
 
 // PaletteByName returns a patch bank by the name a MoodSpec uses for it.
 func PaletteByName(name string) (Palette, bool) {

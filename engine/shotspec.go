@@ -26,6 +26,9 @@ type ShotSpec struct {
 //	mul                                               pop two, push their product
 //	lpf   cutoff Hz                                   lowpass the top
 //	hpf   cutoff Hz                                   highpass the top
+//	svf   cutoff Hz, resonance 0..1, mode 0 low 1 band 2 high, depth octaves
+//	      -> filter the top; a nonzero depth first pops a modulation value
+//	lfo   rate Hz, shape 0 sine 1 triangle 2 sample-and-hold -> push -1..1
 //	send  amount                                      add the top to the delay bus
 //	out   gain, pan 0..1                              pop and mix
 type UnitSpec struct {
@@ -34,11 +37,11 @@ type UnitSpec struct {
 	Args  []float64
 }
 
-var opNames = []string{opEnv: "env", opOsc: "osc", opMul: "mul", opLpf: "lpf", opSend: "send", opOut: "out", opPluck: "pluck", opHpf: "hpf"}
+var opNames = []string{opEnv: "env", opOsc: "osc", opMul: "mul", opLpf: "lpf", opSend: "send", opOut: "out", opPluck: "pluck", opHpf: "hpf", opSvf: "svf", opLfo: "lfo"}
 
 // opArgs is how many Args a unit of each op takes: the parameters its op
 // reads, less an osc's shape, which travels in UnitSpec.Shape.
-var opArgs = []int{opEnv: 4, opOsc: 3, opMul: 0, opLpf: 1, opSend: 1, opOut: 2, opPluck: 2, opHpf: 1}
+var opArgs = []int{opEnv: 4, opOsc: 3, opMul: 0, opLpf: 1, opSend: 1, opOut: 2, opPluck: 2, opHpf: 1, opSvf: 4, opLfo: 2}
 
 var shapeNames = []string{shpSine: "sine", shpSaw: "saw", shpPulse: "pulse", shpNoise: "noise"}
 
@@ -131,22 +134,31 @@ func (s ShotSpec) patch() (Patch, error) {
 			return nil, fmt.Errorf("unit %d (%s): %w", i, us.Op, err)
 		}
 		// The VM's stack holds eight and checks nothing, so the spec must.
+		need := 0 // values the unit reads off the stack
 		switch u.op {
-		case opEnv, opOsc, opPluck:
-			depth++
-		case opMul, opOut:
-			depth--
-		}
-		need := 0
-		switch u.op {
-		case opMul, opLpf, opHpf, opSend:
+		case opMul:
+			need = 2
+		case opOut, opLpf, opHpf, opSend:
 			need = 1
-		}
-		if depth > 8 {
-			return nil, fmt.Errorf("unit %d (%s): the stack would overflow", i, us.Op)
+		case opSvf:
+			need = 1
+			if u.p[3] != 0 { // the modulation value, then the signal
+				need = 2
+			}
 		}
 		if depth < need {
 			return nil, fmt.Errorf("unit %d (%s): the stack would run dry", i, us.Op)
+		}
+		switch u.op {
+		case opEnv, opOsc, opPluck, opLfo:
+			depth++
+		case opMul, opOut:
+			depth--
+		case opSvf:
+			depth -= need - 1
+		}
+		if depth > 8 {
+			return nil, fmt.Errorf("unit %d (%s): the stack would overflow", i, us.Op)
 		}
 		envs += b2i(u.op == opEnv)
 		outs += b2i(u.op == opOut)
@@ -219,6 +231,12 @@ func (us UnitSpec) unit() (Unit, error) {
 	case opLpf, opHpf:
 		ok = a[0] > 0 && a[0] <= SampleRate/2
 		rule = fmt.Sprintf("a cutoff above 0 and at most %d Hz", SampleRate/2)
+	case opSvf:
+		ok = a[0] > 0 && a[0] <= SampleRate/2 && a[1] >= 0 && a[1] <= 1 && whole(a[2], 2) && math.Abs(a[3]) <= 8
+		rule = fmt.Sprintf("a cutoff above 0 and at most %d Hz, resonance 0..1, mode 0, 1 or 2, depth within 8 octaves", SampleRate/2)
+	case opLfo:
+		ok = a[0] > 0 && a[0] <= 100 && whole(a[1], 2)
+		rule = "a rate above 0 and at most 100 Hz, shape 0, 1 or 2"
 	case opSend:
 		ok = a[0] >= 0 && a[0] <= 1
 		rule = "an amount 0..1"
@@ -230,6 +248,11 @@ func (us UnitSpec) unit() (Unit, error) {
 		return Unit{}, fmt.Errorf("%v: want %s", us.Args, rule)
 	}
 	return u, nil
+}
+
+// whole reports whether x is one of 0..n.
+func whole(x float64, n int) bool {
+	return x >= 0 && x <= float64(n) && x == math.Trunc(x)
 }
 
 func indexOf(names []string, n string) int {

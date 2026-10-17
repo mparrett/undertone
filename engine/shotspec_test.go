@@ -110,7 +110,7 @@ func TestAcceptedShotsAreSafe(t *testing.T) {
 		}
 		return pick(usual)
 	}
-	accepted := 0
+	accepted, swept := 0, 0
 	for i := 0; i < 3000; i++ {
 		// patch-shaped chains (env, source, mul, filters, out) with random
 		// parameters, so that some pass and the edges of each range are hit
@@ -130,6 +130,20 @@ func TestAcceptedShotsAreSafe(t *testing.T) {
 					units = append(units, unit(op))
 				}
 			}
+			if r.n(2) == 0 {
+				// a resonant filter, swept by an lfo or an env half the time
+				f := unit("svf")
+				f.Args[1], f.Args[2] = pick([]float64{0, 0.5, 0.95, 1, 1.2}), float64(r.n(4))
+				f.Args[3] = pick([]float64{0, 0, -8, -2, 3, 8, 9})
+				if f.Args[3] != 0 {
+					m := unit([]string{"lfo", "env"}[r.n(2)])
+					if m.Op == "lfo" {
+						m.Args[1] = float64(r.n(4))
+					}
+					units = append(units, m)
+				}
+				units = append(units, f)
+			}
 			units = append(units, unit("out"))
 		}
 		s := ShotSpec{Name: "fuzz", GateMS: pick(vals), Units: units}
@@ -137,6 +151,12 @@ func TestAcceptedShotsAreSafe(t *testing.T) {
 			continue
 		}
 		accepted++
+		for _, u := range units {
+			if u.Op == "svf" && u.Args[3] != 0 {
+				swept++
+				break
+			}
+		}
 		syn := NewSynth(silentParams)
 		syn.Trigger("fuzz", 20+r.n(90), 1, 0.5, 0, uint64(i))
 		for range 4 {
@@ -149,8 +169,8 @@ func TestAcceptedShotsAreSafe(t *testing.T) {
 			}
 		}
 	}
-	if accepted < 50 {
-		t.Fatalf("only %d of 3000 random patches were accepted; the test proves little", accepted)
+	if accepted < 50 || swept < 10 {
+		t.Fatalf("only %d of 3000 random patches were accepted, %d with a swept filter; the test proves little", accepted, swept)
 	}
-	t.Logf("%d random patches accepted and rendered", accepted)
+	t.Logf("%d random patches accepted and rendered, %d with a swept filter", accepted, swept)
 }

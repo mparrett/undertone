@@ -111,9 +111,9 @@ func TestGritGlidesOnASoundingNote(t *testing.T) {
 	}
 	p.Grit = 1
 	s.SetParametersNow(p)
-	render(s, s.rowLeft+160) // ten glide steps past the row where it applies
+	render(s, nowBlock+160) // ten glide steps past the block where it applies
 	if v.gritTo != 1 || v.grit >= 0.5 {
-		t.Errorf("a row after the change, grit is %v toward %v: want a glide under way", v.grit, v.gritTo)
+		t.Errorf("a block after the change, grit is %v toward %v: want a glide under way", v.grit, v.gritTo)
 	}
 	render(s, SampleRate/4)
 	if v.grit != 1 {

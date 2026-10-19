@@ -84,6 +84,14 @@ type Voice struct {
 	open, openTo float64 // Params.Open, gliding the same way: scales svf cutoff
 	gtick        int
 
+	// A mid-pattern mood change (applyNow) moves gain linearly to gainTo over
+	// fadeFrames rather than stepping it, which would click. A note it has to
+	// replace waits in pend until the old one has faded to silence.
+	gainTo, gainStep float64
+	pend             trackRow
+	pendRows         int
+	pendSeed         uint64
+
 	// gateSamples is the one-shot lane's gate clock (sfx.go). Sequencer
 	// voices gate in rows via step(); one-shots are off the grid, so their
 	// gate expires in samples instead. Zero for sequencer voices.
@@ -103,6 +111,8 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 	v.patch = patch
 	v.note = note
 	v.gain = gain
+	v.gainTo = gain
+	v.pend = trackRow{}
 	v.gate = true
 	v.gateRows = gateRows
 	v.active = true
@@ -162,6 +172,49 @@ func (v *Voice) glideKnobs() {
 	glide(&v.open, v.openTo)
 }
 
+// fadeFrames is how long a gain glide takes: about 5 ms, short enough to
+// sound like a switch and long enough not to click.
+const fadeFrames = 220
+
+func (v *Voice) glideGain(to float64) {
+	v.gainTo = to
+	v.gainStep = (to - v.gain) / fadeFrames
+}
+
+// stepGain moves gain one sample toward gainTo, and starts a pending note
+// once the old one is silent.
+func (v *Voice) stepGain() {
+	if math.Abs(v.gainTo-v.gain) <= math.Abs(v.gainStep) {
+		v.gain = v.gainTo
+	} else {
+		v.gain += v.gainStep
+	}
+	if v.gain == 0 && v.pend.note != 0 {
+		v.firePend()
+	}
+}
+
+// firePend starts the pending note from silence: the old note has faded out
+// or died, so nothing of it carries over.
+func (v *Voice) firePend() {
+	tr := v.pend
+	v.active = false
+	v.trigger(tr.patch, tr.note, v.pendRows, tr.gain, v.pendSeed)
+	v.gain = 0
+	v.glideGain(tr.gain)
+}
+
+// retrigger starts tr on v without a click: a sounding voice fades out
+// first, and the new note fades in.
+func (v *Voice) retrigger(tr trackRow, gateRows int, seed uint64) {
+	if !v.active || v.gain == 0 {
+		v.trigger(tr.patch, tr.note, gateRows, tr.gain, seed)
+		return
+	}
+	v.pend, v.pendRows, v.pendSeed = tr, gateRows, seed
+	v.glideGain(0)
+}
+
 // samePatch reports whether a and b are the same patch value. Patches are
 // package-level tables, so identity is the first unit's address.
 func samePatch(a, b Patch) bool {
@@ -172,6 +225,9 @@ func samePatch(a, b Patch) bool {
 func (v *Voice) run(l, r *float64, b *sends) {
 	if v.grit != v.gritTo || v.open != v.openTo {
 		v.glideKnobs()
+	}
+	if v.gain != v.gainTo {
+		v.stepGain()
 	}
 	var stack [8]float64
 	sp := 0
@@ -407,6 +463,9 @@ func (v *Voice) run(l, r *float64, b *sends) {
 		}
 	}
 	v.active = alive
+	if !alive && v.pend.note != 0 {
+		v.firePend() // the old note died before its fade finished
+	}
 }
 
 // ---- instruments (compact opcode tables, sointu-patch style) ----
@@ -1032,7 +1091,7 @@ type Synth struct {
 
 	// hand-written pattern (grid.go): nil plays the generator alone
 	grid   atomic.Pointer[Grid]
-	now    atomic.Pointer[Params] // staged for the next row (SetParametersNow)
+	now    atomic.Pointer[Params] // staged for the next block (SetParametersNow)
 	nframe int64                  // frames rendered, synthesis-side
 	frames atomic.Int64           // nframe as of the end of the last Read
 	rowLog rowLog
@@ -1109,12 +1168,11 @@ func (s *Synth) SetMusicGain(g float64) {
 // pattern boundary (the audio/set-parameters contract).
 func (s *Synth) SetParameters(p Params) { s.next.Store(&p) }
 
-// SetParametersNow stages p for the next row instead of the next pattern:
-// for an editor, where a tempo or voice change should be heard at once. The
-// generator's notes for the rest of this pattern were already drawn from the
-// old parameters, so only tempo and the voices of new notes change mid-way,
-// and grit, which sounding notes glide to.
-// Safe to call from any goroutine.
+// SetParametersNow applies p within nowBlock frames instead of at the next
+// pattern: for an editor, or a game switching scenes, where a mood change
+// should be heard at once. The rest of the pattern is redrawn from p, and
+// each track moves to the note p would be sounding by now, fading over
+// fadeFrames so the switch does not click. Safe to call from any goroutine.
 func (s *Synth) SetParametersNow(p Params) { s.now.Store(&p) }
 
 func (s *Synth) apply(p Params) {
@@ -1179,14 +1237,61 @@ func rotate(a []float64, k int) {
 	slices.Reverse(a)
 }
 
-func (s *Synth) step() {
-	if p := s.now.Swap(nil); p != nil {
-		s.apply(*p)
-		// The groove and drum gain follow at once, as swing does; buildDrums
-		// is deterministic for a pattern, so an unchanged groove rebuilds the
-		// same hits.
-		s.drums = buildDrums(s.params, s.pat)
+// nowBlock is how often, in frames, the synth looks for a SetParametersNow:
+// about 3 ms, well inside one output buffer.
+const nowBlock = 128
+
+// applyNow switches to p mid-pattern. The pattern and drums are redrawn
+// for the pattern still playing (the previous one, if the last row has just
+// stepped); generation is deterministic per pattern, so unchanged params
+// redraw the same notes and nothing is retriggered.
+func (s *Synth) applyNow(p Params) {
+	old := s.samplesPerRow
+	s.apply(p)
+	s.rowLeft = max(1, s.rowLeft*s.samplesPerRow/old)
+	pat, row := s.pat, s.row-1
+	if row < 0 {
+		pat, row = pat-1, rows-1
 	}
+	s.pats = buildPatterns(s.params, pat)
+	s.drums = buildDrums(s.params, pat)
+	if g := s.grid.Load(); g != nil {
+		for r := 0; r <= row; r++ {
+			s.applyGrid(g, r)
+		}
+	}
+	for t := range s.voices {
+		s.revoice(t, pat, row)
+	}
+}
+
+// revoice moves track t to the note the redrawn pattern has sounding at row:
+// the latest one there, if its gate has not run out.
+func (s *Synth) revoice(t, pat, row int) {
+	v := &s.voices[t]
+	for r := row; r >= 0; r-- {
+		tr := s.pats[t][r]
+		if tr.note == 0 {
+			continue
+		}
+		left := tr.gateRows - (row - r)
+		if left <= 0 {
+			break
+		}
+		if v.active && v.gate && v.note == tr.note && samePatch(v.patch, tr.patch) {
+			v.gateRows = left
+			if v.gainTo != tr.gain {
+				v.glideGain(tr.gain)
+			}
+		} else {
+			v.retrigger(tr, left, s.params.Seed+uint64(pat*rows+r))
+		}
+		return
+	}
+	v.gate = false
+}
+
+func (s *Synth) step() {
 	if s.row == 0 {
 		if p := s.next.Swap(nil); p != nil {
 			s.apply(*p)
@@ -1201,12 +1306,25 @@ func (s *Synth) step() {
 	s.stepDrums()
 	for t := 0; t < nTracks; t++ {
 		v := &s.voices[t]
-		if tr := s.pats[t][s.row]; tr.note != 0 {
-			v.trigger(tr.patch, tr.note, tr.gateRows, tr.gain, s.params.Seed+uint64(s.pat*rows+s.row))
-		} else if v.active && v.gate {
-			v.gateRows--
-			if v.gateRows <= 0 {
-				v.gate = false
+		tr := s.pats[t][s.row]
+		seed := s.params.Seed + uint64(s.pat*rows+s.row)
+		switch {
+		case tr.note != 0 && (v.pend.note != 0 || v.gain != v.gainTo):
+			v.retrigger(tr, tr.gateRows, seed) // mid-fade: a trigger would step the gain
+		case tr.note != 0:
+			v.trigger(tr.patch, tr.note, tr.gateRows, tr.gain, seed)
+		default:
+			if v.pend.note != 0 {
+				v.pendRows--
+				if v.pendRows <= 0 {
+					v.pend = trackRow{}
+				}
+			}
+			if v.active && v.gate {
+				v.gateRows--
+				if v.gateRows <= 0 {
+					v.gate = false
+				}
 			}
 		}
 	}
@@ -1221,6 +1339,11 @@ func (s *Synth) frame() (int16, int16) {
 	if s.rowLeft == 0 {
 		s.step()
 		s.rowLeft = s.samplesPerRow
+	}
+	if s.nframe%nowBlock == 0 {
+		if p := s.now.Swap(nil); p != nil {
+			s.applyNow(*p)
+		}
 	}
 	s.rowLeft--
 	s.nframe++

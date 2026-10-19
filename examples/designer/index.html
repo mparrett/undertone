@@ -388,7 +388,7 @@
     for (const b of document.querySelectorAll("#presets .chip")) b.classList.toggle("on", p && b.dataset.v === p.name);
   }
 
-  // Every edit re-derives and plays from the next row.
+  // Every edit re-derives and is heard at once.
   function changed() {
     if (!ready || !spec) return;
     const [seed, level, tension] = audition();

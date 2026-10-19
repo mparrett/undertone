@@ -190,11 +190,18 @@ func (v *Voice) stepGain() {
 		v.gain += v.gainStep
 	}
 	if v.gain == 0 && v.pend.note != 0 {
-		tr := v.pend
-		v.trigger(tr.patch, tr.note, v.pendRows, tr.gain, v.pendSeed)
-		v.gain = 0
-		v.glideGain(tr.gain)
+		v.firePend()
 	}
+}
+
+// firePend starts the pending note from silence: the old note has faded out
+// or died, so nothing of it carries over.
+func (v *Voice) firePend() {
+	tr := v.pend
+	v.active = false
+	v.trigger(tr.patch, tr.note, v.pendRows, tr.gain, v.pendSeed)
+	v.gain = 0
+	v.glideGain(tr.gain)
 }
 
 // retrigger starts tr on v without a click: a sounding voice fades out
@@ -456,6 +463,9 @@ func (v *Voice) run(l, r *float64, b *sends) {
 		}
 	}
 	v.active = alive
+	if !alive && v.pend.note != 0 {
+		v.firePend() // the old note died before its fade finished
+	}
 }
 
 // ---- instruments (compact opcode tables, sointu-patch style) ----
@@ -1296,12 +1306,25 @@ func (s *Synth) step() {
 	s.stepDrums()
 	for t := 0; t < nTracks; t++ {
 		v := &s.voices[t]
-		if tr := s.pats[t][s.row]; tr.note != 0 {
-			v.trigger(tr.patch, tr.note, tr.gateRows, tr.gain, s.params.Seed+uint64(s.pat*rows+s.row))
-		} else if v.active && v.gate {
-			v.gateRows--
-			if v.gateRows <= 0 {
-				v.gate = false
+		tr := s.pats[t][s.row]
+		seed := s.params.Seed + uint64(s.pat*rows+s.row)
+		switch {
+		case tr.note != 0 && (v.pend.note != 0 || v.gain != v.gainTo):
+			v.retrigger(tr, tr.gateRows, seed) // mid-fade: a trigger would step the gain
+		case tr.note != 0:
+			v.trigger(tr.patch, tr.note, tr.gateRows, tr.gain, seed)
+		default:
+			if v.pend.note != 0 {
+				v.pendRows--
+				if v.pendRows <= 0 {
+					v.pend = trackRow{}
+				}
+			}
+			if v.active && v.gate {
+				v.gateRows--
+				if v.gateRows <= 0 {
+					v.gate = false
+				}
 			}
 		}
 	}

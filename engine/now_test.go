@@ -3,6 +3,8 @@ package engine
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
+	"slices"
 	"testing"
 )
 
@@ -33,12 +35,13 @@ func TestMoodChangeHeardWithinABlock(t *testing.T) {
 }
 
 // The switch fades instead of cutting: the largest sample-to-sample step
-// across it stays near the largest a steady render takes.
+// across it stays near the largest either mood takes playing steadily.
 func TestMoodChangeDoesNotClick(t *testing.T) {
 	dungeon, _ := DeriveMood("dungeon", 7, 2, 0)
 	rust, _ := DeriveMood("rust", 7, 2, 0)
+	steady := max(steadyStep(dungeon), steadyStep(rust))
 	s := NewSynth(dungeon)
-	steady := maxStep(render(s, 5*s.samplesPerRow))
+	render(s, 5*s.samplesPerRow)
 	s.SetParametersNow(rust)
 	if got := maxStep(render(s, nowBlock+4*fadeFrames)); got > 2*steady {
 		t.Errorf("largest step across the switch is %d, against %d steady", got, steady)
@@ -58,6 +61,12 @@ func TestRestagingSameParamsChangesNothing(t *testing.T) {
 	}
 }
 
+// steadyStep is the largest sample-to-sample step p takes in its first
+// seconds: saws step sharply every cycle, so this differs by mood.
+func steadyStep(p Params) int {
+	return maxStep(render(NewSynth(p), 6*SampleRate))
+}
+
 func maxStep(pcm []byte) int {
 	best, prev := 0, int(int16(binary.LittleEndian.Uint16(pcm)))
 	for i := 4; i < len(pcm); i += 4 {
@@ -73,4 +82,59 @@ func abs(x int) int {
 		return -x
 	}
 	return x
+}
+
+// A note waiting on a fade still starts when the old note dies first, as a
+// release tail can partway through the fade.
+func TestPendingNoteSurvivesTheOldNoteDying(t *testing.T) {
+	var v Voice
+	v.trigger(pulse, 40, 1, 0.5, 1)
+	v.gate = false
+	probe := v
+	probe.units = slices.Clone(v.units)
+	left := 0
+	for ; probe.active; left++ {
+		var l, r float64
+		probe.run(&l, &r, &sends{})
+	}
+	run := func(n int) {
+		for range n {
+			if v.active {
+				var l, r float64
+				v.run(&l, &r, &sends{})
+			}
+		}
+	}
+	run(left - 5)
+	v.retrigger(trackRow{45, 0.6, 16, drone}, 16, 2)
+	run(2 * fadeFrames)
+	if !v.active || !samePatch(v.patch, drone) || v.gain != 0.6 {
+		t.Errorf("the pending drone did not start: active %v, gain %v", v.active, v.gain)
+	}
+}
+
+// A switch whose fade straddles a row step keeps fading: the row's new note
+// joins the fade, where a plain trigger would step the voice's gain.
+func TestSwitchAcrossARowKeepsFading(t *testing.T) {
+	dungeon, _ := DeriveMood("dungeon", 7, 2, 0)
+	rust, _ := DeriveMood("rust", 7, 2, 0)
+	s := NewSynth(dungeon)
+	edge := rows * s.samplesPerRow // the next pattern's first row, with its drone
+	lead := (edge - 100) / nowBlock * nowBlock
+	render(s, lead)
+	s.SetParametersNow(rust)
+	var was [nTracks]float64
+	for i := range s.voices {
+		was[i] = s.voices[i].gain
+	}
+	for range 2*(edge-lead) + 4*fadeFrames {
+		render(s, 1)
+		for i := range s.voices {
+			v := &s.voices[i]
+			if d := v.gain - was[i]; v.active && math.Abs(d) > 1.0/fadeFrames {
+				t.Fatalf("track %d's gain stepped by %v in one frame", i, d)
+			}
+			was[i] = v.gain
+		}
+	}
 }

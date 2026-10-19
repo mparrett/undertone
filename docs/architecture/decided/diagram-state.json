@@ -1,0 +1,324 @@
+{
+  "title": "undertone \u2014 decided plan (2026-10-18)",
+  "width": 1750,
+  "height": 1250,
+  "theme": "afterglow",
+  "font": "sans",
+  "legend": false,
+  "footer": "layers are a mental model, not types  \u00b7  #N = where an issue lands  \u00b7  gray dashed = deferred / future   |   blue game \u00b7 purple control \u00b7 amber sequencer \u00b7 green render \u00b7 teal output",
+  "dividers": [
+    {
+      "orient": "h",
+      "at": 205,
+      "label": "game \u2194 control"
+    },
+    {
+      "orient": "h",
+      "at": 430,
+      "label": "control \u2194 sequencer: Params"
+    },
+    {
+      "orient": "h",
+      "at": 660,
+      "label": "sequencer \u2194 render: rows of notes (no new type)"
+    },
+    {
+      "orient": "h",
+      "at": 960,
+      "label": "render \u2194 output: io.Reader"
+    }
+  ],
+  "rowY": {
+    "0": 80,
+    "1": 270,
+    "2": 490,
+    "3": 720,
+    "4": 850,
+    "5": 1030
+  },
+  "nodes": [
+    {
+      "id": "tools",
+      "label": "designer \u00b7 grid \u00b7 CLI",
+      "color": "blue",
+      "details": [
+        "authoring tools"
+      ],
+      "row": 0,
+      "col": 0
+    },
+    {
+      "id": "lggame",
+      "label": "let-go game / REPL",
+      "color": "blue",
+      "details": [
+        "audio/ calls"
+      ],
+      "row": 0,
+      "col": 1
+    },
+    {
+      "id": "gogame",
+      "label": "Go game",
+      "color": "blue",
+      "details": [
+        "same calls from Go"
+      ],
+      "row": 0,
+      "col": 3
+    },
+    {
+      "id": "mood",
+      "label": "Moods (data)",
+      "color": "purple",
+      "details": [
+        "lines in level; shared tension rules",
+        "#49: one derivation, in Go"
+      ],
+      "row": 1,
+      "col": 0
+    },
+    {
+      "id": "params",
+      "label": "Params",
+      "color": "purple",
+      "details": [
+        "one struct (fields \u2192)",
+        "#47: heard within one buffer"
+      ],
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "shots",
+      "label": "One-shots",
+      "color": "purple",
+      "details": [
+        "Trigger / ShotSpec"
+      ],
+      "row": 1,
+      "col": 3
+    },
+    {
+      "id": "gen",
+      "label": "Generator",
+      "color": "amber",
+      "details": [
+        "16 rows from Params + seed"
+      ],
+      "row": 2,
+      "col": 1
+    },
+    {
+      "id": "grid",
+      "label": "Grid / themes",
+      "color": "amber",
+      "details": [
+        "replaces rows; Bed layers",
+        "#50: sequences, play once, lg"
+      ],
+      "row": 2,
+      "col": 0
+    },
+    {
+      "id": "arr",
+      "label": "Arranger",
+      "color": "gray",
+      "details": [
+        "deferred (#46):",
+        "when #39 needs a 2nd source"
+      ],
+      "row": 2,
+      "col": 2,
+      "outlineDash": "dashed"
+    },
+    {
+      "id": "vm",
+      "label": "Voices: unit VM",
+      "color": "green",
+      "details": [
+        "plays rows of notes"
+      ],
+      "row": 3,
+      "col": 1
+    },
+    {
+      "id": "pool",
+      "label": "Shot pool",
+      "color": "green",
+      "details": [
+        "above music gain"
+      ],
+      "row": 3,
+      "col": 3
+    },
+    {
+      "id": "bus",
+      "label": "Buses + mix \u2192 io.Reader",
+      "color": "green",
+      "details": [
+        "delay \u00b7 reverb \u00b7 tanh"
+      ],
+      "row": 4,
+      "col": 1
+    },
+    {
+      "id": "play",
+      "label": "Native Play",
+      "color": "teal",
+      "details": [
+        "#48: oto setup written once"
+      ],
+      "row": 5,
+      "col": 0
+    },
+    {
+      "id": "wa",
+      "label": "webaudio",
+      "color": "teal",
+      "details": [
+        "worklet; worker mode #45"
+      ],
+      "row": 5,
+      "col": 1
+    },
+    {
+      "id": "seam",
+      "label": "let-go audio seam",
+      "color": "gray",
+      "details": [
+        "#40: undertone proposes;",
+        "phosphene brings input + clock"
+      ],
+      "row": 5,
+      "col": 2,
+      "outlineDash": "dashed"
+    }
+  ],
+  "edges": [
+    {
+      "from": "tools",
+      "to": "mood",
+      "style": "solid",
+      "label": "edit",
+      "id": "tools~mood"
+    },
+    {
+      "from": "tools",
+      "to": "grid",
+      "style": "solid",
+      "id": "tools~grid"
+    },
+    {
+      "from": "lggame",
+      "to": "params",
+      "style": "solid",
+      "id": "lggame~params"
+    },
+    {
+      "from": "gogame",
+      "to": "params",
+      "style": "solid",
+      "id": "gogame~params",
+      "fromEdge": "W",
+      "toEdge": "N"
+    },
+    {
+      "from": "gogame",
+      "to": "shots",
+      "style": "solid",
+      "id": "gogame~shots"
+    },
+    {
+      "from": "mood",
+      "to": "params",
+      "style": "solid",
+      "label": "level, tension",
+      "id": "mood~params"
+    },
+    {
+      "from": "params",
+      "to": "gen",
+      "style": "solid",
+      "id": "params~gen"
+    },
+    {
+      "from": "params",
+      "to": "vm",
+      "style": "solid",
+      "label": "grit, open",
+      "id": "params~vm"
+    },
+    {
+      "from": "gen",
+      "to": "vm",
+      "style": "solid",
+      "label": "notes",
+      "id": "gen~vm"
+    },
+    {
+      "from": "grid",
+      "to": "vm",
+      "style": "solid",
+      "label": "replaces rows",
+      "id": "grid~vm"
+    },
+    {
+      "from": "shots",
+      "to": "pool",
+      "style": "solid",
+      "id": "shots~pool"
+    },
+    {
+      "from": "vm",
+      "to": "bus",
+      "style": "solid",
+      "id": "vm~bus"
+    },
+    {
+      "from": "pool",
+      "to": "bus",
+      "style": "solid",
+      "id": "pool~bus"
+    },
+    {
+      "from": "bus",
+      "to": "play",
+      "style": "solid",
+      "id": "bus~play"
+    },
+    {
+      "from": "bus",
+      "to": "wa",
+      "style": "solid",
+      "id": "bus~wa"
+    },
+    {
+      "from": "bus",
+      "to": "seam",
+      "style": "dashed",
+      "id": "bus~seam"
+    }
+  ],
+  "notes": [
+    {
+      "id": "fields",
+      "anchor": {
+        "to": "params",
+        "side": "E",
+        "dx": 16,
+        "dy": 22
+      },
+      "title": "Params fields, by when they act",
+      "text": [
+        "pattern: BPM, key, track gains, densities,",
+        "  palette, lead, seed",
+        "drums: groove, gain, busy, swing",
+        "glide: grit, open",
+        "mix: mute"
+      ]
+    }
+  ],
+  "layout": {},
+  "rev": 2
+}

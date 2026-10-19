@@ -77,7 +77,10 @@ As of 2026-10-18:
 - **Structure follows need.** The layers (knobs, sequencer, render, output) are a
   way to think about undertone, not a list of types to build. A layer becomes its
   own type when a second user, duplicated knowledge, or caller complexity calls
-  for it.
+  for it. [`docs/architecture/`](docs/architecture/) has the layers as they
+  stand ([current](docs/architecture/current/diagram.png)) and with each issue
+  placed where it lands ([decided](docs/architecture/decided/diagram.png)),
+  drawn with agent-diagrams from the `diagram-state.json` beside each.
 
 ## Open
 

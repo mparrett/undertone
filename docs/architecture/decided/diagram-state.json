@@ -1,31 +1,31 @@
 {
-  "title": "undertone \u2014 decided plan (2026-10-18)",
+  "title": "undertone — decided plan (2026-10-18)",
   "width": 1750,
   "height": 1250,
   "theme": "afterglow",
   "font": "sans",
   "legend": false,
-  "footer": "layers are a mental model, not types  \u00b7  #N = where an issue lands  \u00b7  gray dashed = deferred / future   |   blue game \u00b7 purple control \u00b7 amber sequencer \u00b7 green render \u00b7 teal output",
+  "footer": "layers are a mental model, not types  ·  #N = where an issue lands  ·  dotted gray = deferred / future   |   blue game · purple control · amber sequencer · green render · teal output",
   "dividers": [
     {
       "orient": "h",
       "at": 205,
-      "label": "game \u2194 control"
+      "label": "game ↔ control"
     },
     {
       "orient": "h",
-      "at": 430,
-      "label": "control \u2194 sequencer: Params"
+      "at": 448,
+      "label": "control ↔ sequencer: Params"
     },
     {
       "orient": "h",
       "at": 660,
-      "label": "sequencer \u2194 render: rows of notes (no new type)"
+      "label": "sequencer ↔ render: rows of notes (no new type)"
     },
     {
       "orient": "h",
       "at": 960,
-      "label": "render \u2194 output: io.Reader"
+      "label": "render ↔ output: io.Reader"
     }
   ],
   "rowY": {
@@ -39,7 +39,7 @@
   "nodes": [
     {
       "id": "tools",
-      "label": "designer \u00b7 grid \u00b7 CLI",
+      "label": "designer · grid · CLI",
       "color": "blue",
       "details": [
         "authoring tools"
@@ -55,7 +55,9 @@
         "audio/ calls"
       ],
       "row": 0,
-      "col": 1
+      "col": 1,
+      "w": 12,
+      "h": 3
     },
     {
       "id": "gogame",
@@ -76,18 +78,22 @@
         "#49: one derivation, in Go"
       ],
       "row": 1,
-      "col": 0
+      "col": 0,
+      "w": 12,
+      "h": 6
     },
     {
       "id": "params",
       "label": "Params",
       "color": "purple",
       "details": [
-        "one struct (fields \u2192)",
+        "one struct (fields →)",
         "#47: heard within one buffer"
       ],
       "row": 1,
-      "col": 1
+      "col": 1,
+      "w": 12,
+      "h": 6
     },
     {
       "id": "shots",
@@ -97,7 +103,9 @@
         "Trigger / ShotSpec"
       ],
       "row": 1,
-      "col": 3
+      "col": 3,
+      "w": 8,
+      "h": 6
     },
     {
       "id": "gen",
@@ -140,7 +148,9 @@
         "plays rows of notes"
       ],
       "row": 3,
-      "col": 1
+      "col": 1,
+      "w": 14,
+      "h": 5
     },
     {
       "id": "pool",
@@ -154,13 +164,15 @@
     },
     {
       "id": "bus",
-      "label": "Buses + mix \u2192 io.Reader",
+      "label": "Buses + mix → io.Reader",
       "color": "green",
       "details": [
-        "delay \u00b7 reverb \u00b7 tanh"
+        "delay · reverb · tanh"
       ],
       "row": 4,
-      "col": 1
+      "col": 1,
+      "w": 14,
+      "h": 4
     },
     {
       "id": "play",
@@ -200,104 +212,168 @@
       "from": "tools",
       "to": "mood",
       "style": "solid",
-      "label": "edit",
-      "id": "tools~mood"
+      "label": "edits mood lines (EDN)",
+      "id": "tools~mood",
+      "fromEdge": "S",
+      "fromConn": 8,
+      "toEdge": "N",
+      "toConn": 5
     },
     {
       "from": "tools",
       "to": "grid",
       "style": "solid",
-      "id": "tools~grid"
+      "id": "tools~grid",
+      "fromEdge": "S",
+      "fromConn": 1,
+      "toEdge": "N",
+      "toConn": 6,
+      "label": "draws rows"
     },
     {
       "from": "lggame",
       "to": "params",
       "style": "solid",
-      "id": "lggame~params"
+      "id": "lggame~params",
+      "label": "set-parameters"
     },
     {
       "from": "gogame",
       "to": "params",
       "style": "solid",
       "id": "gogame~params",
-      "fromEdge": "W",
-      "toEdge": "N"
+      "fromEdge": "S",
+      "toEdge": "N",
+      "fromConn": 1,
+      "label": "SetParameters"
     },
     {
       "from": "gogame",
       "to": "shots",
       "style": "solid",
-      "id": "gogame~shots"
+      "id": "gogame~shots",
+      "fromEdge": "S",
+      "fromConn": 4,
+      "label": "Trigger(name, note)"
     },
     {
       "from": "mood",
       "to": "params",
       "style": "solid",
-      "label": "level, tension",
-      "id": "mood~params"
+      "label": "derive(level, tension)",
+      "id": "mood~params",
+      "fromEdge": "E",
+      "fromConn": 2,
+      "labelPos": {
+        "side": "above"
+      }
     },
     {
       "from": "params",
       "to": "gen",
       "style": "solid",
-      "id": "params~gen"
+      "id": "params~gen",
+      "label": "config, per pattern"
     },
     {
       "from": "params",
       "to": "vm",
       "style": "solid",
-      "label": "grit, open",
+      "label": "grit, open (glide)",
       "id": "params~vm"
     },
     {
       "from": "gen",
       "to": "vm",
       "style": "solid",
-      "label": "notes",
-      "id": "gen~vm"
+      "label": "notes per row",
+      "id": "gen~vm",
+      "toEdge": "N",
+      "toConn": 5,
+      "fromEdge": "S",
+      "fromConn": 7
     },
     {
       "from": "grid",
       "to": "vm",
       "style": "solid",
-      "label": "replaces rows",
-      "id": "grid~vm"
+      "label": "replaces rows (SetGrid)",
+      "id": "grid~vm",
+      "fromEdge": "S",
+      "fromConn": 6,
+      "toEdge": "N",
+      "toConn": 2
     },
     {
       "from": "shots",
       "to": "pool",
       "style": "solid",
-      "id": "shots~pool"
+      "id": "shots~pool",
+      "label": "patch + pitch"
     },
     {
       "from": "vm",
       "to": "bus",
       "style": "solid",
-      "id": "vm~bus"
+      "id": "vm~bus",
+      "label": "samples + sends"
     },
     {
       "from": "pool",
       "to": "bus",
       "style": "solid",
-      "id": "pool~bus"
+      "id": "pool~bus",
+      "fromEdge": "S",
+      "fromConn": 3,
+      "label": "samples"
     },
     {
       "from": "bus",
       "to": "play",
       "style": "solid",
-      "id": "bus~play"
+      "id": "bus~play",
+      "label": "Read → oto"
     },
     {
       "from": "bus",
       "to": "wa",
       "style": "solid",
-      "id": "bus~wa"
+      "id": "bus~wa",
+      "toEdge": "N",
+      "toConn": 6,
+      "label": "Read → ring"
     },
     {
       "from": "bus",
       "to": "seam",
-      "style": "dashed",
-      "id": "bus~seam"
+      "style": "later",
+      "id": "bus~seam",
+      "label": "io.Reader (future)"
+    },
+    {
+      "id": "gen~arr",
+      "from": "gen",
+      "to": "arr",
+      "style": "later",
+      "label": "generated rows",
+      "fromEdge": "S",
+      "toEdge": "W"
+    },
+    {
+      "id": "grid~arr",
+      "from": "grid",
+      "to": "arr",
+      "style": "later",
+      "label": "authored rows",
+      "fromEdge": "S",
+      "toEdge": "W"
+    },
+    {
+      "id": "arr~vm",
+      "from": "arr",
+      "to": "vm",
+      "style": "later",
+      "label": "merged rows (if #39)"
     }
   ],
   "notes": [
@@ -319,6 +395,98 @@
       ]
     }
   ],
-  "layout": {},
-  "rev": 2
+  "layout": {
+    "gogame": {
+      "x": 990,
+      "y": 105
+    },
+    "tools": {
+      "x": 405,
+      "y": 105
+    },
+    "lggame": {
+      "x": 690,
+      "y": 105
+    },
+    "shots": {
+      "x": 1170,
+      "y": 315
+    },
+    "pool": {
+      "x": 1170,
+      "y": 720
+    },
+    "arr": {
+      "x": 960,
+      "y": 540
+    },
+    "bus": {
+      "x": 750,
+      "y": 855
+    },
+    "mood": {
+      "x": 450,
+      "y": 315
+    },
+    "params": {
+      "x": 750,
+      "y": 315
+    },
+    "grid": {
+      "x": 330,
+      "y": 495
+    },
+    "gen": {
+      "x": 645,
+      "y": 495
+    },
+    "wa": {
+      "x": 765,
+      "y": 1035
+    },
+    "seam": {
+      "x": 975,
+      "y": 1035
+    },
+    "play": {
+      "x": 510,
+      "y": 1035
+    },
+    "vm": {
+      "x": 735,
+      "y": 720
+    }
+  },
+  "rev": 99,
+  "pinned": [
+    "lggame",
+    "gogame",
+    "tools",
+    "mood",
+    "shots",
+    "pool",
+    "arr",
+    "bus",
+    "params",
+    "grid",
+    "gen",
+    "wa",
+    "seam",
+    "play",
+    "vm"
+  ],
+  "noteLayout": {},
+  "edgeStyles": {
+    "solid": {
+      "color": "#a0a0a0",
+      "dash": []
+    },
+    "later": {
+      "color": "#6e6e6e",
+      "dash": [
+        2,
+        3
+      ]
+    }
+  }
 }

@@ -12,7 +12,7 @@
 //	moods()                  the built-in moods, as JSON
 //	spec(name)               a built-in mood's spec, as JSON (an unbounded clamp is null)
 //	apply(json, seed, level, tension, muted)
-//	                         derive from a spec and play it from the next row, with the
+//	                         derive from a spec and play it at once, with the
 //	                         layers named in muted (a JSON array) silenced; returns
 //	                         {error} or what was derived: {bpm, key, lead, groove, gains}
 //	edn(json)                the spec as an ambience.lg moods entry

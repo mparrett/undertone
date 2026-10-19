@@ -262,7 +262,7 @@ func TestDrumStrikeIsFresh(t *testing.T) {
 	}
 }
 
-// SetParametersNow switches the drums on the next row, as it does swing,
+// SetParametersNow switches the drums at once, as it does swing,
 // rather than leaving the old groove playing out its pattern.
 func TestSetParametersNowSwitchesDrums(t *testing.T) {
 	village, _ := DeriveMood("village", 7, 5, 0)

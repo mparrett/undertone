@@ -138,3 +138,59 @@ func TestSwitchAcrossARowKeepsFading(t *testing.T) {
 		}
 	}
 }
+
+// A voice carries its state into a new note only when the patch is the one
+// it is sounding; a different patch starts from rest (#54).
+func TestTriggerIsLegatoOnlyOnTheSamePatch(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		next   Patch
+		legato bool
+	}{{"same patch", drone, true}, {"another patch of the same length", veil, false}} {
+		var v Voice
+		v.trigger(drone, 45, 16, 0.5, 1)
+		for range SampleRate / 2 {
+			var l, r float64
+			v.run(&l, &r, &sends{})
+		}
+		v.trigger(c.next, 45, 16, 0.5, 1)
+		if carried := v.units[0].env > 0 || v.units[1].phase > 0; carried != c.legato {
+			t.Errorf("%s: carried state = %v, want %v", c.name, carried, c.legato)
+		}
+	}
+}
+
+// A SetParameters mood change at a pattern boundary moves a sounding voice
+// to its new patch through a fade, not by cutting the old patch off.
+func TestNewPatchAtAPatternFadesIn(t *testing.T) {
+	dungeon, _ := DeriveMood("dungeon", 7, 2, 0)
+	rust, _ := DeriveMood("rust", 7, 2, 0)
+	s := NewSynth(dungeon)
+	render(s, rows*s.samplesPerRow-100)
+	s.SetParameters(rust)
+	render(s, 101) // just past the next pattern's first row
+	v := &s.voices[0]
+	if s.row != 1 || !samePatch(v.pend.patch, rust.Palette.Drone) || !samePatch(v.patch, dungeon.Palette.Drone) {
+		t.Errorf("at row %d the drone sounds the new patch %v with %v pending; want the old one fading out first",
+			s.row, samePatch(v.patch, rust.Palette.Drone), v.pend.note != 0)
+	}
+}
+
+// A new patch over a voice that has decayed to nothing starts at once,
+// without waiting out a fade there is nothing left to hear.
+func TestRetriggerOverASilentTailStartsAtOnce(t *testing.T) {
+	var v Voice
+	v.trigger(pulse, 40, 1, 0.5, 1)
+	v.gate = false
+	for v.level() >= 1e-3 {
+		var l, r float64
+		v.run(&l, &r, &sends{})
+	}
+	if !v.active {
+		t.Fatal("the tail ended before it went quiet; the test needs a voice still active")
+	}
+	v.retrigger(trackRow{45, 0.6, 16, drone}, 16, 2)
+	if !samePatch(v.patch, drone) || v.pend.note != 0 {
+		t.Error("a new patch over a silent tail waited for a fade")
+	}
+}

@@ -175,3 +175,22 @@ func TestNewPatchAtAPatternFadesIn(t *testing.T) {
 			s.row, samePatch(v.patch, rust.Palette.Drone), v.pend.note != 0)
 	}
 }
+
+// A new patch over a voice that has decayed to nothing starts at once,
+// without waiting out a fade there is nothing left to hear.
+func TestRetriggerOverASilentTailStartsAtOnce(t *testing.T) {
+	var v Voice
+	v.trigger(pulse, 40, 1, 0.5, 1)
+	v.gate = false
+	for v.level() >= 1e-3 {
+		var l, r float64
+		v.run(&l, &r, &sends{})
+	}
+	if !v.active {
+		t.Fatal("the tail ended before it went quiet; the test needs a voice still active")
+	}
+	v.retrigger(trackRow{45, 0.6, 16, drone}, 16, 2)
+	if !samePatch(v.patch, drone) || v.pend.note != 0 {
+		t.Error("a new patch over a silent tail waited for a fade")
+	}
+}

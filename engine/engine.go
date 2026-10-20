@@ -104,7 +104,7 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 	// it is. Starting from zero cut a sounding drone to silence in one sample:
 	// a click at every pattern boundary (a step of 2336 against a normal
 	// largest of 402). A plucked string is struck afresh either way.
-	legato := v.active && samePatch(v.patch, patch) && len(v.units) == len(patch)
+	legato := v.active && samePatch(v.patch, patch)
 	v.patch = patch
 	v.note = note
 	v.gain = gain
@@ -202,9 +202,10 @@ func (v *Voice) firePend() {
 }
 
 // retrigger starts tr on v without a click: a sounding voice fades out
-// first, and the new note fades in.
+// first, and the new note fades in. A voice already below -60 dB, such as a
+// release tail, has nothing left to click, so the note starts at once.
 func (v *Voice) retrigger(tr trackRow, gateRows int, seed uint64) {
-	if !v.active || v.gain == 0 {
+	if !v.active || v.level() < 1e-3 {
 		v.trigger(tr.patch, tr.note, gateRows, tr.gain, seed)
 		return
 	}

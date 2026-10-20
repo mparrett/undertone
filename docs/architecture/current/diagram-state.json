@@ -46,7 +46,7 @@
       "label": "let-go game / REPL",
       "color": "blue",
       "details": [
-        "(audio/...) calls, moods as data"
+        "(undertone/...) calls, moods as data"
       ],
       "row": 0,
       "col": 1
@@ -63,7 +63,7 @@
     },
     {
       "id": "lgns",
-      "label": "lg audio namespace",
+      "label": "lg undertone namespace",
       "color": "purple",
       "details": [
         "letgo/letgo.go",

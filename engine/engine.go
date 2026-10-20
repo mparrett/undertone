@@ -99,9 +99,6 @@ type Voice struct {
 }
 
 func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint64) {
-	v.patch = patch
-	v.note = note
-	v.gain = gain
 	// A voice retriggered with the patch it is already sounding carries its
 	// phase, level and filter state into the new note and attacks from where
 	// it is. Starting from zero cut a sounding drone to silence in one sample:
@@ -1320,8 +1317,10 @@ func (s *Synth) step() {
 		tr := s.pats[t][s.row]
 		seed := s.params.Seed + uint64(s.pat*rows+s.row)
 		switch {
-		case tr.note != 0 && (v.pend.note != 0 || v.gain != v.gainTo):
-			v.retrigger(tr, tr.gateRows, seed) // mid-fade: a trigger would step the gain
+		case tr.note != 0 && (v.pend.note != 0 || v.gain != v.gainTo || v.active && !samePatch(v.patch, tr.patch)):
+			// mid-fade, a trigger would step the gain; on a new patch it
+			// would cut the old one off
+			v.retrigger(tr, tr.gateRows, seed)
 		case tr.note != 0:
 			v.trigger(tr.patch, tr.note, tr.gateRows, tr.gain, seed)
 		default:

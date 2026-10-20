@@ -234,24 +234,29 @@ Run the program with this binary in place of `lg`. The import also registers
 stock `lg`, where there is no `audio` namespace, look the natives up at runtime:
 `(resolve 'audio/trigger)` is nil there.
 
-## Native playback: keep the player reachable
+## Native playback
 
-Natively, playback goes through [oto](https://github.com/ebitengine/oto). oto attaches a cleanup to every `*oto.Player` that closes it once the handle
-is unreachable, and its internal mixer does not keep the handle alive
-([ebitengine/oto#293](https://github.com/ebitengine/oto/issues/293)). A player
-held only in a local stops at the next GC, silently, with no error. Store the
-result of `NewPlayer` in a struct field or a package-level variable, or call
-`runtime.KeepAlive` on it for as long as it plays. `letgo.Music` keeps its
-player in a field. `cmd/undertone/playerlifetime_test.go` parses every
-`NewPlayer` call site in the module and fails on one that does neither.
+Natively, `letgo.Music` and `cmd/undertone` play through the `nativeaudio`
+package, which wraps [oto](https://github.com/ebitengine/oto) and has the same
+`Open`, `Pause`, `Resume` and `Close` as `webaudio`. A Go game can call
+`nativeaudio.Open(synth, nativeaudio.Options{SampleRate: engine.SampleRate})`
+itself. The package keeps oto's rules in one place:
 
-## Native latency
-
-`engine.DeviceBuffer` and `engine.PlayerBuffer` are what `letgo.Music` opens
-oto with, in place of its streaming-oriented defaults. On the measuring bench,
-tap-to-sound dropped from a median of about 820 ms to about 130 ms. The CLI
-keeps oto's deeper defaults, since a music bed has no one-shots waiting
-behind the read-ahead.
+- **One context per process.** It is opened once and shared, so a player
+  closed and opened again reuses it.
+- **Keep the player reachable.** oto attaches a cleanup to every `*oto.Player`
+  that closes it once the handle is unreachable, and its internal mixer does
+  not keep the handle alive
+  ([ebitengine/oto#293](https://github.com/ebitengine/oto/issues/293)). A
+  player held only in a local stops at the next GC, silently, with no error.
+  `nativeaudio.Player` keeps it in a field, and
+  `cmd/undertone/playerlifetime_test.go` parses every `NewPlayer` call site in
+  the module and fails on one that is neither stored in a field nor kept
+  alive.
+- **Short buffers.** It opens oto with a 512-frame device buffer and a 40 ms
+  read-ahead in place of oto's streaming-oriented defaults
+  (`nativeaudio/latency.go`). On the measuring bench, tap-to-sound dropped
+  from a median of about 820 ms to about 130 ms.
 
 ## In the browser
 

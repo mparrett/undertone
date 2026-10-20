@@ -10,7 +10,7 @@ import (
 
 // Importing the package is the whole install for an lg runtime that links it
 // as a plain Go dep: no SetMusic, no generated interop. If init stopped
-// registering, lg code would fail to resolve audio/* with nothing pointing at
+// registering, lg code would fail to resolve undertone/* with nothing pointing at
 // the cause.
 func TestNamespaceRegisteredAtImport(t *testing.T) {
 	c, err := api.NewLetGo("importtest")
@@ -20,8 +20,8 @@ func TestNamespaceRegisteredAtImport(t *testing.T) {
 	if CurrentMusic() == nil {
 		t.Fatal("no default Music; natives would dereference nil")
 	}
-	if _, err := c.Run("(audio/set-parameters {:bpm 77.0})"); err != nil {
-		t.Fatalf("audio namespace not registered at import: %v", err)
+	if _, err := c.Run("(undertone/set-parameters {:bpm 77.0})"); err != nil {
+		t.Fatalf("undertone namespace not registered at import: %v", err)
 	}
 }
 
@@ -70,7 +70,7 @@ func TestAudioTriggerReachesTheEngine(t *testing.T) {
 
 	// Write-only contract: with no synth (music not started), triggers drop
 	// without error.
-	if _, err := c.Run(`(audio/trigger {:shot :hit :gain 1.0})`); err != nil {
+	if _, err := c.Run(`(undertone/trigger {:shot :hit :gain 1.0})`); err != nil {
 		t.Fatalf("trigger with no synth errored: %v", err)
 	}
 
@@ -78,7 +78,7 @@ func TestAudioTriggerReachesTheEngine(t *testing.T) {
 	m.mu.Lock()
 	m.synth = engine.NewSynth(silent)
 	m.mu.Unlock()
-	if _, err := c.Run(`(audio/trigger [{:shot :hit :gain 1.0 :pan 0.3}
+	if _, err := c.Run(`(undertone/trigger [{:shot :hit :gain 1.0 :pan 0.3}
 	                                    {:shot :pluck :degree 2 :octave 1 :seed "42"}])`); err != nil {
 		t.Fatal(err)
 	}

@@ -1165,7 +1165,7 @@ func (s *Synth) SetMusicGain(g float64) {
 }
 
 // SetParameters stages a new parameter map; it takes effect at the next
-// pattern boundary (the audio/set-parameters contract).
+// pattern boundary (the undertone/set-parameters contract).
 func (s *Synth) SetParameters(p Params) { s.next.Store(&p) }
 
 // SetParametersNow applies p within nowBlock frames instead of at the next

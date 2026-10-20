@@ -296,7 +296,7 @@ func indexOf(names []string, n string) int {
 	return -1
 }
 
-// EDN writes the spec as an lg map, the form audio/register-shot takes.
+// EDN writes the spec as an lg map, the form undertone/register-shot takes.
 func (s ShotSpec) EDN() string {
 	num := func(f float64) string {
 		t := fmt.Sprintf("%g", f)

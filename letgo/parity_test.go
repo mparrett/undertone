@@ -129,7 +129,7 @@ func TestSetParametersMergesPartialMap(t *testing.T) {
 	}
 	before := m.params
 
-	if _, err := c.Run("(audio/set-parameters {:bpm 42.0 :unknown-key :ignored})"); err != nil {
+	if _, err := c.Run("(undertone/set-parameters {:bpm 42.0 :unknown-key :ignored})"); err != nil {
 		t.Fatal(err)
 	}
 	if m.params.BPM != 42 {
@@ -145,7 +145,7 @@ func TestSetParametersMergesPartialMap(t *testing.T) {
 // derivation or a console call gets wrong; accepting both is deliberate.
 func TestSetParametersAcceptsIntForFloat(t *testing.T) {
 	c, m := lgRuntime(t)
-	if _, err := c.Run("(audio/set-parameters {:bpm 60})"); err != nil {
+	if _, err := c.Run("(undertone/set-parameters {:bpm 60})"); err != nil {
 		t.Fatal(err)
 	}
 	if m.params.BPM != 60 {
@@ -156,7 +156,7 @@ func TestSetParametersAcceptsIntForFloat(t *testing.T) {
 // The write-only rule: the surface has no reader, so game
 // logic cannot branch on audio state and console noodling cannot taint replay.
 func TestSurfaceIsWriteOnly(t *testing.T) {
-	for _, name := range []string{"audio/get-parameters", "audio/parameters", "audio/playing?"} {
+	for _, name := range []string{"undertone/get-parameters", "undertone/parameters", "undertone/playing?"} {
 		c, _ := lgRuntime(t)
 		if _, err := c.Run("(" + name + ")"); err == nil {
 			t.Errorf("%s resolved; the surface must stay write-only", name)

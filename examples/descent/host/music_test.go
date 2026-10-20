@@ -260,7 +260,7 @@ func TestParamsForDrivesTheEngine(t *testing.T) {
 	}
 
 	read := func(tension string) engine.Params {
-		if _, err := c.Run(fmt.Sprintf(`(audio/set-parameters (music/params-for w %s))`, tension)); err != nil {
+		if _, err := c.Run(fmt.Sprintf(`(undertone/set-parameters (music/params-for w %s))`, tension)); err != nil {
 			t.Fatalf("tension %s: %v", tension, err)
 		}
 		return m.Params()

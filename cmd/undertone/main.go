@@ -8,7 +8,7 @@
 // tension (tempo up, pulse in, harmony sours), and the seed, which also
 // picks the lead instrument from a mood-weighted library. SetParameters
 // applies a new map at the next pattern boundary, the same transactional
-// semantics the letgo binding exposes as audio/set-parameters.
+// semantics the letgo binding exposes as undertone/set-parameters.
 //
 // This is the Go CLI front end; the engine lives in ../../engine and the
 // let-go binding in ../../letgo.

@@ -63,7 +63,7 @@ func TestSpecPaletteMustExist(t *testing.T) {
 	c, m := lgRuntime(t)
 	m.params = engine.DeriveDungeon(1, 0, 0)
 	before := m.params.Palette
-	if _, err := c.Run("(audio/set-parameters {:palette :auroa :bpm 61})"); err == nil {
+	if _, err := c.Run("(undertone/set-parameters {:palette :auroa :bpm 61})"); err == nil {
 		t.Error("an unknown :palette was accepted")
 	}
 	if m.params.BPM == 61 || !reflect.DeepEqual(m.params.Palette, before) {

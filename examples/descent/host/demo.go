@@ -49,14 +49,14 @@ func DemoStep(c *api.LetGo, m *letgo.Music, i int, prev float64) (tension float6
 		return prev, "", err
 	}
 	if _, err = c.Run(fmt.Sprintf(
-		"(audio/set-parameters (music/params-for (demo/world-at %d) %v))", i, tension)); err != nil {
+		"(undertone/set-parameters (music/params-for (demo/world-at %d) %v))", i, tension)); err != nil {
 		return tension, "", err
 	}
 	// The turn's one-shots ride the same boundary: lg derives the trigger
-	// maps (sfx/for-events, pure), audio/trigger fires them. With no synth
+	// maps (sfx/for-events, pure), undertone/trigger fires them. With no synth
 	// (a -dry run) they drop — the derivation still runs, which keeps the
 	// dry demo an end-to-end check of the whole lg lane.
-	if _, err = c.Run(fmt.Sprintf("(audio/trigger (demo/triggers %d))", i)); err != nil {
+	if _, err = c.Run(fmt.Sprintf("(undertone/trigger (demo/triggers %d))", i)); err != nil {
 		return tension, "", err
 	}
 	cue, err := EvalString(c, fmt.Sprintf("(demo/cue %d)", i))

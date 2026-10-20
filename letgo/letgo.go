@@ -1,12 +1,12 @@
-// Package letgo binds the undertone engine to let-go as the `audio`
+// Package letgo binds the undertone engine to let-go as the `undertone`
 // namespace: the music/one-shot state, the lg-facing natives, and the loader
 // for the embedded lg sources.
 //
 // Importing the package registers the namespace (see init below), so an lg
 // runtime that links it needs no generated interop: lg code calls
-// audio/set-parameters, audio/music-start, audio/music-stop,
-// audio/set-music-gain, audio/trigger, audio/register-shot and
-// audio/render-wav directly. The natives act on a default Music until a
+// undertone/set-parameters, undertone/music-start, undertone/music-stop,
+// undertone/set-music-gain, undertone/trigger, undertone/register-shot and
+// undertone/render-wav directly. The natives act on a default Music until a
 // Go host points them elsewhere with SetMusic.
 //
 // It also registers the embedded lg sources, so (require 'undertone.ambience)
@@ -43,14 +43,14 @@ type Music struct {
 	// gesture arriving, so a second Start cannot open a second context.
 	starting bool
 
-	// musicGain is the last audio/set-music-gain, carried into a synth that
+	// musicGain is the last undertone/set-music-gain, carried into a synth that
 	// starts later; gainSet keeps the zero value from meaning silence.
 	musicGain float64
 	gainSet   bool
 }
 
 // NewMusic starts from base parameters; the lg script is expected to
-// overwrite every scalar via audio/set-parameters.
+// overwrite every scalar via undertone/set-parameters.
 func NewMusic(p engine.Params) *Music {
 	return &Music{params: p}
 }
@@ -78,7 +78,7 @@ func (m *Music) setParameters(v vm.Value) (vm.Value, error) {
 	if s, ok := kwStr(lgm, "palette"); ok {
 		p, ok := engine.PaletteByName(s)
 		if !ok {
-			return vm.NIL, fmt.Errorf("audio/set-parameters: unknown palette %q", s)
+			return vm.NIL, fmt.Errorf("undertone/set-parameters: unknown palette %q", s)
 		}
 		pal = &p
 	}
@@ -228,7 +228,7 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	defer m.mu.Unlock()
 	m.starting = false
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "audio/music-start:", err)
+		fmt.Fprintln(os.Stderr, "undertone/music-start:", err)
 		return vm.NIL
 	}
 	m.out = out
@@ -254,7 +254,7 @@ func (m *Music) setMusicGain(g float64) {
 }
 
 // Started reports whether playback is live. Go-side only, deliberately not a
-// native: a guest-visible (audio/playing?) would let game logic branch on audio
+// native: a guest-visible (undertone/playing?) would let game logic branch on audio
 // state, which is exactly what the write-only rule forbids.
 func (m *Music) Started() bool {
 	m.mu.Lock()
@@ -301,7 +301,7 @@ func (m *Music) renderWAV(path string, seconds float64) vm.Value {
 	defer m.mu.Unlock()
 	s := engine.NewSynth(m.params)
 	if err := engine.WriteWAV(path, s, seconds); err != nil {
-		fmt.Fprintln(os.Stderr, "audio/render-wav:", err)
+		fmt.Fprintln(os.Stderr, "undertone/render-wav:", err)
 	}
 	return vm.NIL
 }
@@ -419,7 +419,7 @@ func ints(m *vm.PersistentMap, k string) ([]int, bool) {
 
 // current is the Music instance the audio natives act on. It is indirect
 // because namespace registration must happen exactly once per process: a
-// second vm.NewNamespace("audio") does replace the registry entry, but lg code
+// second vm.NewNamespace("undertone") does replace the registry entry, but lg code
 // loaded against the first one keeps referring to the first one's Vars, so a
 // re-register silently leaves earlier callers writing to the abandoned
 // instance. Swapping the target instead keeps every caller pointed at the
@@ -433,7 +433,7 @@ var current atomic.Pointer[Music]
 // out-of-tree bindings.
 func init() {
 	current.Store(NewMusic(engine.DeriveDungeon(1, 0, 0)))
-	installAudioNS()
+	installNS()
 	// The name is qualified because a registered namespace shadows a file
 	// of the same name on any source path (nooga/let-go#1064).
 	for _, s := range lg.Sources {
@@ -441,7 +441,7 @@ func init() {
 	}
 }
 
-// SetMusic points the audio namespace at m. A Go host that wants to own the
+// SetMusic points the undertone namespace at m. A Go host that wants to own the
 // instance (to start it from a user gesture, or read Params for a trace)
 // creates its own and calls this before running lg code; until then the
 // natives act on a default dungeon-palette Music.
@@ -450,8 +450,8 @@ func SetMusic(m *Music) { current.Store(m) }
 // CurrentMusic returns the instance the audio natives act on.
 func CurrentMusic() *Music { return current.Load() }
 
-func installAudioNS() {
-	ns := vm.NewNamespace("audio")
+func installNS() {
+	ns := vm.NewNamespace("undertone")
 	ns.Def("set-parameters", native("set-parameters", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().setParameters(a[0])
 	}))
@@ -469,7 +469,7 @@ func installAudioNS() {
 		case vm.Int:
 			g = float64(v)
 		default:
-			return vm.NIL, fmt.Errorf("audio/set-music-gain: gain must be a number, got %s", a[0].Type().Name())
+			return vm.NIL, fmt.Errorf("undertone/set-music-gain: gain must be a number, got %s", a[0].Type().Name())
 		}
 		current.Load().setMusicGain(g)
 		return vm.NIL, nil
@@ -483,7 +483,7 @@ func installAudioNS() {
 			err = engine.RegisterShot(s)
 		}
 		if err != nil {
-			return vm.NIL, fmt.Errorf("audio/register-shot: %w", err)
+			return vm.NIL, fmt.Errorf("undertone/register-shot: %w", err)
 		}
 		return vm.NIL, nil
 	}))
@@ -494,7 +494,7 @@ func installAudioNS() {
 	ns.Def("render-wav", native("render-wav", 2, func(a []vm.Value) (vm.Value, error) {
 		path, ok := a[0].(vm.String)
 		if !ok {
-			return vm.NIL, fmt.Errorf("audio/render-wav: path must be a string, got %s", a[0].Type().Name())
+			return vm.NIL, fmt.Errorf("undertone/render-wav: path must be a string, got %s", a[0].Type().Name())
 		}
 		var secs float64
 		switch v := a[1].(type) {
@@ -503,7 +503,7 @@ func installAudioNS() {
 		case vm.Int:
 			secs = float64(v)
 		default:
-			return vm.NIL, fmt.Errorf("audio/render-wav: seconds must be a number, got %s", a[1].Type().Name())
+			return vm.NIL, fmt.Errorf("undertone/render-wav: seconds must be a number, got %s", a[1].Type().Name())
 		}
 		return current.Load().renderWAV(string(path), secs), nil
 	}))
@@ -512,12 +512,12 @@ func installAudioNS() {
 
 // native wraps fn as an lg function without reflection. vm.MustBox would
 // box a typed Go func through reflect.Value.Call, which TinyGo does not
-// implement: under TinyGo every audio/ call failed, and TinyGo is what gets a
+// implement: under TinyGo every undertone/ call failed, and TinyGo is what gets a
 // browser bundle with let-go in it from 28 MB down to under 6.
 func native(name string, arity int, fn func([]vm.Value) (vm.Value, error)) vm.Value {
 	v, _ := vm.NativeFnType.Wrap(func(a []vm.Value) (vm.Value, error) {
 		if len(a) != arity {
-			return vm.NIL, fmt.Errorf("audio/%s: wants %d argument(s), got %d", name, arity, len(a))
+			return vm.NIL, fmt.Errorf("undertone/%s: wants %d argument(s), got %d", name, arity, len(a))
 		}
 		return fn(a)
 	})

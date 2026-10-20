@@ -83,6 +83,6 @@
                                    (events-at i))))))
 
 (defn triggers
-  "The turn's trigger maps — the exact value the host hands to audio/trigger."
+  "The turn's trigger maps — the exact value the host hands to undertone/trigger."
   [i]
   (sfx/for-events (world-at i) i (events-at i)))

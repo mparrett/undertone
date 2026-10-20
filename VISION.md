@@ -7,7 +7,7 @@ is synthesized end to end, from a seed and a handful of knobs.
 ## Who it is for
 
 Go game developers. The engine is plain Go and imports nothing from let-go, so any
-Go game can use it. let-go is the first-class way in: the `audio` namespace needs no
+Go game can use it. let-go is the first-class way in: the `undertone` namespace needs no
 generated interop, the mood derivation is written in lg as well as Go, and moods are
 data a game can bring and change.
 

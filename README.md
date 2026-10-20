@@ -19,7 +19,7 @@ The module has these parts:
 | Package | What it is |
 |---|---|
 | `engine` | The synth VM, the sequencer, a one-shot sfx voice pool, and the game-state → parameters derivation. Plain Go; imports nothing from let-go. |
-| `letgo` | The let-go binding: an `audio` namespace that drives the engine from lg code, plus `letgo/lg/ambience.lg`, the same derivation written in lg. |
+| `letgo` | The let-go binding: an `undertone` namespace that drives the engine from lg code, plus `letgo/lg/ambience.lg`, the same derivation written in lg. |
 | `webaudio` | Browser output: an AudioWorklet fed in small slices from the page's event loop (see [In the browser](#in-the-browser)). |
 | `cmd/undertone` | A CLI that plays live, renders WAVs, and draws a four-band VU meter. |
 | [`examples/`](examples) | A step sequencer, the engine in a web page, and a let-go-driven game demo, each runnable in a browser. |
@@ -81,7 +81,7 @@ dropped, so a cascade of hits in one frame plays once; when the pool is full, a
 new shot takes the quietest voice.
 
 A game adds its own shots at runtime with `engine.RegisterShot` or
-`audio/register-shot`. A `ShotSpec` is a patch and a gate as data, and
+`undertone/register-shot`. A `ShotSpec` is a patch and a gate as data, and
 `ShotByName` gives any built-in in that form to start from. A patch the synth
 could not run safely, one that would overrun the VM's stack or let an envelope
 diverge, is refused with the reason.
@@ -117,7 +117,7 @@ From lg, a mood is a map in the shape of `ambience/moods`, with a `:palette`:
 The [designer](examples/designer) shapes one by ear and exports it as that
 map (`MoodSpec.EDN`). `engine.PaletteNames`, `LeadNames` and `GrooveNames` list
 what a mood can name. Patches themselves stay built-in; a game's own one-shot
-sounds go through `audio/register-shot` (`engine.RegisterShot` from Go).
+sounds go through `undertone/register-shot` (`engine.RegisterShot` from Go).
 
 ### Determinism
 
@@ -142,18 +142,19 @@ undertone -wav out.wav -depth 4 -lead pluck -dur 30
 
 ## The let-go binding
 
-Importing `github.com/mparrett/undertone/letgo` registers the `audio`
+Importing `github.com/mparrett/undertone/letgo` registers the `undertone`
 namespace from the package's `init`, so lg code can call it with no generated
-interop:
+interop. It was `audio` until 2026-10-20; that name is left for let-go's own
+audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 
 | native | |
 |---|---|
-| `audio/set-parameters` | one map, merged over the current state, applied at the next pattern boundary; unknown keys are ignored |
-| `audio/music-start`, `audio/music-stop` | playback |
-| `audio/set-music-gain` | the music's level under the one-shots, 0..1 |
-| `audio/trigger` | a trigger map (`{:shot :hit :gain 0.8 :pan 0.3}`) or a vector of them; fire-and-forget |
-| `audio/register-shot` | a game's own one-shot (`{:name :ping :gate-ms 20 :patch [[:env 0.001 0.2 0 0.1] [:osc 0 :sine 0 1] [:mul] [:out 0.5 0.5]]}`); a patch the synth could not run safely is an error |
-| `audio/render-wav` | `(audio/render-wav "out.wav" 20.0)`: offline render, for checking determinism without a sound card |
+| `undertone/set-parameters` | one map, merged over the current state, applied at the next pattern boundary; unknown keys are ignored |
+| `undertone/music-start`, `undertone/music-stop` | playback |
+| `undertone/set-music-gain` | the music's level under the one-shots, 0..1 |
+| `undertone/trigger` | a trigger map (`{:shot :hit :gain 0.8 :pan 0.3}`) or a vector of them; fire-and-forget |
+| `undertone/register-shot` | a game's own one-shot (`{:name :ping :gate-ms 20 :patch [[:env 0.001 0.2 0 0.1] [:osc 0 :sine 0 1] [:mul] [:out 0.5 0.5]]}`); a patch the synth could not run safely is an error |
+| `undertone/render-wav` | `(undertone/render-wav "out.wav" 20.0)`: offline render, for checking determinism without a sound card |
 
 The surface is write-only: nothing reads audio state back into lg, so game
 logic cannot branch on whether a sound played and replays stay deterministic.
@@ -182,9 +183,9 @@ so it needs `:go/version` and no `:go/interop`:
 lg:
 
 ```clojure
-(audio/set-parameters {:mood :dungeon :bpm 54.0 :root 38 :drone-gain 0.5})
-(audio/music-start)
-(audio/trigger {:shot :footstep :gain 0.3 :pan 0.4})
+(undertone/set-parameters {:mood :dungeon :bpm 54.0 :root 38 :drone-gain 0.5})
+(undertone/music-start)
+(undertone/trigger {:shot :footstep :gain 0.3 :pan 0.4})
 ```
 
 The `undertone.ambience` namespace that derives full parameter maps from
@@ -194,8 +195,8 @@ The `undertone.ambience` namespace that derives full parameter maps from
 ### Without lgx
 
 ```
-go run ./cmd/lghost -e '(do (ambience/score! 7 4 0.6) (audio/music-start) (sleep 60000))'
-go run ./cmd/lghost -e '(do (ambience/score! 7 4 0.6) (audio/render-wav "out.wav" 20.0))'
+go run ./cmd/lghost -e '(do (ambience/score! 7 4 0.6) (undertone/music-start) (sleep 60000))'
+go run ./cmd/lghost -e '(do (ambience/score! 7 4 0.6) (undertone/render-wav "out.wav" 20.0))'
 ```
 
 `letgo/parity_test.go` renders every mood across a grid of seeds, depths and tensions
@@ -223,7 +224,7 @@ import (
 )
 
 func main() {
-	_ = letgo.CurrentMusic() // the import registers the audio namespace
+	_ = letgo.CurrentMusic() // the import registers the undertone namespace
 	os.Exit(cli.Main("dev", "undertone"))
 }
 ```
@@ -231,8 +232,8 @@ func main() {
 Run the program with this binary in place of `lg`. The import also registers
 `undertone.ambience`, so a program that uses it requires
 `[undertone.ambience :as ambience]` with no source path. To keep one codebase that also runs on a
-stock `lg`, where there is no `audio` namespace, look the natives up at runtime:
-`(resolve 'audio/trigger)` is nil there.
+stock `lg`, where there is no `undertone` namespace, look the natives up at runtime:
+`(resolve 'undertone/trigger)` is nil there.
 
 ## Native playback
 

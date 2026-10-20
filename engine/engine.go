@@ -1090,11 +1090,21 @@ type Synth struct {
 	mout [4]uint64  // envelopes published as float bits for cross-goroutine reads
 
 	// hand-written pattern (grid.go): nil plays the generator alone
-	grid   atomic.Pointer[Grid]
-	now    atomic.Pointer[Params] // staged for the next block (SetParametersNow)
-	nframe int64                  // frames rendered, synthesis-side
-	frames atomic.Int64           // nframe as of the end of the last Read
-	rowLog rowLog
+	grid atomic.Pointer[Grid]
+
+	// authored themes (theme.go): themeCmd is staged by PlayTheme; the rest
+	// belongs to the audio thread, except the two counters ThemePlaying reads
+	themeCmd            atomic.Pointer[themeCmd]
+	themeGen, themeDone atomic.Int64
+	theme               *Theme
+	themeAt             int
+	themeOf             int64
+	themeFresh          bool // the theme's first grid has not stepped yet
+	silent              bool
+	now                 atomic.Pointer[Params] // staged for the next block (SetParametersNow)
+	nframe              int64                  // frames rendered, synthesis-side
+	frames              atomic.Int64           // nframe as of the end of the last Read
+	rowLog              rowLog
 
 	// music bus level as float bits, set from the caller's goroutine. A mixer
 	// control rather than a Param: it never changes what the score derives,
@@ -1255,7 +1265,7 @@ func (s *Synth) applyNow(p Params) {
 	}
 	s.pats = buildPatterns(s.params, pat)
 	s.drums = buildDrums(s.params, pat)
-	if g := s.grid.Load(); g != nil {
+	if g := s.playingGrid(); g != nil {
 		for r := 0; r <= row; r++ {
 			s.applyGrid(g, r)
 		}
@@ -1293,13 +1303,14 @@ func (s *Synth) revoice(t, pat, row int) {
 
 func (s *Synth) step() {
 	if s.row == 0 {
+		s.advanceTheme()
 		if p := s.next.Swap(nil); p != nil {
 			s.apply(*p)
 		}
 		s.pats = buildPatterns(s.params, s.pat)
 		s.drums = buildDrums(s.params, s.pat)
 	}
-	if g := s.grid.Load(); g != nil {
+	if g := s.playingGrid(); g != nil {
 		s.applyGrid(g, s.row)
 	}
 	s.rowLog.add(s.nframe, s.row)
@@ -1336,6 +1347,11 @@ func (s *Synth) step() {
 }
 
 func (s *Synth) frame() (int16, int16) {
+	if s.nframe%nowBlock == 0 {
+		if c := s.themeCmd.Swap(nil); c != nil {
+			s.startTheme(c)
+		}
+	}
 	if s.rowLeft == 0 {
 		s.step()
 		s.rowLeft = s.samplesPerRow

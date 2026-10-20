@@ -47,6 +47,10 @@ type Music struct {
 	// starts later; gainSet keeps the zero value from meaning silence.
 	musicGain float64
 	gainSet   bool
+
+	// theme is an undertone/play-theme that came before music-start; it
+	// starts with the music.
+	theme *engine.Theme
 }
 
 // NewMusic starts from base parameters; the lg script is expected to
@@ -214,6 +218,10 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	if m.gainSet {
 		syn.SetMusicGain(m.musicGain)
 	}
+	opening := m.theme
+	if opening != nil {
+		syn.PlayTheme(opening)
+	}
 	m.mu.Unlock()
 
 	// Deliberately NOT holding the mutex here. In a browser the output is not
@@ -239,6 +247,11 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	// Parameters may have moved while we waited for the gesture; the synth was
 	// built from a snapshot, so catch it up to whatever is current.
 	m.synth.SetParameters(m.params)
+	// A play-theme during the wait replaces the one the synth opened with.
+	if m.theme != opening {
+		m.synth.PlayTheme(m.theme)
+	}
+	m.theme = nil
 	return vm.NIL
 }
 
@@ -486,6 +499,12 @@ func installNS() {
 			return vm.NIL, fmt.Errorf("undertone/register-shot: %w", err)
 		}
 		return vm.NIL, nil
+	}))
+	ns.Def("play-theme", native("play-theme", 1, func(a []vm.Value) (vm.Value, error) {
+		return current.Load().playTheme(a[0])
+	}))
+	ns.Def("theme-playing?", native("theme-playing?", 0, func([]vm.Value) (vm.Value, error) {
+		return vm.Boolean(current.Load().themePlaying()), nil
 	}))
 	ns.Def("trigger", native("trigger", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().trigger(a[0]), nil

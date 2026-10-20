@@ -70,6 +70,13 @@ of the generated one, optionally over the generated drone, pad and air;
 groove if it has one. The
 [grid example](examples/grid) is a step sequencer built on it.
 
+An authored theme is grids played in order, one per pattern: a title theme,
+a boss phrase, an outro. `Synth.PlayTheme` starts one at once from its first
+grid, and its `Then` says what follows the last: `ThenGenerate` hands back
+to the generator, `ThenSilence` rests until the next theme, and `ThenLoop`
+repeats it. `ThemePlaying` reports whether it has still to finish. A theme is
+written in scale degrees, so it plays in the key and tempo the params set.
+
 One-shots run beside the sequencer in an 8-voice pool that the sequencer never
 sees, so a trigger cannot change the music's random streams. Patches:
 `footstep`, `hit`, `thud`, `creak`, `cry`, `sink`, `lift`, `thunk`, `snap`,
@@ -152,6 +159,8 @@ audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 | `undertone/set-parameters` | one map, merged over the current state, applied at the next pattern boundary; unknown keys are ignored |
 | `undertone/music-start`, `undertone/music-stop` | playback |
 | `undertone/set-music-gain` | the music's level under the one-shots, 0..1 |
+| `undertone/play-theme` | `{:grids [{:lead [1 0 3] :bass [1] :pulse [true] :drums ["X..." "" "x.x."] :bed false} ...] :then :generate}`: an authored theme, from its first grid at once; `:then` is `:generate`, `:silence` or `:loop`; nil stops it. Sent before `music-start`, it starts with the music |
+| `undertone/theme-playing?` | whether the last theme has still to finish |
 | `undertone/trigger` | a trigger map (`{:shot :hit :gain 0.8 :pan 0.3}`) or a vector of them; fire-and-forget |
 | `undertone/register-shot` | a game's own one-shot (`{:name :ping :gate-ms 20 :patch [[:env 0.001 0.2 0 0.1] [:osc 0 :sine 0 1] [:mul] [:out 0.5 0.5]]}`); a patch the synth could not run safely is an error |
 | `undertone/render-wav` | `(undertone/render-wav "out.wav" 20.0)`: offline render, for checking determinism without a sound card |

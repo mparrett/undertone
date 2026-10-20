@@ -271,6 +271,12 @@ offers AudioWorklet only in a secure context; and a tap, because browsers
 start audio only from a user gesture. `webaudio.Open` listens for that tap
 itself.
 
+`webaudio.Open` also works inside a Web Worker, which is where `lg -w` runs a
+let-go program. The worker has no AudioContext, so it renders into the shared
+ring and posts it to the page, where `webaudio/page.js` plays it. Load that
+script before the runtime's own: it wraps the `Worker` constructor to listen on
+every worker the page creates. Worker mode needs a cross-origin isolated page.
+
 let-go itself may grow a host audio seam; see
 [nooga/let-go#255](https://github.com/nooga/let-go/issues/255).
 

@@ -2,7 +2,7 @@
 ;;
 ;; This is the layer the audio surface sketch says belongs in the control
 ;; language: a pure function from (seed, depth, tension) to a parameter map,
-;; handed to the engine through audio/set-parameters. Everything below the map
+;; handed to the engine through undertone/set-parameters. Everything below the map
 ;; — patches, the per-sample unit VM, the sequencer, the delay bus — stays in
 ;; Go, because it runs at 44.1 kHz and lg has no business there.
 ;;
@@ -317,16 +317,16 @@
 (defn score-mood!
   "Push parameters for an explicit mood at the engine."
   [mood seed level tension]
-  (audio/set-parameters (derive-mood mood seed level tension)))
+  (undertone/set-parameters (derive-mood mood seed level tension)))
 
 (defn score-spec!
   "Push parameters for a mood entry, such as one pasted from the designer."
   [spec seed level tension]
-  (audio/set-parameters (derive-spec spec seed level tension)))
+  (undertone/set-parameters (derive-spec spec seed level tension)))
 
 (defn score!
   "Push the derived parameters at the engine. Applied at the next pattern
   boundary, so calling this again mid-playback is a seamless transition —
   which is what a descend, or a console tweak, actually is."
   [seed depth tension]
-  (audio/set-parameters (derive seed depth tension)))
+  (undertone/set-parameters (derive seed depth tension)))

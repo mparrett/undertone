@@ -24,7 +24,7 @@ func TestRegisterShotFromLg(t *testing.T) {
 	for _, name := range engine.ShotNames() {
 		want, _ := engine.ShotByName(name)
 		want.Name = "lg-" + name
-		if _, err := c.Run("(audio/register-shot " + want.EDN() + ")"); err != nil {
+		if _, err := c.Run("(undertone/register-shot " + want.EDN() + ")"); err != nil {
 			t.Fatalf("%s: %v\n%s", name, err, want.EDN())
 		}
 		if got, _ := engine.ShotByName(want.Name); !reflect.DeepEqual(got, want) {
@@ -36,7 +36,7 @@ func TestRegisterShotFromLg(t *testing.T) {
 	m.mu.Lock()
 	m.synth = engine.NewSynth(silent)
 	m.mu.Unlock()
-	if _, err := c.Run(`(audio/trigger {:shot :lg-hit :note 50 :gain 1.0 :pan 0.3 :seed "4"})`); err != nil {
+	if _, err := c.Run(`(undertone/trigger {:shot :lg-hit :note 50 :gain 1.0 :pan 0.3 :seed "4"})`); err != nil {
 		t.Fatal(err)
 	}
 	ref := engine.NewSynth(silent)
@@ -53,7 +53,7 @@ func TestRegisterShotFromLg(t *testing.T) {
 		{"[[:env :sine 0 0.1 0 0.1] [:osc 0 :sine 0 1] [:mul] [:out 1 0.5]]", "only an osc"},
 		{"[[:env 0 0.1 0 0.1] [:osc 0 :sine :saw 0 1] [:mul] [:out 1 0.5]]", "only an osc"},
 	} {
-		_, err := c.Run(`(audio/register-shot {:name :bad :gate-ms 10 :patch ` + c2.patch + `})`)
+		_, err := c.Run(`(undertone/register-shot {:name :bad :gate-ms 10 :patch ` + c2.patch + `})`)
 		if err == nil || !strings.Contains(err.Error(), c2.says) {
 			t.Errorf("%s: got %v, want an error saying %q", c2.patch, err, c2.says)
 		}

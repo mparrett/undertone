@@ -17,12 +17,12 @@
 ;; asks this namespace, none reimplements it.
 ;;
 ;; Everything here is PURE: an event descriptor comes in, a vector of trigger
-;; maps goes out, and the caller hands them to audio/trigger (fire-and-forget,
+;; maps goes out, and the caller hands them to undertone/trigger (fire-and-forget,
 ;; write-only — a dropped or divergent sound can never reach world state).
 ;;
 ;; The descriptor says WHAT HAPPENED — {:kind :combat-hit :dist 3 :dir 0.5} —
 ;; never how it sounds. That is the seam that keeps procedural-vs-samples a
-;; consumer decision: swap the engine behind audio/trigger and nothing above
+;; consumer decision: swap the engine behind undertone/trigger and nothing above
 ;; this file moves.
 ;;
 ;; Event kinds and their spatial fields line up with xsofy's sound.lg taxonomy

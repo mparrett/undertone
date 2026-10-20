@@ -7,7 +7,7 @@ source of truth for anything in code font.
 
 | term | meaning |
 |---|---|
-| **let-go**, **lg** | The Clojure-like language games script in. undertone registers an `audio` namespace and `undertone.ambience` with it. |
+| **let-go**, **lg** | The Clojure-like language games script in. undertone registers an `undertone` namespace and `undertone.ambience` with it. |
 | **mood** | A named piece of ambience (`dungeon`, `rust`, …): a palette plus a set of lines in level. Moods are data a game can bring. |
 | **level** | Where the player is, as an integer: depth, elevation, the climb through a meadow. Each mood decides what it means. |
 | **tension** | What is happening, 0..1. It works the same in every mood: tempo up, the pulse in, the harmony souring, the calm layers thinning, and the drums harder. |

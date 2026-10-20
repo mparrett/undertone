@@ -16,19 +16,19 @@
 // The natives registered are the sketch's proposed surface plus the one-shot
 // lane:
 //
-//	audio/music-start            begin streaming
-//	audio/music-stop             stop
-//	audio/set-parameters         one map, merged over current state, applied
+//	undertone/music-start            begin streaming
+//	undertone/music-stop             stop
+//	undertone/set-parameters         one map, merged over current state, applied
 //	                             at the next pattern boundary
-//	audio/trigger                one-shot sfx: a trigger map or a vector of
+//	undertone/trigger                one-shot sfx: a trigger map or a vector of
 //	                             them (from sfx/for-events), fire-and-forget
 //
-// audio/render-wav is a fifth, spike-only: it is how determinism gets checked
+// undertone/render-wav is a fifth, spike-only: it is how determinism gets checked
 // without a sound card, not part of the proposed surface.
 //
 //	go run ./examples/descent/cli -demo        # the scripted arc, with sound
 //	go run ./examples/descent/cli -demo -dry   # the tension trace only
-//	go run ./examples/descent/cli -e '(do (ambience/score! 7 4 0.6) (audio/render-wav "out.wav" 20.0))'
+//	go run ./examples/descent/cli -e '(do (ambience/score! 7 4 0.6) (undertone/render-wav "out.wav" 20.0))'
 package main
 
 import (
@@ -56,7 +56,7 @@ func main() {
 	flag.Parse()
 
 	// The base params supply the patch palette and a lead default; the script
-	// is expected to overwrite every scalar via audio/set-parameters.
+	// is expected to overwrite every scalar via undertone/set-parameters.
 	m := letgo.NewMusic(engine.DeriveDungeon(1, 0, 0))
 	letgo.SetMusic(m)
 

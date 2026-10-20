@@ -12,7 +12,7 @@ import (
 )
 
 // These tests are about the sfx VOCABULARY — the pure descriptor->trigger
-// derivation. The seam below it (audio/trigger reaching the engine) is pinned
+// derivation. The seam below it (undertone/trigger reaching the engine) is pinned
 // in undertone's letgo/letgo_test.go, and the engine's own behaviour
 // (pan, delay, voice death) in its engine/sfx_test.go; here the question is
 // whether the lg layer says the right things to it.

@@ -8,14 +8,14 @@
 // layer that genuinely wants to be lg is the one above it: deriving music
 // parameters and sfx triggers from game state, which happens at human rates.
 //
-// The audio namespace comes from the letgo package's init (see its doc for the
+// The undertone namespace comes from the letgo package's init (see its doc for the
 // natives) and so does undertone.ambience, which the CLI requires as
 // ambience by default. This file is only the native CLI: flags, an optional
 // load path for your own namespaces, and stdout. An lg runtime built by lgx with the letgo package as a Go dep
 // does the same job.
 //
-//	go run ./cmd/lghost -e '(do (ambience/score! 7 4 0.6) (audio/music-start) (sleep 60000))'
-//	go run ./cmd/lghost -e '(do (ambience/score! 7 4 0.6) (audio/render-wav "out.wav" 20.0))'
+//	go run ./cmd/lghost -e '(do (ambience/score! 7 4 0.6) (undertone/music-start) (sleep 60000))'
+//	go run ./cmd/lghost -e '(do (ambience/score! 7 4 0.6) (undertone/render-wav "out.wav" 20.0))'
 package main
 
 import (
@@ -35,7 +35,7 @@ func main() {
 	expr := flag.String("e", "", "lg expression to run after the namespace loads")
 	flag.Parse()
 
-	_ = letgo.CurrentMusic() // the import registers the audio namespace
+	_ = letgo.CurrentMusic() // the import registers the undertone namespace
 
 	c, err := api.NewLetGo("undertone.host")
 	if err != nil {

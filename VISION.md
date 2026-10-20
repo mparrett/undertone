@@ -22,8 +22,8 @@ data a game can bring and change.
 undertone carries its own output today, an oto player and a WebAudio worklet,
 because let-go has no audio seam yet. Three consumers now play through it
 (undertone's own hosts, tesserae, and xsofy's lane), which is enough to design
-that seam from use. When let-go has one, undertone plugs into it and drops its own
-player.
+that seam from use, and undertone will propose it. When let-go has one, undertone
+plugs into it and drops its own player.
 
 ## What it does
 
@@ -55,12 +55,36 @@ not a performer.
 - **Samples or an asset pipeline**, for now. Every sound is synthesized.
 - **Positional audio**, for now. Stereo pan only.
 
+## Decided
+
+As of 2026-10-18:
+
+- **xsofy is the target.** It needs a handful of moods, tension driving them,
+  one-shots, and authored themes and an outro. tesserae and phosphene are the lab
+  that prepares for it.
+- **Moods are data.** A mood is a set of lines in level; tension works the same in
+  every mood, so a game brings or edits lines, not code. One tension drives one
+  mood at a time.
+- **Authored music both replaces and layers.** Replacing comes first: a title
+  theme, an outro. A grid already does both for one pattern (`Bed` keeps the
+  generated drone and pad underneath); a theme needs several patterns, a way to
+  play once and hand back or stop, and a way in from lg.
+- **A mood change is heard at once.** A designer tuning a mood, or a game switching
+  scenes, hears the change within about one output buffer, not at the next
+  pattern.
+- **undertone proposes let-go's audio seam.** It brings output; phosphene brings
+  input and a playback clock to sync against.
+- **Structure follows need.** The layers (knobs, sequencer, render, output) are a
+  way to think about undertone, not a list of types to build. A layer becomes its
+  own type when a second user, duplicated knowledge, or caller complexity calls
+  for it. [`docs/architecture/`](docs/architecture/) has the layers as they
+  stand ([current](docs/architecture/current/diagram.png)) and with each issue
+  placed where it lands ([decided](docs/architecture/decided/diagram.png)),
+  drawn with agent-diagrams from the `diagram-state.json` beside each.
+
 ## Open
 
-- Whether authored and adaptive mix, such as an authored melody over an adaptive
-  bed, or an authored piece that still answers to tension. That decides whether
-  "authored" is its own mode or a layer within a mood.
-- Where the host side ends up once let-go has an audio seam.
+- Whether an authored piece still answers to tension.
 
 ## Where it came from
 

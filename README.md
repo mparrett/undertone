@@ -169,8 +169,11 @@ The surface is write-only: nothing reads audio state back into lg, so game
 logic cannot branch on whether a sound played and replays stay deterministic.
 Triggers sent before the music starts are dropped silently.
 A theme sent before the music starts waits for it, but it is checked at
-once: a bad grid (a degree outside 0..8, a lane longer than 16 steps) is an
-error from `play-theme`, so a game's tests can check its themes with no audio.
+once, so a game's tests can check its themes with no audio. A lead or bass
+degree outside 0..8, a lead, bass or pulse lane longer than 16 steps, or more
+than three drum lanes is an error from `play-theme`. Drum strings are not
+checked: they run to 32 sixteenths, and a character other than `X`, `x` or
+`o` plays as a rest.
 
 The natives act on a default `letgo.Music`. A Go host that wants to own the
 instance creates one with `letgo.NewMusic` and calls `letgo.SetMusic` before

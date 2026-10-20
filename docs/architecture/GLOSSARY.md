@@ -21,7 +21,7 @@ source of truth for anything in code font.
 |---|---|
 | **Params**, **knobs** | The one struct that drives the music: tempo, key, track gains and densities, palette, drums, grit, open and mute. It holds no level or tension. |
 | **SetParameters** | Stages `Params` for the next pattern boundary, about 7 s at 66 BPM. lg's `set-parameters` calls it. |
-| **SetParametersNow** | Stages `Params` for the next row, about 0.45 s at 66 BPM. Only the tempo and new notes change, because the rest of the pattern was already drawn. #47 is about making a mood change heard within one output buffer. |
+| **SetParametersNow** | Applies `Params` within one block of 128 frames: the rest of the pattern is redrawn and each voice fades to its new note over about 5 ms. It drops a change `SetParameters` staged for the boundary, since the newer call is complete. lg's `set-parameters-now` calls it. |
 | **glide** | How grit and open reach notes already sounding: they move to the new value over about 0.1 s rather than waiting for the next note. |
 | **grit** | 0..1. It pushes `drive`, `crush` and `svf` resonance harder. Moods derive it from tension. |
 | **open** | -1..1. It moves every `svf` cutoff up to two octaves. Moods derive it from level. |

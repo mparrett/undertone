@@ -4,7 +4,8 @@
 //
 // Importing the package registers the namespace (see init below), so an lg
 // runtime that links it needs no generated interop: lg code calls
-// undertone/set-parameters, undertone/music-start, undertone/music-stop,
+// undertone/set-parameters, undertone/set-parameters-now,
+// undertone/music-start, undertone/music-stop,
 // undertone/set-music-gain, undertone/trigger, undertone/register-shot and
 // undertone/render-wav directly. The natives act on a default Music until a
 // Go host points them elsewhere with SetMusic.
@@ -42,6 +43,9 @@ type Music struct {
 	// starting guards the window between opening the device and the unlock
 	// gesture arriving, so a second Start cannot open a second context.
 	starting bool
+	// nowWaiting is a set-parameters-now that came during that window; the
+	// catch-up applies it at once rather than at the first boundary.
+	nowWaiting bool
 
 	// musicGain is the last undertone/set-music-gain, carried into a synth that
 	// starts later; gainSet keeps the zero value from meaning silence.
@@ -73,7 +77,10 @@ func (m *Music) Params() engine.Params {
 // An unknown :palette is the exception: it comes from an exported mood, which
 // MoodSpec.Derive rejects for the same name, so it is an error here too rather
 // than a mood playing on whatever patches were loaded before.
-func (m *Music) setParameters(v vm.Value) (vm.Value, error) {
+//
+// With now, the change is heard within a block rather than at the next
+// pattern boundary (engine.Synth.SetParametersNow).
+func (m *Music) setParameters(v vm.Value, now bool) (vm.Value, error) {
 	lgm, ok := v.(*vm.PersistentMap)
 	if !ok {
 		return vm.NIL, nil
@@ -82,7 +89,11 @@ func (m *Music) setParameters(v vm.Value) (vm.Value, error) {
 	if s, ok := kwStr(lgm, "palette"); ok {
 		p, ok := engine.PaletteByName(s)
 		if !ok {
-			return vm.NIL, fmt.Errorf("undertone/set-parameters: unknown palette %q", s)
+			fn := "set-parameters"
+			if now {
+				fn += "-now"
+			}
+			return vm.NIL, fmt.Errorf("undertone/%s: unknown palette %q", fn, s)
 		}
 		pal = &p
 	}
@@ -140,7 +151,12 @@ func (m *Music) setParameters(v vm.Value) (vm.Value, error) {
 		m.params.Seed = uint64(seed)
 	}
 
-	if m.synth != nil {
+	switch {
+	case m.synth == nil:
+		m.nowWaiting = m.nowWaiting || now && m.starting
+	case now:
+		m.synth.SetParametersNow(m.params)
+	default:
 		m.synth.SetParameters(m.params)
 	}
 	return vm.NIL, nil
@@ -234,7 +250,8 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.starting = false
+	waited := m.nowWaiting
+	m.starting, m.nowWaiting = false, false
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "undertone/music-start:", err)
 		return vm.NIL
@@ -246,7 +263,11 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	}
 	// Parameters may have moved while we waited for the gesture; the synth was
 	// built from a snapshot, so catch it up to whatever is current.
-	m.synth.SetParameters(m.params)
+	if waited {
+		m.synth.SetParametersNow(m.params)
+	} else {
+		m.synth.SetParameters(m.params)
+	}
 	// A play-theme during the wait replaces the one the synth opened with.
 	if m.theme != opening {
 		m.synth.PlayTheme(m.theme)
@@ -466,7 +487,10 @@ func CurrentMusic() *Music { return current.Load() }
 func installNS() {
 	ns := vm.NewNamespace("undertone")
 	ns.Def("set-parameters", native("set-parameters", 1, func(a []vm.Value) (vm.Value, error) {
-		return current.Load().setParameters(a[0])
+		return current.Load().setParameters(a[0], false)
+	}))
+	ns.Def("set-parameters-now", native("set-parameters-now", 1, func(a []vm.Value) (vm.Value, error) {
+		return current.Load().setParameters(a[0], true)
 	}))
 	ns.Def("music-start", native("music-start", 0, func([]vm.Value) (vm.Value, error) {
 		return current.Load().Start(), nil

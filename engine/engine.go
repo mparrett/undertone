@@ -1180,8 +1180,13 @@ func (s *Synth) SetParameters(p Params) { s.next.Store(&p) }
 // pattern: for an editor, or a game switching scenes, where a mood change
 // should be heard at once. The rest of the pattern is redrawn from p, and
 // each track moves to the note p would be sounding by now, fading over
-// fadeFrames so the switch does not click. Safe to call from any goroutine.
-func (s *Synth) SetParametersNow(p Params) { s.now.Store(&p) }
+// fadeFrames so the switch does not click. A change SetParameters staged
+// for the boundary is dropped, since p is newer and complete: otherwise it
+// would land at the boundary and undo p. Safe to call from any goroutine.
+func (s *Synth) SetParametersNow(p Params) {
+	s.next.Store(nil)
+	s.now.Store(&p)
+}
 
 func (s *Synth) apply(p Params) {
 	p = p.sanitized()

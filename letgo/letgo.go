@@ -218,6 +218,10 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	if m.gainSet {
 		syn.SetMusicGain(m.musicGain)
 	}
+	opening := m.theme
+	if opening != nil {
+		syn.PlayTheme(opening)
+	}
 	m.mu.Unlock()
 
 	// Deliberately NOT holding the mutex here. In a browser the output is not
@@ -243,10 +247,11 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	// Parameters may have moved while we waited for the gesture; the synth was
 	// built from a snapshot, so catch it up to whatever is current.
 	m.synth.SetParameters(m.params)
-	if m.theme != nil {
+	// A play-theme during the wait replaces the one the synth opened with.
+	if m.theme != opening {
 		m.synth.PlayTheme(m.theme)
-		m.theme = nil
 	}
+	m.theme = nil
 	return vm.NIL
 }
 

@@ -21,7 +21,7 @@ func (m *Music) playTheme(v vm.Value) (vm.Value, error) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.synth == nil {
+	if m.out == nil { // not started, waiting for the gesture, or stopped
 		m.theme = t
 		return vm.NIL, nil
 	}
@@ -34,7 +34,7 @@ func (m *Music) playTheme(v vm.Value) (vm.Value, error) {
 func (m *Music) themePlaying() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.synth == nil {
+	if m.out == nil {
 		return m.theme != nil
 	}
 	return m.synth.ThemePlaying()

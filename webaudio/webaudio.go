@@ -76,8 +76,10 @@ type Player struct {
 	atomics js.Value
 	views   []js.Value // data.subarray for each slice-sized slot of the ring
 
-	// worker mode: no ctx or node here; page.js plays the ring
+	// worker mode: no ctx or node here; page.js plays the ring, and id
+	// names this Player in its messages, since a worker may hold several
 	worker bool
+	id     int
 }
 
 // The worklet never allocates while playing: its ring is sized once, and an

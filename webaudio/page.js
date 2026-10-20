@@ -9,59 +9,74 @@
 // Worker constructor instead and adds a listener to every worker the page
 // creates, so it must load before the runtime's script.
 (() => {
-  let cur = null; // { ctx, node, held }
+  // Every open player, for the gesture unlock. Each worker also keeps its own
+  // id -> player map, so one player's messages never reach another's context,
+  // whether the other lives in a second worker or in the same one.
+  const all = new Set(); // of { ctx, node, held }
 
-  const close = () => {
-    if (!cur) return;
-    if (cur.node) cur.node.disconnect();
-    cur.ctx.close();
-    cur = null;
+  const close = (c) => {
+    if (c.node) c.node.disconnect();
+    c.ctx.close();
+    all.delete(c);
   };
 
   const unlock = () => {
-    if (!cur || cur.held || cur.ctx.state === 'running') return;
-    const ctx = cur.ctx;
-    ctx.resume();
-    const s = ctx.createBufferSource();
-    s.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
-    s.connect(ctx.destination);
-    s.start(0);
+    for (const c of all) {
+      if (c.held || c.ctx.state === 'running') continue;
+      const ctx = c.ctx;
+      ctx.resume();
+      const s = ctx.createBufferSource();
+      s.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+      s.connect(ctx.destination);
+      s.start(0);
+    }
   };
   for (const ev of ['touchend', 'mouseup', 'keyup', 'click']) {
     document.addEventListener(ev, unlock, true);
   }
 
-  const open = async (m) => {
-    close();
+  const open = async (players, m) => {
     const AC = window.AudioContext || window.webkitAudioContext;
-    const c = cur = { ctx: new AC({ sampleRate: m.sampleRate }), node: null, held: false };
+    const c = { ctx: new AC({ sampleRate: m.sampleRate }), node: null, held: false };
+    players.set(m.id, c);
+    all.add(c);
     const url = URL.createObjectURL(new Blob([m.processor], { type: 'application/javascript' }));
     await c.ctx.audioWorklet.addModule(url);
-    if (cur !== c) return; // replaced while the module loaded
+    if (players.get(m.id) !== c) return; // closed while the module loaded
     c.node = new AudioWorkletNode(c.ctx, 'undertone-shared', {
       outputChannelCount: [2],
       processorOptions: { cap: m.cap, data: m.data, ctrl: m.ctrl },
     });
     c.node.connect(c.ctx.destination);
-    c.ctx.resume(); // succeeds outright where autoplay is allowed
+    // Succeeds outright where autoplay is allowed. A Pause that arrived while
+    // the module loaded stands: Open in the worker has already returned.
+    if (!c.held) c.ctx.resume();
   };
 
-  const onMessage = (e) => {
-    const m = e.data;
-    if (!m || typeof m.t !== 'string' || !m.t.startsWith('undertone:')) return;
-    switch (m.t) {
-      case 'undertone:open': open(m).catch((err) => console.error('undertone:', err)); break;
-      case 'undertone:pause': if (cur) { cur.held = true; cur.ctx.suspend(); } break;
-      case 'undertone:resume': if (cur) { cur.held = false; cur.ctx.resume(); } break;
-      case 'undertone:close': close(); break;
-    }
+  const listen = (worker) => {
+    const players = new Map(); // player id -> { ctx, node, held }
+    worker.addEventListener('message', (e) => {
+      const m = e.data;
+      if (!m || typeof m.t !== 'string' || !m.t.startsWith('undertone:')) return;
+      if (m.t === 'undertone:open') {
+        open(players, m).catch((err) => console.error('undertone:', err));
+        return;
+      }
+      const c = players.get(m.id);
+      if (!c) return;
+      switch (m.t) {
+        case 'undertone:pause': c.held = true; c.ctx.suspend(); break;
+        case 'undertone:resume': c.held = false; c.ctx.resume(); break;
+        case 'undertone:close': players.delete(m.id); close(c); break;
+      }
+    });
   };
 
   const Base = window.Worker;
   window.Worker = class extends Base {
     constructor(...args) {
       super(...args);
-      this.addEventListener('message', onMessage);
+      listen(this);
     }
   };
 })();

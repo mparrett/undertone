@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"math"
+	"sync/atomic"
 	"syscall/js"
 )
 
@@ -38,7 +39,7 @@ func openWorker(src io.Reader, opt Options) (*Player, error) {
 	if !g.Get("crossOriginIsolated").Truthy() {
 		return nil, errors.New("webaudio: playing from a worker needs a cross-origin isolated page (SharedArrayBuffer)")
 	}
-	p := &Player{src: src, opt: opt, shared: true, worker: true}
+	p := &Player{src: src, opt: opt, shared: true, worker: true, id: int(playerIDs.Add(1))}
 	p.cap = opt.Slice * int(math.Ceil(float64(opt.SampleRate)/float64(opt.Slice)))
 	sab := g.Get("SharedArrayBuffer")
 	samples, ctrl := sab.New(p.cap*8), sab.New(12)
@@ -52,14 +53,18 @@ func openWorker(src io.Reader, opt Options) (*Player, error) {
 		}
 	}
 	g.Call("postMessage", map[string]any{
-		"t": "undertone:open", "sampleRate": opt.SampleRate, "cap": p.cap,
+		"t": "undertone:open", "id": p.id, "sampleRate": opt.SampleRate, "cap": p.cap,
 		"data": samples, "ctrl": ctrl, "processor": processor,
 	})
 	go p.pump()
 	return p, nil
 }
 
+// playerIDs numbers this worker's Players. page.js keys players by worker as
+// well as by id, so ids need only be unique within one worker.
+var playerIDs atomic.Int64
+
 // tell sends the page a control message for a worker-mode Player.
 func (p *Player) tell(t string) {
-	js.Global().Call("postMessage", map[string]any{"t": "undertone:" + t})
+	js.Global().Call("postMessage", map[string]any{"t": "undertone:" + t, "id": p.id})
 }

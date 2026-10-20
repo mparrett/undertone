@@ -4,7 +4,8 @@
 //
 // Importing the package registers the namespace (see init below), so an lg
 // runtime that links it needs no generated interop: lg code calls
-// undertone/set-parameters, undertone/music-start, undertone/music-stop,
+// undertone/set-parameters, undertone/set-parameters-now,
+// undertone/music-start, undertone/music-stop,
 // undertone/set-music-gain, undertone/trigger, undertone/register-shot and
 // undertone/render-wav directly. The natives act on a default Music until a
 // Go host points them elsewhere with SetMusic.
@@ -73,7 +74,10 @@ func (m *Music) Params() engine.Params {
 // An unknown :palette is the exception: it comes from an exported mood, which
 // MoodSpec.Derive rejects for the same name, so it is an error here too rather
 // than a mood playing on whatever patches were loaded before.
-func (m *Music) setParameters(v vm.Value) (vm.Value, error) {
+//
+// With now, the change is heard within a block rather than at the next
+// pattern boundary (engine.Synth.SetParametersNow).
+func (m *Music) setParameters(v vm.Value, now bool) (vm.Value, error) {
 	lgm, ok := v.(*vm.PersistentMap)
 	if !ok {
 		return vm.NIL, nil
@@ -82,7 +86,11 @@ func (m *Music) setParameters(v vm.Value) (vm.Value, error) {
 	if s, ok := kwStr(lgm, "palette"); ok {
 		p, ok := engine.PaletteByName(s)
 		if !ok {
-			return vm.NIL, fmt.Errorf("undertone/set-parameters: unknown palette %q", s)
+			fn := "set-parameters"
+			if now {
+				fn += "-now"
+			}
+			return vm.NIL, fmt.Errorf("undertone/%s: unknown palette %q", fn, s)
 		}
 		pal = &p
 	}
@@ -140,7 +148,11 @@ func (m *Music) setParameters(v vm.Value) (vm.Value, error) {
 		m.params.Seed = uint64(seed)
 	}
 
-	if m.synth != nil {
+	switch {
+	case m.synth == nil:
+	case now:
+		m.synth.SetParametersNow(m.params)
+	default:
 		m.synth.SetParameters(m.params)
 	}
 	return vm.NIL, nil
@@ -466,7 +478,10 @@ func CurrentMusic() *Music { return current.Load() }
 func installNS() {
 	ns := vm.NewNamespace("undertone")
 	ns.Def("set-parameters", native("set-parameters", 1, func(a []vm.Value) (vm.Value, error) {
-		return current.Load().setParameters(a[0])
+		return current.Load().setParameters(a[0], false)
+	}))
+	ns.Def("set-parameters-now", native("set-parameters-now", 1, func(a []vm.Value) (vm.Value, error) {
+		return current.Load().setParameters(a[0], true)
 	}))
 	ns.Def("music-start", native("music-start", 0, func([]vm.Value) (vm.Value, error) {
 		return current.Load().Start(), nil

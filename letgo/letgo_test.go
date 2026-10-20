@@ -1,6 +1,7 @@
 package letgo
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/nooga/let-go/pkg/api"
@@ -90,4 +91,37 @@ func TestAudioTriggerReachesTheEngine(t *testing.T) {
 		}
 	}
 	t.Error("triggers sent from lg rendered pure silence; the map -> Shot plumbing dropped them")
+}
+
+// set-parameters-now merges like set-parameters and reaches the engine as
+// SetParametersNow: what plays is what a synth given the merged params at once
+// plays.
+func TestSetParametersNowReachesTheEngineAtOnce(t *testing.T) {
+	base := engine.DeriveDungeon(7, 2, 0)
+	m := NewMusic(base)
+	SetMusic(m)
+	c, err := api.NewLetGo("nowtest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	m.synth = engine.NewSynth(base)
+	m.mu.Unlock()
+	ref := engine.NewSynth(base)
+	lead := make([]byte, 4*3000)
+	m.synth.Read(lead)
+	ref.Read(lead)
+	if _, err := c.Run(`(undertone/set-parameters-now {:mood :rust :bpm 80.0})`); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Params(); got.BPM != 80 || got.Root != base.Root {
+		t.Fatalf("bpm %v root %v: want 80 and the root kept, as set-parameters merges", got.BPM, got.Root)
+	}
+	ref.SetParametersNow(m.Params())
+	got, want := make([]byte, 4*4096), make([]byte, 4*4096)
+	m.synth.Read(got)
+	ref.Read(want)
+	if !bytes.Equal(got, want) {
+		t.Error("set-parameters-now did not play as SetParametersNow with the merged params")
+	}
 }

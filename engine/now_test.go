@@ -194,3 +194,21 @@ func TestRetriggerOverASilentTailStartsAtOnce(t *testing.T) {
 		t.Error("a new patch over a silent tail waited for a fade")
 	}
 }
+
+// A change staged for the boundary does not land after a newer
+// SetParametersNow and undo it: a game that eases tension down at the
+// boundary and jumps it up at once would otherwise hear the jump revert.
+func TestSetParametersNowDropsAStagedChange(t *testing.T) {
+	calm, _ := DeriveMood("dungeon", 7, 2, 0)
+	eased, _ := DeriveMood("dungeon", 7, 2, 0.2)
+	tense, _ := DeriveMood("dungeon", 7, 2, 1)
+	s := NewSynth(calm)
+	render(s, 5*s.samplesPerRow)
+	s.SetParameters(eased)
+	s.SetParametersNow(tense)
+	render(s, rows*s.samplesPerRow+nowBlock) // past the next boundary
+	if s.params.BPM != tense.sanitized().BPM || s.params.Grit != tense.sanitized().Grit {
+		t.Errorf("after the boundary: bpm %v grit %v, want the newer call's %v %v",
+			s.params.BPM, s.params.Grit, tense.BPM, tense.Grit)
+	}
+}

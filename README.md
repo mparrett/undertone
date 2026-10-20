@@ -168,6 +168,9 @@ audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 The surface is write-only: nothing reads audio state back into lg, so game
 logic cannot branch on whether a sound played and replays stay deterministic.
 Triggers sent before the music starts are dropped silently.
+A theme sent before the music starts waits for it, but it is checked at
+once: a bad grid (a degree outside 0..8, a lane longer than 16 steps) is an
+error from `play-theme`, so a game's tests can check its themes with no audio.
 
 The natives act on a default `letgo.Music`. A Go host that wants to own the
 instance creates one with `letgo.NewMusic` and calls `letgo.SetMusic` before
@@ -293,6 +296,14 @@ let-go program. The worker has no AudioContext, so it renders into the shared
 ring and posts it to the page, where `webaudio/page.js` plays it. Load that
 script before the runtime's own: it wraps the `Worker` constructor to listen on
 every worker the page creates. Worker mode needs a cross-origin isolated page.
+
+In worker mode, a program that blocks on input silences the music. let-go's
+`term/read-key` under `lg -w` waits on the key ring with no timeout, which
+parks the whole worker, so the goroutine that renders stops until a key
+arrives ([nooga/let-go#1086](https://github.com/nooga/let-go/issues/1086)).
+Until that is fixed, a prompt that should keep the music playing can poll
+`term/key-pending?` with a short `sleep` between checks, which lets the
+renderer run.
 
 let-go itself may grow a host audio seam; see
 [nooga/let-go#255](https://github.com/nooga/let-go/issues/255).

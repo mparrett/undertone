@@ -2,6 +2,7 @@ package letgo
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	"github.com/nooga/let-go/pkg/api"
@@ -123,5 +124,36 @@ func TestSetParametersNowReachesTheEngineAtOnce(t *testing.T) {
 	ref.Read(want)
 	if !bytes.Equal(got, want) {
 		t.Error("set-parameters-now did not play as SetParametersNow with the merged params")
+	}
+}
+
+// A set-parameters-now sent while music-start waits for the output, as for a
+// browser's unlocking tap, is still heard at once when the music starts, not
+// at the first boundary.
+func TestSetParametersNowDuringStartIsHeardAtOnce(t *testing.T) {
+	base := engine.DeriveDungeon(7, 2, 0)
+	m := NewMusic(base)
+	SetMusic(m)
+	c, err := api.NewLetGo("nowstart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lead := make([]byte, 4*3000)
+	m.start(func(src io.Reader) (output, error) {
+		io.ReadFull(src, lead) // outputs can render before opening returns
+		if _, err := c.Run(`(undertone/set-parameters-now {:mood :rust :bpm 80.0})`); err != nil {
+			t.Fatal(err)
+		}
+		return gainTestOutput{}, nil
+	})
+	defer m.Stop()
+	ref := engine.NewSynth(base)
+	ref.Read(lead)
+	ref.SetParametersNow(m.Params())
+	got, want := make([]byte, 4*4096), make([]byte, 4*4096)
+	m.synth.Read(got)
+	ref.Read(want)
+	if !bytes.Equal(got, want) {
+		t.Error("a set-parameters-now during the start wait was not applied at once")
 	}
 }

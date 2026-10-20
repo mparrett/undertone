@@ -43,6 +43,9 @@ type Music struct {
 	// starting guards the window between opening the device and the unlock
 	// gesture arriving, so a second Start cannot open a second context.
 	starting bool
+	// nowWaiting is a set-parameters-now that came during that window; the
+	// catch-up applies it at once rather than at the first boundary.
+	nowWaiting bool
 
 	// musicGain is the last undertone/set-music-gain, carried into a synth that
 	// starts later; gainSet keeps the zero value from meaning silence.
@@ -150,6 +153,7 @@ func (m *Music) setParameters(v vm.Value, now bool) (vm.Value, error) {
 
 	switch {
 	case m.synth == nil:
+		m.nowWaiting = m.nowWaiting || now && m.starting
 	case now:
 		m.synth.SetParametersNow(m.params)
 	default:
@@ -246,7 +250,8 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.starting = false
+	waited := m.nowWaiting
+	m.starting, m.nowWaiting = false, false
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "undertone/music-start:", err)
 		return vm.NIL
@@ -258,7 +263,11 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	}
 	// Parameters may have moved while we waited for the gesture; the synth was
 	// built from a snapshot, so catch it up to whatever is current.
-	m.synth.SetParameters(m.params)
+	if waited {
+		m.synth.SetParametersNow(m.params)
+	} else {
+		m.synth.SetParameters(m.params)
+	}
 	// A play-theme during the wait replaces the one the synth opened with.
 	if m.theme != opening {
 		m.synth.PlayTheme(m.theme)

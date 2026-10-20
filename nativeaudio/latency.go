@@ -1,3 +1,5 @@
+//go:build !js
+
 package nativeaudio
 
 import "time"
@@ -61,10 +63,10 @@ func deviceBuffer(rate int) time.Duration {
 	return time.Duration((deviceBytes*int64(time.Second) + perSecond - 1) / perSecond)
 }
 
-// playerBufferBytes is playerBuffer as oto's SetBufferSize wants it: bytes,
-// aligned to a whole frame (2 channels x 2 bytes for signed 16-bit LE).
-func playerBufferBytes(rate int) int {
-	n := int(int64(playerBuffer) * int64(rate) * bytesPerFrame / int64(time.Second))
+// playerBufferBytes is a read-ahead of d as oto's SetBufferSize wants it:
+// bytes, aligned to a whole frame (2 channels x 2 bytes for signed 16-bit LE).
+func playerBufferBytes(rate int, d time.Duration) int {
+	n := int(int64(d) * int64(rate) * bytesPerFrame / int64(time.Second))
 	return n / bytesPerFrame * bytesPerFrame
 }
 

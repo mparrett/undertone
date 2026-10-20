@@ -1,3 +1,5 @@
+//go:build !js
+
 package nativeaudio
 
 import (
@@ -36,7 +38,7 @@ func deviceRoundTrip(t *testing.T, rate int) {
 
 func TestPlayerBufferIsWellFormedAndSmallerThanOtosDefault(t *testing.T) {
 	const rate = 44100
-	got := playerBufferBytes(rate)
+	got := playerBufferBytes(rate, playerBuffer)
 	if got%bytesPerFrame != 0 {
 		t.Errorf("player buffer %d bytes is not a whole number of frames", got)
 	}

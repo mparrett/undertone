@@ -13,13 +13,15 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/ebitengine/oto/v3"
 )
 
 // Options configures the output. Zero values take the defaults in brackets.
 type Options struct {
-	SampleRate int // [44100] of the source; the first Open in a process fixes it
+	SampleRate int           // [44100] of the source; the first Open in a process fixes it
+	Queue      time.Duration // [40 ms] read-ahead: shorter hears a trigger sooner, longer survives stalls
 }
 
 // oto allows one context per process, so it is opened once and shared: a
@@ -44,6 +46,9 @@ func Open(src io.Reader, opt Options) (*Player, error) {
 	if opt.SampleRate == 0 {
 		opt.SampleRate = 44100
 	}
+	if opt.Queue == 0 {
+		opt.Queue = playerBuffer
+	}
 	ctxOnce.Do(func() {
 		ctxRate = opt.SampleRate
 		ctx, ctxReady, ctxErr = oto.NewContext(&oto.NewContextOptions{
@@ -64,7 +69,7 @@ func Open(src io.Reader, opt Options) (*Player, error) {
 	p.player = ctx.NewPlayer(src)
 	// Before Play: oto's default read-ahead is half a second, which a
 	// one-shot has to wait out (see playerBuffer).
-	p.player.SetBufferSize(playerBufferBytes(opt.SampleRate))
+	p.player.SetBufferSize(playerBufferBytes(opt.SampleRate, opt.Queue))
 	p.player.Play()
 	return p, nil
 }

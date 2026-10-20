@@ -256,7 +256,9 @@ itself. The package keeps oto's rules in one place:
 - **Short buffers.** It opens oto with a 512-frame device buffer and a 40 ms
   read-ahead in place of oto's streaming-oriented defaults
   (`nativeaudio/latency.go`). On the measuring bench, tap-to-sound dropped
-  from a median of about 820 ms to about 130 ms.
+  from a median of about 820 ms to about 130 ms. `Options.Queue` sets the
+  read-ahead: the CLI asks for 500 ms, since a bed alone has no one-shots
+  waiting behind it and the slack survives a slow terminal.
 
 ## In the browser
 

@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"errors"
+	"io"
 	"math"
 	"os"
 	"slices"
@@ -1420,9 +1421,13 @@ func (s *Synth) Read(p []byte) (int, error) {
 
 // ---- output ----
 
-func WriteWAV(path string, s *Synth, seconds float64) error {
+// WriteWAV renders seconds of src, a Synth or something reading through one,
+// to a 16-bit stereo WAV at path.
+func WriteWAV(path string, src io.Reader, seconds float64) error {
 	data := make([]byte, int(seconds*SampleRate)*4)
-	s.Read(data)
+	if _, err := io.ReadFull(src, data); err != nil {
+		return err
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		return err

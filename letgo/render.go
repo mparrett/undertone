@@ -20,9 +20,10 @@ type step struct {
 
 // renderWAV is the offline lane: it makes "same parameters and calls ->
 // byte-identical audio" checkable in a test rather than by ear. It renders
-// seconds from the current parameters, applying script on the way, writes
-// a WAV to path unless path is nil, and returns the SHA-256 of the PCM as
-// hex, so an lg test can pin a render without reading the file back.
+// seconds from the current parameters and music gain, applying script on
+// the way, writes a WAV to path unless path is nil, and returns the SHA-256
+// of the PCM as hex, so an lg test can pin a render without reading the
+// file back.
 func (m *Music) renderWAV(path vm.Value, seconds float64, script vm.Value) (vm.Value, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -31,6 +32,9 @@ func (m *Music) renderWAV(path vm.Value, seconds float64, script vm.Value) (vm.V
 		return vm.NIL, fmt.Errorf("undertone/render-wav: %w", err)
 	}
 	src := &scripted{s: engine.NewSynth(m.params), steps: steps}
+	if m.gainSet {
+		src.s.SetMusicGain(m.musicGain)
+	}
 	sum := sha256.New()
 	switch p := path.(type) {
 	case vm.String:

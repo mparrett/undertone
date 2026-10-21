@@ -96,6 +96,33 @@ func TestRenderWAVScriptLandsOnItsFrames(t *testing.T) {
 	}
 }
 
+// A render starts at the current music gain, as music-start does, so a game
+// can render its shots dry.
+func TestRenderWAVHonorsTheMusicGain(t *testing.T) {
+	c := renderLg(t, "rendergain")
+	const shot = `[[0.5 :trigger {:shot :hit}]]`
+	full, err := c.Run(`(undertone/render-wav nil 2.0 ` + shot + `)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Run(`(undertone/set-music-gain 0.0)`); err != nil {
+		t.Fatal(err)
+	}
+	dry, err := c.Run(`(undertone/render-wav nil 2.0 ` + shot + `)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := engine.NewSynth(engine.DeriveDungeon(7, 2, 0))
+	s.SetMusicGain(0)
+	pcm := make([]byte, 2*engine.SampleRate*4)
+	s.Read(pcm[:engine.SampleRate/2*4])
+	s.TriggerShot(engine.Shot{Name: "hit", Gain: 1, Pan: 0.5})
+	s.Read(pcm[engine.SampleRate/2*4:])
+	if dry == full || dry != vm.String(digest(pcm)) {
+		t.Errorf("with the music gain at 0 the render is %v, want the dry shot %v", dry, digest(pcm))
+	}
+}
+
 // A bad script is an error, since it is a bug in the test that wrote it.
 func TestRenderWAVRejectsBadScripts(t *testing.T) {
 	c := renderLg(t, "renderbad")

@@ -108,7 +108,10 @@ func TestRenderWAVHonorsTheMusicGain(t *testing.T) {
 	if _, err := c.Run(`(undertone/set-music-gain 0.0)`); err != nil {
 		t.Fatal(err)
 	}
-	dry, _ := c.Run(`(undertone/render-wav nil 2.0 ` + shot + `)`)
+	dry, err := c.Run(`(undertone/render-wav nil 2.0 ` + shot + `)`)
+	if err != nil {
+		t.Fatal(err)
+	}
 	s := engine.NewSynth(engine.DeriveDungeon(7, 2, 0))
 	s.SetMusicGain(0)
 	pcm := make([]byte, 2*engine.SampleRate*4)

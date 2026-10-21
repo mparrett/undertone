@@ -85,72 +85,15 @@ func (m *Music) setParameters(v vm.Value, now bool) (vm.Value, error) {
 	if !ok {
 		return vm.NIL, nil
 	}
-	var pal *engine.Palette
-	if s, ok := kwStr(lgm, "palette"); ok {
-		p, ok := engine.PaletteByName(s)
-		if !ok {
-			fn := "set-parameters"
-			if now {
-				fn += "-now"
-			}
-			return vm.NIL, fmt.Errorf("undertone/%s: unknown palette %q", fn, s)
-		}
-		pal = &p
-	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	// :mood selects the patch palette, which is the one thing not expressible
-	// as a scalar in the map. Deriving a throwaway params for the mood is how
-	// the host gets that palette without exporting the patch tables.
-	if s, ok := kwStr(lgm, "mood"); ok {
-		if p, ok := engine.DeriveMood(s, 1, 0, 0); ok {
-			// The palette's bell is the mood's seed-1 lead, so its name and
-			// gate come too; a :lead below still overrides all three.
-			m.params.Palette = p.Palette
-			m.params.LeadName, m.params.LeadGate = p.LeadName, p.LeadGate
+	if err := mergeParams(&m.params, lgm); err != nil {
+		fn := "set-parameters"
+		if now {
+			fn += "-now"
 		}
+		return vm.NIL, fmt.Errorf("undertone/%s: %w", fn, err)
 	}
-	// :palette names a bank directly, for a mood the host has no row for. The
-	// bank's own bell is replaced by the current lead, since a partial map
-	// need not carry :lead.
-	if pal != nil {
-		m.params.Palette = *pal
-		engine.ApplyLead(&m.params, m.params.LeadName)
-	}
-	flt(lgm, "bpm", &m.params.BPM)
-	integer(lgm, "root", &m.params.Root)
-	flt(lgm, "drone-gain", &m.params.DroneGain)
-	flt(lgm, "fifth-gain", &m.params.FifthGain)
-	flt(lgm, "pad-density", &m.params.PadDensity)
-	flt(lgm, "bell-density", &m.params.BellDensity)
-	flt(lgm, "air-gain", &m.params.AirGain)
-	flt(lgm, "pulse-gain", &m.params.PulseGain)
-	flt(lgm, "grit", &m.params.Grit)
-	flt(lgm, "open", &m.params.Open)
-	integer(lgm, "fifth-offset", &m.params.FifthOffset)
-	integer(lgm, "bell-lift", &m.params.BellLift)
-	if sc, ok := ints(lgm, "scale"); ok {
-		m.params.Scale = sc
-	}
-	if s, ok := kwStr(lgm, "groove"); ok {
-		if s == "none" {
-			s = ""
-		}
-		m.params.Groove = s
-	}
-	flt(lgm, "drum-gain", &m.params.DrumGain)
-	flt(lgm, "drum-busy", &m.params.DrumBusy)
-	flt(lgm, "swing", &m.params.Swing)
-	if s, ok := kwStr(lgm, "lead"); ok {
-		engine.ApplyLead(&m.params, s)
-	}
-	// :seed is int64 on the lg side; the engine's rng streams are uint64.
-	var seed int
-	if integer(lgm, "seed", &seed) {
-		m.params.Seed = uint64(seed)
-	}
-
 	switch {
 	case m.synth == nil:
 		m.nowWaiting = m.nowWaiting || now && m.starting
@@ -160,6 +103,71 @@ func (m *Music) setParameters(v vm.Value, now bool) (vm.Value, error) {
 		m.synth.SetParameters(m.params)
 	}
 	return vm.NIL, nil
+}
+
+// mergeParams merges a partial lg map over p. Unknown keys are ignored
+// (forward compatibility) and absent keys keep their current value. An unknown
+// :palette is an error, checked before p changes.
+func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
+	var pal *engine.Palette
+	if s, ok := kwStr(lgm, "palette"); ok {
+		bank, ok := engine.PaletteByName(s)
+		if !ok {
+			return fmt.Errorf("unknown palette %q", s)
+		}
+		pal = &bank
+	}
+	// :mood selects the patch palette, which is the one thing not expressible
+	// as a scalar in the map. Deriving a throwaway params for the mood is how
+	// the host gets that palette without exporting the patch tables.
+	if s, ok := kwStr(lgm, "mood"); ok {
+		if d, ok := engine.DeriveMood(s, 1, 0, 0); ok {
+			// The palette's bell is the mood's seed-1 lead, so its name and
+			// gate come too; a :lead below still overrides all three.
+			p.Palette = d.Palette
+			p.LeadName, p.LeadGate = d.LeadName, d.LeadGate
+		}
+	}
+	// :palette names a bank directly, for a mood the host has no row for. The
+	// bank's own bell is replaced by the current lead, since a partial map
+	// need not carry :lead.
+	if pal != nil {
+		p.Palette = *pal
+		engine.ApplyLead(p, p.LeadName)
+	}
+	flt(lgm, "bpm", &p.BPM)
+	integer(lgm, "root", &p.Root)
+	flt(lgm, "drone-gain", &p.DroneGain)
+	flt(lgm, "fifth-gain", &p.FifthGain)
+	flt(lgm, "pad-density", &p.PadDensity)
+	flt(lgm, "bell-density", &p.BellDensity)
+	flt(lgm, "air-gain", &p.AirGain)
+	flt(lgm, "pulse-gain", &p.PulseGain)
+	flt(lgm, "grit", &p.Grit)
+	flt(lgm, "open", &p.Open)
+	integer(lgm, "fifth-offset", &p.FifthOffset)
+	integer(lgm, "bell-lift", &p.BellLift)
+	if sc, ok := ints(lgm, "scale"); ok {
+		p.Scale = sc
+	}
+	if s, ok := kwStr(lgm, "groove"); ok {
+		if s == "none" {
+			s = ""
+		}
+		p.Groove = s
+	}
+	flt(lgm, "drum-gain", &p.DrumGain)
+	flt(lgm, "drum-busy", &p.DrumBusy)
+	flt(lgm, "swing", &p.Swing)
+	if s, ok := kwStr(lgm, "lead"); ok {
+		engine.ApplyLead(p, s)
+	}
+	// :seed is int64 on the lg side; the engine's rng streams are uint64.
+	var seed int
+	if integer(lgm, "seed", &seed) {
+		p.Seed = uint64(seed)
+	}
+	return nil
 }
 
 // trigger accepts one trigger map or a vector of them (the shape
@@ -173,6 +181,16 @@ func (m *Music) trigger(v vm.Value) vm.Value {
 	if m.synth == nil {
 		return vm.NIL
 	}
+	for _, sh := range shots(v) {
+		m.synth.TriggerShot(sh)
+	}
+	return vm.NIL
+}
+
+// shots reads one trigger map or a vector of them; a map without :shot is
+// skipped.
+func shots(v vm.Value) []engine.Shot {
+	var out []engine.Shot
 	var maps []*vm.PersistentMap
 	switch t := v.(type) {
 	case *vm.PersistentMap:
@@ -210,9 +228,9 @@ func (m *Music) trigger(v vm.Value) vm.Value {
 				sh.Seed = uint64(v)
 			}
 		}
-		m.synth.TriggerShot(sh)
+		out = append(out, sh)
 	}
-	return vm.NIL
+	return out
 }
 
 // Start opens the audio device and begins streaming. Exported because the
@@ -324,18 +342,6 @@ func (m *Music) Stop() vm.Value {
 	if m.out != nil {
 		m.out.Close()
 		m.out = nil
-	}
-	return vm.NIL
-}
-
-// renderWAV is the offline lane: it makes "same parameters ->
-// byte-identical audio" checkable in a test rather than by ear.
-func (m *Music) renderWAV(path string, seconds float64) vm.Value {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s := engine.NewSynth(m.params)
-	if err := engine.WriteWAV(path, s, seconds); err != nil {
-		fmt.Fprintln(os.Stderr, "undertone/render-wav:", err)
 	}
 	return vm.NIL
 }
@@ -484,6 +490,10 @@ func SetMusic(m *Music) { current.Store(m) }
 // CurrentMusic returns the instance the audio natives act on.
 func CurrentMusic() *Music { return current.Load() }
 
+// maxRenderSeconds bounds an offline render, which is held in memory whole:
+// ten minutes is about 106 MB.
+const maxRenderSeconds = 600
+
 func installNS() {
 	ns := vm.NewNamespace("undertone")
 	ns.Def("set-parameters", native("set-parameters", 1, func(a []vm.Value) (vm.Value, error) {
@@ -534,10 +544,12 @@ func installNS() {
 		return current.Load().trigger(a[0]), nil
 	}))
 	// Offline render: how determinism gets checked without a sound card.
-	ns.Def("render-wav", native("render-wav", 2, func(a []vm.Value) (vm.Value, error) {
-		path, ok := a[0].(vm.String)
-		if !ok {
-			return vm.NIL, fmt.Errorf("undertone/render-wav: path must be a string, got %s", a[0].Type().Name())
+	renderWAV, _ := vm.NativeFnType.Wrap(func(a []vm.Value) (vm.Value, error) {
+		if len(a) != 2 && len(a) != 3 {
+			return vm.NIL, fmt.Errorf("undertone/render-wav: wants a path, seconds and an optional script, got %d argument(s)", len(a))
+		}
+		if _, ok := a[0].(vm.String); !ok && a[0] != vm.NIL {
+			return vm.NIL, fmt.Errorf("undertone/render-wav: path must be a string or nil, got %s", a[0].Type().Name())
 		}
 		var secs float64
 		switch v := a[1].(type) {
@@ -548,8 +560,17 @@ func installNS() {
 		default:
 			return vm.NIL, fmt.Errorf("undertone/render-wav: seconds must be a number, got %s", a[1].Type().Name())
 		}
-		return current.Load().renderWAV(string(path), secs), nil
-	}))
+		if !(secs > 0 && secs <= maxRenderSeconds) { // also catches NaN
+			return vm.NIL, fmt.Errorf("undertone/render-wav: seconds must be above 0 and at most %d, got %v", maxRenderSeconds, secs)
+		}
+		script := vm.Value(vm.NIL)
+		if len(a) == 3 {
+			script = a[2]
+		}
+		return current.Load().renderWAV(a[0], secs, script)
+	})
+	renderWAV.(*vm.NativeFn).SetName("render-wav")
+	ns.Def("render-wav", renderWAV)
 	rt.RegisterNS(ns)
 }
 

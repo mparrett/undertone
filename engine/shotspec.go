@@ -57,6 +57,12 @@ var (
 	shotReg = map[string]shotDef{}
 )
 
+// HasShot reports whether name is a built-in or registered one-shot.
+func HasShot(name string) bool {
+	_, ok := lookupShot(name)
+	return ok
+}
+
 func lookupShot(name string) (shotDef, bool) {
 	if d, ok := shotLib[name]; ok {
 		return d, true

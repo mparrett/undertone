@@ -108,6 +108,14 @@ func TestRenderWAVRejectsBadScripts(t *testing.T) {
 		`(undertone/render-wav nil 2.0 [[0.0 :play-theme {:grids [{:lead [9]}]}]])`,
 		`(undertone/render-wav nil 2.0 [[0.0 :set-parameters {:palette :nope}]])`,
 		`(undertone/render-wav 7 2.0)`,
+		`(undertone/render-wav nil -1)`,
+		`(undertone/render-wav "out.wav" -1)`,
+		`(undertone/render-wav nil 1e9)`,
+		`(undertone/render-wav nil 2.0 [[2.0 :set-parameters-now {:mood :rust}]])`,
+		`(undertone/render-wav nil 2.0 [[1.0 :trigger {:shto :hit}]])`,
+		`(undertone/render-wav nil 2.0 [[1.0 :trigger :hit]])`,
+		`(undertone/render-wav nil 2.0 [[1.0 :trigger [{:shot :hit} {:gain 1}]]])`,
+		`(undertone/render-wav nil 2.0 [[1.0 :trigger {:shot :hti}]])`,
 	} {
 		if _, err := c.Run(bad); err == nil {
 			t.Errorf("%s: want an error", bad)

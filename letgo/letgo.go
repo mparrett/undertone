@@ -490,6 +490,10 @@ func SetMusic(m *Music) { current.Store(m) }
 // CurrentMusic returns the instance the audio natives act on.
 func CurrentMusic() *Music { return current.Load() }
 
+// maxRenderSeconds bounds an offline render, which is held in memory whole:
+// ten minutes is about 106 MB.
+const maxRenderSeconds = 600
+
 func installNS() {
 	ns := vm.NewNamespace("undertone")
 	ns.Def("set-parameters", native("set-parameters", 1, func(a []vm.Value) (vm.Value, error) {
@@ -555,6 +559,9 @@ func installNS() {
 			secs = float64(v)
 		default:
 			return vm.NIL, fmt.Errorf("undertone/render-wav: seconds must be a number, got %s", a[1].Type().Name())
+		}
+		if !(secs > 0 && secs <= maxRenderSeconds) { // also catches NaN
+			return vm.NIL, fmt.Errorf("undertone/render-wav: seconds must be above 0 and at most %d, got %v", maxRenderSeconds, secs)
 		}
 		script := vm.Value(vm.NIL)
 		if len(a) == 3 {

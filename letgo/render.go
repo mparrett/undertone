@@ -97,8 +97,8 @@ func parseScript(v vm.Value, p engine.Params, seconds float64) ([]step, error) {
 		default:
 			return nil, fmt.Errorf("step %d: seconds must be a number", i)
 		}
-		if t < last || t > seconds {
-			return nil, fmt.Errorf("step %d at %vs: steps must be in time order, within the %vs render", i, t, seconds)
+		if t < last || t >= seconds {
+			return nil, fmt.Errorf("step %d at %vs: steps must be in time order, before the end of the %vs render", i, t, seconds)
 		}
 		last = t
 		op, _ := call[1].(vm.Keyword)
@@ -127,6 +127,9 @@ func parseScript(v vm.Value, p engine.Params, seconds float64) ([]step, error) {
 			apply = func(s *engine.Synth) { s.PlayTheme(th) }
 		case "trigger":
 			shs := shots(arg)
+			if err := checkShots(arg, shs); err != nil {
+				return nil, fmt.Errorf("step %d: %w", i, err)
+			}
 			apply = func(s *engine.Synth) {
 				for _, sh := range shs {
 					s.TriggerShot(sh)
@@ -138,4 +141,22 @@ func parseScript(v vm.Value, p engine.Params, seconds float64) ([]step, error) {
 		steps = append(steps, step{int(t * engine.SampleRate), apply})
 	}
 	return steps, nil
+}
+
+// checkShots holds a script's trigger to more than a live one, which drops
+// what it cannot play: a hash pinned on a dropped shot would pin silence.
+func checkShots(arg vm.Value, shs []engine.Shot) error {
+	want := 1
+	if vec, ok := arg.(vm.ArrayVector); ok {
+		want = len(vec)
+	}
+	if len(shs) != want || want == 0 {
+		return fmt.Errorf(":trigger takes a map with :shot, or a vector of them")
+	}
+	for _, sh := range shs {
+		if !engine.HasShot(sh.Name) {
+			return fmt.Errorf(":trigger: no shot named %q", sh.Name)
+		}
+	}
+	return nil
 }

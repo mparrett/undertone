@@ -4,25 +4,71 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
+
+	"github.com/nooga/let-go/pkg/vm"
 
 	"github.com/mparrett/undertone/engine"
 )
 
-// A designer's export pastes into ambience.lg: each built-in mood's EDN,
-// read by lg, equals that mood's entry in the lg table (bar :palette, which
-// the lg side does not carry yet).
-func TestMoodSpecEDNMatchesLgTable(t *testing.T) {
+// ambience/moods is the built-in table: it names every mood, and each entry
+// reads back as that mood's spec, field for field, bar the palette.
+func TestAmbienceMoodsIsTheBuiltInTable(t *testing.T) {
 	c, _ := lgRuntime(t)
+	want := slices.Sorted(slices.Values(engine.MoodNames()))
+	v, err := c.Run(`(= (sort (map name (keys ambience/moods))) ["` + strings.Join(want, `" "`) + `"])`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.String() != "true" {
+		t.Errorf("ambience/moods does not hold exactly %v", want)
+	}
 	for _, name := range engine.MoodNames() {
-		s, _ := engine.MoodByName(name)
-		v, err := c.Run("(= (dissoc (get {" + s.EDN() + "} :" + name + ") :palette) (get ambience/moods :" + name + "))")
+		v, err := c.Run("(get ambience/moods :" + name + ")")
 		if err != nil {
-			t.Fatalf("%s: lg could not read the export: %v\n%s", name, err, s.EDN())
+			t.Fatal(err)
 		}
-		if v.String() != "true" {
-			t.Errorf("%s: the export differs from ambience.lg's entry:\n%s", name, s.EDN())
+		m, _ := v.(*vm.PersistentMap)
+		if m == nil {
+			t.Fatalf("%s: no entry", name)
 		}
+		got, err := moodSpec(m)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		spec, _ := engine.MoodByName(name)
+		spec.Name, spec.Palette = "", ""
+		if !reflect.DeepEqual(got, spec) {
+			t.Errorf("%s: the entry reads back as\n%+v\nwant\n%+v", name, got, spec)
+		}
+	}
+}
+
+// An entry with a misspelt, missing or mistyped key is an error rather than
+// a mood that quietly derives zeros: it is authored data, so a slip is a bug.
+func TestDeriveSpecRejectsBadEntries(t *testing.T) {
+	c, _ := lgRuntime(t)
+	for _, bad := range []string{
+		`(assoc (:village ambience/moods) :swng 0.2)`,
+		`(dissoc (:village ambience/moods) :calm)`,
+		`(dissoc (:village ambience/moods) :bpm)`,
+		`(assoc (:village ambience/moods) :drums {:base 0.5})`,
+		`(assoc (:village ambience/moods) :root-base 62.5)`,
+		`(assoc (:village ambience/moods) :leads [:kazoo])`,
+		`(assoc (:village ambience/moods) :scales [[0 2 4]])`,
+		`(assoc (:village ambience/moods) :palette :nope)`,
+		`(assoc (:village ambience/moods) :drums {:base 0.55 :step 0.05 :hie 0.8})`,
+		`(assoc (:village ambience/moods) :drums {:base 0.55 :step 0.05 :hi "0.8"})`,
+		`[:not :a :map]`,
+	} {
+		if _, err := c.Run("(ambience/derive-spec " + bad + " 7 2 0.5)"); err == nil {
+			t.Errorf("%s: want an error", bad)
+		}
+	}
+	if _, err := c.Run("(ambience/derive-spec (:village ambience/moods) 7 2.5 0.5)"); err == nil {
+		t.Error("a fractional level was accepted")
 	}
 }
 
@@ -76,8 +122,8 @@ func TestSpecPaletteMustExist(t *testing.T) {
 	}
 }
 
-// Drums at zero gain stay silent under tension in lg as in Go: both turn the
-// tension term on only for drums that are playing.
+// Drums at zero gain stay silent under tension through lg too: the tension
+// term turns on only for drums that are playing.
 func TestDeriveSpecLeavesSilentDrumsSilent(t *testing.T) {
 	c, m := lgRuntime(t)
 	s, _ := engine.MoodByName("village")

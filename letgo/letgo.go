@@ -543,6 +543,12 @@ func installNS() {
 	ns.Def("trigger", native("trigger", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().trigger(a[0]), nil
 	}))
+	// The mood derivation, for undertone.ambience: pure functions, not audio
+	// state, so the surface stays write-only.
+	ns.Def("derive-spec", native("derive-spec", 4, deriveSpec))
+	ns.Def("moods-edn", native("moods-edn", 0, func([]vm.Value) (vm.Value, error) {
+		return vm.String(moodsEDN()), nil
+	}))
 	// Offline render: how determinism gets checked without a sound card.
 	renderWAV, _ := vm.NativeFnType.Wrap(func(a []vm.Value) (vm.Value, error) {
 		if len(a) != 2 && len(a) != 3 {

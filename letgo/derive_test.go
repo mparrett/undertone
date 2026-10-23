@@ -9,18 +9,17 @@ import (
 	"github.com/nooga/let-go/pkg/api"
 )
 
-// The lg derivation is a port, so the property that matters is not "it runs"
-// but "it agrees". Agreement has to be checked over a matrix, because the ways
-// the port can drift are all data-dependent: the rng draws an unsigned
-// remainder (lg has no unsigned int, so a negative state picks the wrong
-// option), depth indexes the scale tables, and tension gates whole branches.
-// A single spot check passes with any of those broken.
+// lg derives through Go (#49), so what can go wrong is the trip between them:
+// the derived Params become an lg map, and set-parameters reads it back. A
+// field the map drops or mistypes shows up only for the moods and branches
+// that set it, so the trip is checked over a matrix of moods, seeds, levels
+// and tensions.
 
 func lgRuntime(t *testing.T) (*api.LetGo, *Music) {
 	t.Helper()
 	m := NewMusic(engine.DeriveDungeon(1, 0, 0))
 	SetMusic(m)
-	c, err := api.NewLetGo("parity")
+	c, err := api.NewLetGo("derive")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +40,7 @@ func fingerprint(p engine.Params) string {
 	return fmt.Sprintf("%x", sha256.Sum256(buf))[:16]
 }
 
-// checkParams holds a derivation's parameters to another's, bit for bit, and
+// checkParams holds parameters to the derivation's, bit for bit, and
 // renders both, since the palette is reached only through the audio.
 func checkParams(t *testing.T, name string, got, want engine.Params) {
 	t.Helper()
@@ -63,8 +62,7 @@ func checkParams(t *testing.T, name string, got, want engine.Params) {
 	if got.Seed != want.Seed {
 		t.Errorf("%s: seed = %d, want %d", name, got.Seed, want.Seed)
 	}
-	// The gains are float arithmetic in two languages; they
-	// must land bit-identical, or the audio will not.
+	// The gains must land bit-identical, or the audio will not.
 	for _, f := range []struct {
 		what      string
 		got, want float64
@@ -90,7 +88,7 @@ func checkParams(t *testing.T, name string, got, want engine.Params) {
 	}
 }
 
-func TestLgDerivationMatchesGo(t *testing.T) {
+func TestScoreMoodReachesTheEngineAsDerived(t *testing.T) {
 	c, m := lgRuntime(t)
 
 	for _, seed := range []uint64{1, 7, 42} {

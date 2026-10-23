@@ -2,8 +2,8 @@
 
 // designer is a spike of a mood designer: it plays the generator alone, from
 // a mood spec the page edits, so a change to a mood's lines is heard as it is
-// made, at any level and tension. The page exports the spec as an entry for
-// the moods map in letgo/lg/ambience.lg.
+// made, at any level and tension. The page exports the spec as an entry in
+// the shape of ambience/moods, which ambience/derive-spec plays.
 //
 //	just designer    # builds main.wasm, copies wasm_exec.js, serves on :8373
 //
@@ -15,7 +15,7 @@
 //	                         derive from a spec and play it at once, with the
 //	                         layers named in muted (a JSON array) silenced; returns
 //	                         {error} or what was derived: {bpm, key, lead, groove, gains}
-//	edn(json)                the spec as an ambience.lg moods entry
+//	edn(json)                the spec as an ambience/moods entry
 //	palettes(), grooves()    the names a spec can use, as JSON
 //	play() / stop()          call from the tap handler: iOS resumes audio only inside one
 package main

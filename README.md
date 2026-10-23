@@ -19,7 +19,7 @@ The module has these parts:
 | Package | What it is |
 |---|---|
 | `engine` | The synth VM, the sequencer, a one-shot sfx voice pool, and the game-state → parameters derivation. Plain Go; imports nothing from let-go. |
-| `letgo` | The let-go binding: an `undertone` namespace that drives the engine from lg code, plus `letgo/lg/ambience.lg`, the same derivation written in lg. |
+| `letgo` | The let-go binding: an `undertone` namespace that drives the engine from lg code, plus `undertone.ambience`, the derivation's lg names (it runs in Go). |
 | `webaudio` | Browser output: an AudioWorklet fed in small slices from the page's event loop (see [In the browser](#in-the-browser)). |
 | `cmd/undertone` | A CLI that plays live, renders WAVs, and draws a four-band VU meter. |
 | [`examples/`](examples) | A step sequencer, the engine in a web page, and a let-go-driven game demo, each runnable in a browser. |
@@ -44,8 +44,8 @@ Music parameters come from game state:
   (industrial: detuned saws through swept resonant filters, a hiss bed, a
   tritone, sinking as level rises; under tension a broken beat with ratchets
   comes in on an industrial kit).
-  Moods are rows in a table (`engine/mood.go`, mirrored in
-  `letgo/lg/ambience.lg`), so adding one is an entry in each
+  Moods are rows in a table (`engine/mood.go`), so adding one is an entry
+  there
 - **level**: depth darkens, slows and thickens; elevation brightens; a mood's `open`
   line can also open or close its resonant filters with level
 - **tension** (0..1): raises tempo, fades in a low pulse, slides the second
@@ -165,6 +165,7 @@ audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 | `undertone/trigger` | a trigger map (`{:shot :hit :gain 0.8 :pan 0.3}`) or a vector of them; fire-and-forget |
 | `undertone/register-shot` | a game's own one-shot (`{:name :ping :gate-ms 20 :patch [[:env 0.001 0.2 0 0.1] [:osc 0 :sine 0 1] [:mul] [:out 0.5 0.5]]}`); a patch the synth could not run safely is an error |
 | `undertone/render-wav` | `(undertone/render-wav "out.wav" 20.0)`: offline render of the current parameters and music gain (set it to 0 to render shots dry), for checking determinism without a sound card. It returns the PCM's SHA-256 as hex, and a nil path skips the file. An optional script plays calls at given seconds, so a test can pin a theme or an outro by hash: `[[0.0 :play-theme {...}] [4.5 :trigger {:shot :hit}] [8.0 :set-parameters-now {:mood :rust}]]`, with `:set-parameters`, `:set-parameters-now`, `:play-theme` and `:trigger` taking what the natives take. A script is stricter than live calls: a trigger it cannot play is an error, not dropped. Renders run up to 600 s |
+| `undertone/derive-spec`, `undertone/moods-edn` | the mood derivation behind `undertone.ambience`: a mood entry, seed, level and tension to a parameter map, and the built-in mood table as EDN. Pure functions; call them through `ambience/derive-spec`, `ambience/derive-mood` and `ambience/moods` |
 
 The surface is write-only: nothing reads audio state back into lg, so game
 logic cannot branch on whether a sound played and replays stay deterministic.
@@ -215,12 +216,13 @@ go run ./cmd/lghost -e '(do (ambience/score! 7 4 0.6) (undertone/music-start) (s
 go run ./cmd/lghost -e '(do (ambience/score! 7 4 0.6) (undertone/render-wav "out.wav" 20.0))'
 ```
 
-`letgo/parity_test.go` renders every mood across a grid of seeds, depths and tensions
-through both derivations, Go and lg, and compares the parameters field by
-field plus a hash of the PCM. Two things it caught are worth knowing if you
-port similar code to lg. First, lg's `*` raises on overflow, so seed mixing
-needs `unchecked-multiply`. Second, lg has no unsigned integer, so an unsigned
-remainder needs doing by hand (`ambience/umod`).
+The derivation runs in Go; `ambience/derive-mood` and `ambience/derive-spec`
+call it through `undertone/derive-spec`, and `ambience/moods` is the built-in
+table as data. `ambience.lg` also keeps a seeded rng for sound-effect code,
+and two things about it are worth knowing if you write similar code in lg.
+First, lg's `*` raises on overflow, so seed mixing needs `unchecked-multiply`.
+Second, lg has no unsigned integer, so an unsigned remainder needs doing by
+hand (`ambience/umod`).
 
 ### A full lg CLI with audio
 

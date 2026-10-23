@@ -8,8 +8,7 @@ package engine
 
 const nDrums = 3 // kick, clap, shaker
 
-// grooveSalt offsets both drum rng streams from the melodic ones. The lg port
-// mirrors it as groove-salt in ambience.lg, so change both together.
+// grooveSalt offsets both drum rng streams from the melodic ones.
 const grooveSalt = 0x9700e5
 
 // drumSound is a lane's patch and the note it plays at. The notes matter

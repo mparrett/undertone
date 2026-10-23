@@ -14,7 +14,7 @@ func (l line) atMost(hi float64) line  { l.hi = hi; return l }
 
 // at evaluates the line at a level. The float64 conversion stops the compiler
 // fusing the multiply-add, which Go may do on arm64; unfused, the result is
-// the same on every architecture and in the lg port.
+// the same on every architecture.
 func (l line) at(x float64) float64 {
 	return math.Min(l.hi, math.Max(l.lo, l.base+float64(l.step*x)))
 }
@@ -239,7 +239,7 @@ func (m *mood) derive(seed uint64, level int, tension float64) Params {
 		// ceiling, which is set for balance against the bed; busy is a chance,
 		// so tension may push it past the level's ceiling, up to certainty.
 		// float64() keeps each product rounded on its own: without it arm64
-		// fuses the multiply-add, and lg, which cannot, derives other bits.
+		// fuses the multiply-add, and amd64 would derive other bits.
 		if p.DrumGain > 0 {
 			p.DrumGain = math.Min(m.drums.hi, p.DrumGain+float64(0.15*t))
 			p.DrumBusy = min(1, p.DrumBusy+float64(0.4*t))

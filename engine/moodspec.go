@@ -156,10 +156,10 @@ func (s MoodSpec) Derive(seed uint64, level int, tension float64) (Params, error
 	return m.derive(seed, level, tension), nil
 }
 
-// EDN writes the spec as an entry for the moods map in letgo/lg/ambience.lg,
-// in that file's shape: a clamp appears only where it binds. The table's own
-// entries omit :palette, since the host picks their patches by mood name; an
-// entry passed to ambience/derive-spec needs it.
+// EDN writes the spec as an entry for the moods map, in the shape
+// ambience/moods has: a clamp appears only where it binds. The table's own
+// entries omit :palette, since the host picks their patches by mood name;
+// an entry for a mood the host has no row for names one to pick its patches.
 func (s MoodSpec) EDN() string {
 	num := func(f float64) string {
 		t := fmt.Sprintf("%g", f)

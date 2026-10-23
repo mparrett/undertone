@@ -113,6 +113,8 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 	}
 	for _, f := range lines {
 		known[f.k] = true
+		// An absent line is the zero line, unclamped, as MoodByName exports it.
+		*f.dst = engine.Line{Lo: math.Inf(-1), Hi: math.Inf(1)}
 		v := at(m, f.k)
 		if v == vm.NIL && !f.required {
 			continue
@@ -121,12 +123,21 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 		if !ok {
 			return s, fmt.Errorf(":%s must be a line, {:base b :step s}", f.k)
 		}
-		*f.dst = engine.Line{Lo: math.Inf(-1), Hi: math.Inf(1)}
 		if !flt(l, "base", &f.dst.Base) || !flt(l, "step", &f.dst.Step) {
 			return s, fmt.Errorf(":%s needs a :base and a :step", f.k)
 		}
-		flt(l, "lo", &f.dst.Lo)
-		flt(l, "hi", &f.dst.Hi)
+		for _, k := range []string{"lo", "hi"} {
+			dst := &f.dst.Lo
+			if k == "hi" {
+				dst = &f.dst.Hi
+			}
+			if l.Contains(vm.Keyword(k)) == vm.TRUE && !flt(l, k, dst) {
+				return s, fmt.Errorf(":%s's :%s must be a number", f.k, k)
+			}
+		}
+		if err := onlyKeys(l, map[string]bool{"base": true, "step": true, "lo": true, "hi": true}); err != nil {
+			return s, fmt.Errorf(":%s: %w", f.k, err)
+		}
 	}
 	for _, f := range []struct {
 		k   string
@@ -164,13 +175,18 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 		}
 		s.Scales = append(s.Scales, sc)
 	}
+	return s, onlyKeys(m, known)
+}
+
+// onlyKeys reports the first key of m that known does not hold.
+func onlyKeys(m *vm.PersistentMap, known map[string]bool) error {
 	for seq := m.Seq(); seq != nil && seq != vm.EmptyList; seq = seq.Next() {
 		e, _ := seq.First().(vm.MapEntry)
 		if k, _ := e.Key.(vm.Keyword); !known[string(k)] {
-			return s, fmt.Errorf("unknown key %v", e.Key)
+			return fmt.Errorf("unknown key %v", e.Key)
 		}
 	}
-	return s, nil
+	return nil
 }
 
 // names reads a vector of keywords or strings.

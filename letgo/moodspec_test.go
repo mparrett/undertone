@@ -8,10 +8,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nooga/let-go/pkg/vm"
+
 	"github.com/mparrett/undertone/engine"
 )
 
-// ambience/moods is the built-in table, and each entry derives as that mood.
+// ambience/moods is the built-in table: it names every mood, and each entry
+// reads back as that mood's spec, field for field, bar the palette.
 func TestAmbienceMoodsIsTheBuiltInTable(t *testing.T) {
 	c, _ := lgRuntime(t)
 	want := slices.Sorted(slices.Values(engine.MoodNames()))
@@ -21,6 +24,25 @@ func TestAmbienceMoodsIsTheBuiltInTable(t *testing.T) {
 	}
 	if v.String() != "true" {
 		t.Errorf("ambience/moods does not hold exactly %v", want)
+	}
+	for _, name := range engine.MoodNames() {
+		v, err := c.Run("(get ambience/moods :" + name + ")")
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, _ := v.(*vm.PersistentMap)
+		if m == nil {
+			t.Fatalf("%s: no entry", name)
+		}
+		got, err := moodSpec(m)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		spec, _ := engine.MoodByName(name)
+		spec.Name, spec.Palette = "", ""
+		if !reflect.DeepEqual(got, spec) {
+			t.Errorf("%s: the entry reads back as\n%+v\nwant\n%+v", name, got, spec)
+		}
 	}
 }
 
@@ -37,6 +59,8 @@ func TestDeriveSpecRejectsBadEntries(t *testing.T) {
 		`(assoc (:village ambience/moods) :leads [:kazoo])`,
 		`(assoc (:village ambience/moods) :scales [[0 2 4]])`,
 		`(assoc (:village ambience/moods) :palette :nope)`,
+		`(assoc (:village ambience/moods) :drums {:base 0.55 :step 0.05 :hie 0.8})`,
+		`(assoc (:village ambience/moods) :drums {:base 0.55 :step 0.05 :hi "0.8"})`,
 		`[:not :a :map]`,
 	} {
 		if _, err := c.Run("(ambience/derive-spec " + bad + " 7 2 0.5)"); err == nil {

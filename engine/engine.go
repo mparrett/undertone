@@ -821,7 +821,9 @@ var grind = Patch{
 	{opSvf, [4]float64{90, 0.8, 0, 4}},
 	{opDrive, [4]float64{2, 0.2}},
 	{opVerb, [4]float64{0.2}},
-	{opOut, [4]float64{0.8, 0.5}},
+	// 0.6, not 0.8: on rust's downbeats it lands with the kick and the
+	// drone, and at 0.8 the three peaked over -2 dBFS (#73)
+	{opOut, [4]float64{0.6, 0.5}},
 }
 
 // ---- the industrial kit (rust's drums) ----

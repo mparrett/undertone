@@ -75,6 +75,8 @@ func deriveSpec(a []vm.Value) (vm.Value, error) {
 		vm.Keyword("pulse-gain"), vm.Float(p.PulseGain),
 		vm.Keyword("grit"), vm.Float(p.Grit),
 		vm.Keyword("open"), vm.Float(p.Open),
+		vm.Keyword("room-size"), vm.Float(p.Room.Size),
+		vm.Keyword("room-damp"), vm.Float(p.Room.Damp),
 		vm.Keyword("fifth-offset"), vm.Int(p.FifthOffset),
 		vm.Keyword("bell-lift"), vm.Int(p.BellLift),
 		vm.Keyword("lead"), vm.Keyword(p.LeadName),
@@ -91,7 +93,7 @@ func deriveSpec(a []vm.Value) (vm.Value, error) {
 // to leave at zero.
 func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 	var s engine.MoodSpec
-	known := map[string]bool{"palette": true, "leads": true, "grooves": true, "scales": true}
+	known := map[string]bool{"palette": true, "leads": true, "grooves": true, "scales": true, "room": true}
 	ints := []struct {
 		k   string
 		dst *int
@@ -146,6 +148,25 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 		known[f.k] = true
 		if at(m, f.k) != vm.NIL && !flt(m, f.k, f.dst) {
 			return s, fmt.Errorf(":%s must be a number", f.k)
+		}
+	}
+	// An absent room, or an absent field in one, is the default: Room is
+	// offsets from the room every mood had before.
+	if v := at(m, "room"); v != vm.NIL {
+		r, ok := v.(*vm.PersistentMap)
+		if !ok {
+			return s, fmt.Errorf(":room must be a map, {:size s :damp d}")
+		}
+		for _, f := range []struct {
+			k   string
+			dst *float64
+		}{{"size", &s.Room.Size}, {"damp", &s.Room.Damp}} {
+			if at(r, f.k) != vm.NIL && !flt(r, f.k, f.dst) {
+				return s, fmt.Errorf(":room's :%s must be a number", f.k)
+			}
+		}
+		if err := onlyKeys(r, map[string]bool{"size": true, "damp": true}); err != nil {
+			return s, fmt.Errorf(":room: %w", err)
 		}
 	}
 	if v := at(m, "palette"); v != vm.NIL {

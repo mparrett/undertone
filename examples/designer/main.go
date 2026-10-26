@@ -96,6 +96,15 @@ type specJSON struct {
 	Swing    float64  `json:"swing"`
 	Tense    float64  `json:"tenseDrums"`
 	Open     lineJSON `json:"open"`
+	// The page has no room control yet; carrying the field keeps an
+	// imported room through an edit.
+	Room roomJSON `json:"room"`
+}
+
+// roomJSON is engine.Room with the page's key names.
+type roomJSON struct {
+	Size float64 `json:"size"`
+	Damp float64 `json:"damp"`
 }
 
 func toJSON(s engine.MoodSpec) specJSON {
@@ -104,6 +113,7 @@ func toJSON(s engine.MoodSpec) specJSON {
 		Drone: toLine(s.Drone), Fifth: toLine(s.Fifth), Pad: toLine(s.Pad), Bell: toLine(s.Bell), Air: toLine(s.Air),
 		Calm: s.Calm, BellLift: s.BellLift, Palette: s.Palette, Leads: s.Leads, Grooves: s.Grooves,
 		Drums: toLine(s.Drums), Busy: toLine(s.Busy), Swing: s.Swing, Tense: s.TenseDrums, Open: toLine(s.Open),
+		Room: roomJSON(s.Room),
 	}
 }
 
@@ -113,6 +123,7 @@ func (j specJSON) spec() engine.MoodSpec {
 		Drone: j.Drone.line(), Fifth: j.Fifth.line(), Pad: j.Pad.line(), Bell: j.Bell.line(), Air: j.Air.line(),
 		Calm: j.Calm, BellLift: j.BellLift, Palette: j.Palette, Leads: j.Leads, Grooves: j.Grooves,
 		Drums: j.Drums.line(), Busy: j.Busy.line(), Swing: j.Swing, TenseDrums: j.Tense, Open: j.Open.line(),
+		Room: engine.Room(j.Room),
 	}
 }
 

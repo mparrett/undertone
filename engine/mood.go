@@ -55,6 +55,9 @@ type mood struct {
 	// quarter tension they rise to this gain at full, so a fight starts a
 	// beat under a mood that has none at rest.
 	tenseDrums float64
+
+	// room is the reverb room; the zero Room is the default long, dark one.
+	room Room
 }
 
 var moods = []mood{
@@ -223,6 +226,7 @@ func (m *mood) derive(seed uint64, level int, tension float64) Params {
 		PulseGain:   t,
 		Grit:        t,
 		Open:        math.Max(-1, math.Min(1, m.open.at(l))),
+		Room:        m.room,
 		FifthOffset: tenseOffset(m.calm, t),
 		BellLift:    m.bellLift,
 		Palette:     m.palette,

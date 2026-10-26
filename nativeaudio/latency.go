@@ -2,7 +2,12 @@
 
 package nativeaudio
 
-import "time"
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"time"
+)
 
 // Audio latency budget.
 //
@@ -57,8 +62,8 @@ const (
 // turning 512 into 511 and losing the power of two. Rounding up costs a
 // fraction of a millisecond and makes the round trip exact. (A flat slack
 // term does not work: 1 ms is 22 frames too many.)
-func deviceBuffer(rate int) time.Duration {
-	deviceBytes := deviceFrames * 8
+func deviceBuffer(rate int, frames int64) time.Duration {
+	deviceBytes := frames * 8
 	perSecond := int64(rate) * bytesPerFrame
 	return time.Duration((deviceBytes*int64(time.Second) + perSecond - 1) / perSecond)
 }
@@ -71,3 +76,30 @@ func playerBufferBytes(rate int, d time.Duration) int {
 }
 
 const bytesPerFrame = 2 * 2 // stereo, signed 16-bit
+
+// Two environment variables override the buffers for latency experiments,
+// without a rebuild: UNDERTONE_PLAYER_BUFFER, a Go duration such as "20ms",
+// replaces the read-ahead (and any Options.Queue); UNDERTONE_DEVICE_FRAMES
+// replaces deviceFrames, and must be a power of two from 64 to 16384, the
+// range createScriptProcessor accepts. The device buffer is fixed when the
+// first player opens the shared context. A bad value is an error from Open,
+// not a silent fallback, so an experiment never measures the default by
+// mistake.
+func overrides(queue time.Duration) (time.Duration, int64, error) {
+	frames := deviceFrames
+	if v := os.Getenv("UNDERTONE_PLAYER_BUFFER"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return 0, 0, fmt.Errorf("nativeaudio: UNDERTONE_PLAYER_BUFFER=%q is not a positive duration", v)
+		}
+		queue = d
+	}
+	if v := os.Getenv("UNDERTONE_DEVICE_FRAMES"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 64 || n > 16384 || n&(n-1) != 0 {
+			return 0, 0, fmt.Errorf("nativeaudio: UNDERTONE_DEVICE_FRAMES=%q is not a power of two from 64 to 16384", v)
+		}
+		frames = n
+	}
+	return queue, frames, nil
+}

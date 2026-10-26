@@ -49,7 +49,7 @@ func Open(src io.Reader, opt Options) (*Player, error) {
 	if opt.Queue == 0 {
 		opt.Queue = playerBuffer
 	}
-	queue, frames, err := overrides(opt.Queue)
+	queue, frames, err := overrides(opt.SampleRate, opt.Queue)
 	if err != nil {
 		return nil, err
 	}

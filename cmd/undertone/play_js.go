@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"strconv"
 	"syscall/js"
-	"time"
 
 	"github.com/mparrett/undertone/engine"
 	"github.com/mparrett/undertone/webaudio"
@@ -20,9 +19,7 @@ func startPlayback(s io.Reader) (stop func(), err error) {
 		exposeScenes(syn)
 	}
 	go func() {
-		// A bed alone, with no one-shots waiting behind the queue, so it keeps
-		// the slack (as the native CLI does) rather than webaudio's 80 ms.
-		p, err := webaudio.Open(s, webaudio.Options{SampleRate: engine.SampleRate, Queue: 300 * time.Millisecond})
+		p, err := webaudio.Open(s, webaudio.Options{SampleRate: engine.SampleRate})
 		if err != nil {
 			println("undertone:", err.Error())
 			return

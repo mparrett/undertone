@@ -17,11 +17,9 @@
 // queue 267 ms of 300, including with 120 ms main-thread stalls each second.
 //
 // The queue is also latency: a trigger is rendered behind everything already
-// queued, so at 300 ms a one-shot landed 100-300 ms after what caused it. The
-// default is 80 ms since 2026-10-26: playtesting tesserae on an iPhone 13 Pro
-// (TinyGo 0.43 bridge, shared ring, the game's worker drawing alongside), 80
-// sounded tighter than 140 and 300, with no clicks heard. That is ear
-// evidence, not an underrun count. SetQueue changes it while playing.
+// queued, so at the default a one-shot lands up to 300 ms after what caused
+// it. A caller playing one-shots can ask for less, and SetQueue changes it
+// while playing; letgo asks for 80 ms (see letgo/output_js.go).
 //
 // Where the page is cross-origin isolated, the ring is a SharedArrayBuffer
 // the pump writes straight into; elsewhere (most hosting, itch.io embeds
@@ -49,7 +47,7 @@ import (
 type Options struct {
 	SampleRate int           // [44100] of the source; the context is opened at this rate
 	Slice      int           // [512] frames rendered per step
-	Queue      time.Duration // [80 ms] audio kept queued ahead of the speaker; see SetQueue
+	Queue      time.Duration // [300 ms] audio kept queued ahead of the speaker; see SetQueue
 	Budget     time.Duration // [3 ms] longest render run before yielding to the page
 }
 
@@ -138,7 +136,7 @@ func Open(src io.Reader, opt Options) (*Player, error) {
 		opt.Slice = 512
 	}
 	if opt.Queue == 0 {
-		opt.Queue = 80 * time.Millisecond
+		opt.Queue = 300 * time.Millisecond
 	}
 	if opt.Budget == 0 {
 		opt.Budget = 3 * time.Millisecond
@@ -188,6 +186,7 @@ func Open(src io.Reader, opt Options) (*Player, error) {
 		})
 		p.listen()
 	}
+	p.SetQueue(opt.Queue)
 
 	// Prime the queue before connecting, so the first quantum has audio.
 	for p.queued() < p.target() {
@@ -232,14 +231,10 @@ func (p *Player) cacheViews() {
 	}
 }
 
-// target is the queue to keep, in frames. Zero until set means Options.Queue,
-// so a Player made by Open or openWorker needs no extra step.
-func (p *Player) target() int64 {
-	if q := p.queue.Load(); q > 0 {
-		return q
-	}
-	return int64(p.opt.Queue) * int64(p.opt.SampleRate) / int64(time.Second)
-}
+// target is the queue to keep, in frames. Open and openWorker set it through
+// SetQueue, so Options.Queue gets the same clamp: a target the ring can't
+// hold would never be reached, and priming would spin forever.
+func (p *Player) target() int64 { return p.queue.Load() }
 
 // SetQueue changes how much audio is kept queued ahead of the speaker, while
 // playing: a shorter queue hears a trigger sooner, a longer one survives a
@@ -248,10 +243,7 @@ func (p *Player) target() int64 {
 // effect is returned.
 func (p *Player) SetQueue(d time.Duration) time.Duration {
 	f := int64(d) * int64(p.opt.SampleRate) / int64(time.Second)
-	f = max(f, int64(p.opt.Slice))
-	if p.cap > 0 {
-		f = min(f, int64(p.cap-p.opt.Slice))
-	}
+	f = min(max(f, int64(p.opt.Slice)), int64(p.cap-p.opt.Slice))
 	p.queue.Store(f)
 	return time.Duration(f) * time.Second / time.Duration(p.opt.SampleRate)
 }

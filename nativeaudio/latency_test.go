@@ -56,7 +56,7 @@ func TestPlayerBufferIsWellFormedAndSmallerThanOtosDefault(t *testing.T) {
 func TestOverridesReadTheEnvironment(t *testing.T) {
 	t.Setenv("UNDERTONE_PLAYER_BUFFER", "20ms")
 	t.Setenv("UNDERTONE_DEVICE_FRAMES", "256")
-	q, f, err := overrides(500 * time.Millisecond)
+	q, f, err := overrides(44100, 500*time.Millisecond)
 	if err != nil || q != 20*time.Millisecond || f != 256 {
 		t.Fatalf("overrides = %v, %d, %v; want 20ms, 256, nil", q, f, err)
 	}
@@ -75,6 +75,8 @@ func TestOverridesRejectBadValues(t *testing.T) {
 	for _, c := range []struct{ env, val string }{
 		{"UNDERTONE_PLAYER_BUFFER", "fast"},
 		{"UNDERTONE_PLAYER_BUFFER", "-5ms"},
+		{"UNDERTONE_PLAYER_BUFFER", "10us"}, // 0 bytes: oto would read it as its 500 ms default
+		{"UNDERTONE_PLAYER_BUFFER", "5ms"},  // shorter than the 512-frame device buffer
 		{"UNDERTONE_DEVICE_FRAMES", "300"},
 		{"UNDERTONE_DEVICE_FRAMES", "32"},
 		{"UNDERTONE_DEVICE_FRAMES", "32768"},
@@ -82,7 +84,7 @@ func TestOverridesRejectBadValues(t *testing.T) {
 		t.Setenv("UNDERTONE_PLAYER_BUFFER", "")
 		t.Setenv("UNDERTONE_DEVICE_FRAMES", "")
 		t.Setenv(c.env, c.val)
-		if _, _, err := overrides(40 * time.Millisecond); err == nil {
+		if _, _, err := overrides(44100, 40*time.Millisecond); err == nil {
 			t.Errorf("%s=%s: want an error", c.env, c.val)
 		}
 	}
@@ -91,7 +93,7 @@ func TestOverridesRejectBadValues(t *testing.T) {
 func TestOverridesDefaultToTheCaller(t *testing.T) {
 	t.Setenv("UNDERTONE_PLAYER_BUFFER", "")
 	t.Setenv("UNDERTONE_DEVICE_FRAMES", "")
-	q, f, err := overrides(500 * time.Millisecond)
+	q, f, err := overrides(44100, 500*time.Millisecond)
 	if err != nil || q != 500*time.Millisecond || f != deviceFrames {
 		t.Fatalf("overrides = %v, %d, %v; want the caller's 500ms and %d", q, f, err, deviceFrames)
 	}

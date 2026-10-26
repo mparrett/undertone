@@ -286,7 +286,8 @@ itself. The package keeps oto's rules in one place:
   waiting behind it and the slack survives a slow terminal. For latency
   experiments without a rebuild, `UNDERTONE_PLAYER_BUFFER` (a duration such
   as `20ms`) and `UNDERTONE_DEVICE_FRAMES` (a power of two from 64 to 16384)
-  override both buffers; a bad value is an error from `Open`.
+  override both buffers; a bad value, or a read-ahead shorter than the device
+buffer, is an error from `Open`.
 
 ## In the browser
 
@@ -296,12 +297,12 @@ audio thread's refill deadline, and Go's wasm has one thread with no
 preemption, so on a phone the burst overran the deadline and crackled at every
 buffer size tried. `webaudio` decouples the two: an AudioWorklet only copies
 out of a ring, and a goroutine renders 512-frame slices within a 3 ms budget
-until the queue is full, then yields to the page. The queue is 80 ms by
-default and doubles as latency, since a one-shot is rendered behind whatever
-is already queued; `Options.Queue` sets it and `Player.SetQueue` changes it
-while playing. At 300 ms, the default before 2026-10-26, game sounds landed
-100–300 ms after what caused them; 80 ms played without a heard click on an
-iPhone 13 Pro. Where the page is
+until about 300 ms is queued, then yields to the page. The queue doubles as
+latency, since a one-shot is rendered behind whatever is already queued:
+`Options.Queue` sets it and `Player.SetQueue` changes it while playing.
+`letgo` asks for 80 ms, because at 300 a game's sounds landed 100–300 ms after
+what caused them; 80 ms played without a heard click on an iPhone 13 Pro
+(2026-10-26). Where the page is
 cross-origin isolated the ring is a SharedArrayBuffer; elsewhere slices travel
 as transferred messages. Both played without a dropout on an iPhone, including
 under 120 ms main-thread stalls.

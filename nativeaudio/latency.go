@@ -85,7 +85,7 @@ const bytesPerFrame = 2 * 2 // stereo, signed 16-bit
 // first player opens the shared context. A bad value is an error from Open,
 // not a silent fallback, so an experiment never measures the default by
 // mistake.
-func overrides(queue time.Duration) (time.Duration, int64, error) {
+func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
 	frames := deviceFrames
 	if v := os.Getenv("UNDERTONE_PLAYER_BUFFER"); v != "" {
 		d, err := time.ParseDuration(v)
@@ -100,6 +100,13 @@ func overrides(queue time.Duration) (time.Duration, int64, error) {
 			return 0, 0, fmt.Errorf("nativeaudio: UNDERTONE_DEVICE_FRAMES=%q is not a power of two from 64 to 16384", v)
 		}
 		frames = n
+	}
+	// Shorter than one device buffer can't help (the device drains whole
+	// buffers), and under one frame it rounds to 0 bytes, which oto reads as
+	// "use the half-second default" — the silent fallback this rejects.
+	if queue < deviceBuffer(rate, frames) {
+		return 0, 0, fmt.Errorf("nativeaudio: a read-ahead of %v is shorter than the %d-frame device buffer (%v)",
+			queue, frames, deviceBuffer(rate, frames))
 	}
 	return queue, frames, nil
 }

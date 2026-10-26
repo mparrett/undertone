@@ -81,10 +81,50 @@ d}`) moves its size or damping; one room serves the whole mix, one-shots
 included.
 
 **The sequencer is a fixed grid.** A pattern is 16 rows at two rows per beat,
-so two bars. Drums play 16th notes within it, with swing, probability steps and
-ratchets (`r`, and `R` when tension allows: three hits within the 16th); the
-melodic tracks fire on rows only. There are no polymeters or flams, and every
-pattern is the same length.
+so two bars. Drums play 16th notes within it, with swing, probability steps,
+ratchets, flams and polymetric lanes (see [Groove notation](#groove-notation));
+the melodic tracks fire on rows only, and every pattern is the same length.
+
+### Groove notation
+
+A groove lane, or a grid's drum lane, is a string of 16ths:
+
+| step | plays |
+|---|---|
+| `X` `x` `o` | accent, hit, ghost |
+| `.` | rest |
+| `?` | a hit with probability `DrumBusy` |
+| `f` | a fill hit with probability 0.15 + 0.6 × tension |
+| `r` | a ratchet: three hits within the 16th, each quieter |
+| `R` | a ratchet with probability tension, else a plain hit |
+| `g` | a flam: a grace hit 25 ms before the 16th at half its level, then the hit |
+| `G` | a flam with probability tension, else a plain hit |
+
+A grid plays the fixed steps only (`X x o g .`); anything else rests.
+
+**Flams** lead their beat by 25 ms, capped at half a 16th for very fast
+tempos. Played flams sit 15 to 40 ms apart: closer and the two strokes fuse
+into one thick hit, further and they read as two notes. The grace is at half
+the hit's level, about a ghost note under a hit. Since the grace sounds before
+its row steps, the scheduler looks ahead a lead before every row, into the
+next pattern or the first row of a grid when that comes next. A row with no
+row before it, the synth's first or a theme's, is held back by the lead when
+it flams, so the grace still comes first. A grid set less than the lead
+before its first row misses that row's graces.
+
+**Polymetric lanes** end in `|`: the steps before it loop at their own
+length instead of filling the pattern, so `x..|` hits every third 16th and
+drifts against the bar. A lane without the `|` is read as before: one
+pattern, and in a grid a short lane rests for the remainder. A polymetric
+lane runs on across pattern boundaries rather than restarting each pattern,
+counted in 16ths from where its run began:
+
+- a groove's lanes count from the synth's first pattern, so the phase in any
+  pattern follows from the seed and the start;
+- a grid's lanes count from the row its run began: a theme starting, or the
+  drums passing between the generator, a `SetGrid` grid and a theme. Edits
+  through `SetGrid` and a theme moving to its next grid or looping keep it
+  running.
 
 **Patches are code.** Built-in patches are Go tables. A game can add one-shots
 through `ShotSpec` (validated, fuzzed), but a mood's palette can only use
@@ -142,8 +182,8 @@ test can extend.
 4. **`crush`: hold and bit depth** (done). Mid-tread, so silence stays silent.
 5. **A reverb bus** beside the delay (done): a damped Freeverb-style network,
    with a Dattorro plate as the next step if it falls short.
-6. **Groove ratchets** (done), as groove syntax, so syncopation stays data.
-   Flams, which need a hit just before the grid, are not in yet. Rust plays
+6. **Groove ratchets, flams and polymeters** (done), as groove syntax, so
+   syncopation stays data. Rust plays
    them in its `machine` groove on the industrial kit (`slam`, `clank`,
    `tick`, built from the grit ops), which a palette can now carry in place of
    the village kit. Its drums come only with tension: `tenseDrums` brings in

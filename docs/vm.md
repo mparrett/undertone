@@ -140,7 +140,8 @@ test can extend.
    them in its `machine` groove on the industrial kit (`slam`, `clank`,
    `tick`, built from the grit ops), which a palette can now carry in place of
    the village kit. Its drums come only with tension: `tenseDrums` brings in
-   drums the level leaves silent, from a quarter tension up.
+   drums the level leaves silent, from a quarter tension up. `forge` plays
+   the same groove and kit at rest.
 
 The cost to watch is per-sample math. A fixed `svf` computes its coefficient
 once per note, as `lpf` does; a swept one recomputes it every 16 samples. On

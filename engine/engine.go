@@ -1081,6 +1081,17 @@ type Synth struct {
 	offSeed [nDrums]uint64
 	offN    [nDrums]int // how many times the armed off 16th ratchets
 	rat     [nDrums]ratchet
+	// an off 16th's flam grace, armed as offLeft is; an on 16th's plays
+	// from flamsAhead instead
+	graceLeft [nDrums]int
+	graceGain [nDrums]float64
+	graceSeed [nDrums]uint64
+	// owner of the last row stepped (ownGen, ownGrid, ownTheme) and the row
+	// its grid's polymetric lanes count from
+	owner, runFrom int
+	// the next row has no row before it to lead its flams in from: the
+	// synth's first, or a theme's
+	leadIn bool
 
 	// VU meter tap: read-only from the synthesis path's view — nothing
 	// here feeds back into the samples, so renders stay byte-identical.
@@ -1157,7 +1168,7 @@ func NewSynth(p Params) *Synth {
 	// even one whose mood never sends to it: a mood or one-shot that does may
 	// arrive at any pattern boundary, on the audio thread, which must not
 	// allocate them.
-	s := &Synth{voices: make([]Voice, nTracks), verb: newReverb()}
+	s := &Synth{voices: make([]Voice, nTracks), verb: newReverb(), leadIn: true}
 	s.musicGain.Store(math.Float64bits(1))
 	s.apply(p)
 	return s
@@ -1306,6 +1317,7 @@ func (s *Synth) revoice(t, pat, row int) {
 }
 
 func (s *Synth) step() {
+	_, s.owner, s.runFrom = s.nextOwner()
 	if s.row == 0 {
 		s.advanceTheme()
 		if p := s.next.Swap(nil); p != nil {
@@ -1358,6 +1370,13 @@ func (s *Synth) frame() (int16, int16) {
 			s.startTheme(c)
 		}
 	}
+	if s.leadIn {
+		// hold the row back so its flams' graces can sound first
+		s.leadIn = false
+		if s.rowLeft == 0 && s.flamsAhead(false) {
+			s.rowLeft = s.flamLead()
+		}
+	}
 	if s.rowLeft == 0 {
 		s.step()
 		s.rowLeft = s.samplesPerRow
@@ -1366,6 +1385,9 @@ func (s *Synth) frame() (int16, int16) {
 		if p := s.now.Swap(nil); p != nil {
 			s.applyNow(*p)
 		}
+	}
+	if s.rowLeft == s.flamLead() {
+		s.flamsAhead(true)
 	}
 	s.rowLeft--
 	s.nframe++

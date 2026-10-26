@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -398,6 +399,162 @@ func TestOpenLeavesTheDrumsAlone(t *testing.T) {
 	for d, v := range s.dvoices {
 		if v.open != 0 || v.openTo != 0 {
 			t.Errorf("drum lane %d has open %v toward %v", d, v.open, v.openTo)
+		}
+	}
+}
+
+// strikes renders n frames and returns the frame and gain of each strike on
+// lane d, read as a change of the lane's gain: the tests below alternate a
+// grace and its main hit, which differ.
+func strikes(s *Synth, d, n int) (at []int64, gain []float64) {
+	last := s.dvoices[d].gain
+	for range n {
+		f := s.nframe
+		render(s, 1)
+		if g := s.dvoices[d].gain; g != last {
+			at, gain, last = append(at, f), append(gain, g), g
+		}
+	}
+	return at, gain
+}
+
+// checkFlams checks that strikes come as flams: a grace at flamGrace of its
+// main hit, flamLead frames before it, with each main hit at a frame in want.
+func checkFlams(t *testing.T, s *Synth, at []int64, gain []float64, want []int64) {
+	t.Helper()
+	if len(at) != 2*len(want) {
+		t.Fatalf("struck at %v, gains %v; want %d flams", at, gain, len(want))
+	}
+	for i, w := range want {
+		grace, main := 2*i, 2*i+1
+		if at[main] != w || at[main]-at[grace] != int64(s.flamLead()) {
+			t.Errorf("flam %d: grace at %d, hit at %d; want hit at %d, %d frames after its grace", i, at[grace], at[main], w, s.flamLead())
+		}
+		if math.Abs(gain[grace]-flamGrace*gain[main]) > 1e-12 {
+			t.Errorf("flam %d: grace at gain %.3g under a hit at %.3g", i, gain[grace], gain[main])
+		}
+	}
+}
+
+// A flam's grace sounds before its 16th: on a grid's first row, within a
+// pattern, on an off 16th, and across the boundary into the next pattern.
+func TestFlamGraceLeadsItsStep(t *testing.T) {
+	p, _ := DeriveMood("aurora", 1, 2, 0)
+	s := NewSynth(p)
+	s.SetGrid(&Grid{Drums: [DrumLanes]string{"g........g"}})
+	spr, lead := int64(s.samplesPerRow), int64(s.flamLead())
+	half := int64(max(1, int(float64(spr)*(0.5+s.params.Swing))))
+	// the first row is held back by the lead, so its grace can go first
+	at, gain := strikes(s, 0, int(lead+17*spr))
+	checkFlams(t, s, at, gain, []int64{lead, lead + 4*spr + half - 1, lead + 16*spr})
+}
+
+// A groove's flam on its first 16th leads in from the last row of the
+// pattern before, and a theme whose first row flams holds that row back by
+// the lead rather than letting the beat land with no grace before it.
+func TestFlamAcrossPatternsAndAtAThemeStart(t *testing.T) {
+	grooveLib["flamtest"] = groove{"g"}
+	t.Cleanup(func() { delete(grooveLib, "flamtest") })
+	p, _ := DeriveMood("aurora", 1, 2, 0)
+	p.Groove, p.DrumGain = "flamtest", 1
+	s := NewSynth(p)
+	spr, lead := int64(s.samplesPerRow), int64(s.flamLead())
+	at, gain := strikes(s, 0, int(lead+32*spr+1))
+	checkFlams(t, s, at, gain, []int64{lead, lead + 16*spr, lead + 32*spr})
+
+	render(s, 5*int(spr)) // mid-pattern
+	s.PlayTheme(&Theme{Grids: []Grid{{Drums: [DrumLanes]string{"g"}}}})
+	start := (s.nframe/nowBlock + 1) * nowBlock // the block the theme starts in
+	at, gain = strikes(s, 0, int(start-s.nframe+lead+1))
+	checkFlams(t, s, at, gain, []int64{start + lead})
+	if s.row != 1 || s.theme == nil {
+		t.Errorf("after the flam: row %d, theme %v; want the theme's row 0 just stepped", s.row, s.theme != nil)
+	}
+}
+
+// onHits steps n rows and returns the sixteenths at which lane d hit, on and
+// off, counted from the first row stepped.
+func onHits(s *Synth, d, n int) []int {
+	var hits []int
+	for i := range n {
+		row := s.row
+		s.step()
+		if h := s.drums[d][row]; h.on > 0 {
+			hits = append(hits, 2*i)
+		}
+		if h := s.drums[d][row]; h.off > 0 {
+			hits = append(hits, 2*i+1)
+		}
+	}
+	return hits
+}
+
+// A polymetric grid lane loops at its own length and runs on across pattern
+// boundaries and edits; it restarts when a grid takes over from the
+// generator and when a theme starts. A plain short lane still rests for the
+// remainder of the pattern.
+func TestPolymetricGridLanePhases(t *testing.T) {
+	p, _ := DeriveMood("aurora", 1, 2, 0)
+	s := NewSynth(p)
+	g := Grid{Drums: [DrumLanes]string{"x..|", "x.."}}
+	s.SetGrid(&g)
+	var every3 []int
+	for i := 0; i < 4*rows; i += 3 {
+		every3 = append(every3, i)
+	}
+	if got := onHits(s, 0, 2*rows); !slices.Equal(got, every3) {
+		t.Errorf("polymetric lane over two patterns hit at %v, want every third 16th %v", got, every3)
+	}
+	// across an edit, a hand-back and a fresh grid
+	s = NewSynth(p)
+	s.SetGrid(&g)
+	onHits(s, 0, 5) // ten 16ths: the lane is a 16th into its fourth loop
+	edit := g
+	edit.Drums[2] = "x"
+	s.SetGrid(&edit)
+	if got := onHits(s, 0, 2); !slices.Equal(got, []int{2}) {
+		t.Errorf("after an edit the lane hit at %v, want [2]: an edit keeps it running", got)
+	}
+	s.SetGrid(nil)
+	onHits(s, 0, 1)
+	s.SetGrid(&g)
+	if got := onHits(s, 0, 2); !slices.Equal(got, []int{0, 3}) {
+		t.Errorf("a grid taking over from the generator hit at %v, want [0 3]: a fresh run", got)
+	}
+	s = NewSynth(p)
+	s.SetGrid(&g)
+	if plain := onHits(s, 1, 2*rows); !slices.Equal(plain, []int{0, 32}) {
+		t.Errorf("a plain short lane hit at %v, want [0 32]: once a pattern, resting after", plain)
+	}
+
+	// a theme starts its lanes afresh, even cutting in mid-loop
+	s = NewSynth(p)
+	s.SetGrid(&g)
+	onHits(s, 0, 5)
+	s.startTheme(&themeCmd{t: &Theme{Grids: []Grid{g, g}, Then: ThenLoop}, gen: 1})
+	if got := onHits(s, 0, rows+2); !slices.Equal(got, every3[:12]) {
+		t.Errorf("a theme's lane hit at %v, want %v: fresh at its start and running into its second grid", got, every3[:12])
+	}
+}
+
+// A polymetric groove lane counts from the synth's first pattern, so its
+// phase in any pattern follows from the seed and the pattern alone.
+func TestPolymetricGrooveLaneRunsFromTheFirstPattern(t *testing.T) {
+	grooveLib["polytest"] = groove{"x..|"}
+	t.Cleanup(func() { delete(grooveLib, "polytest") })
+	p, _ := DeriveMood("aurora", 1, 2, 0)
+	p.Groove, p.DrumGain = "polytest", 1
+	for pat := range 4 {
+		d := buildDrums(p, pat)
+		for i := range 2 * rows {
+			h := d[0][i/2]
+			hit := h.on > 0
+			if i%2 == 1 {
+				hit = h.off > 0
+			}
+			if want := (2*rows*pat+i)%3 == 0; hit != want {
+				t.Errorf("pattern %d 16th %d: hit %v, want %v", pat, i, hit, want)
+			}
 		}
 	}
 }

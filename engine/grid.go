@@ -17,9 +17,10 @@ const DrumLanes = nDrums
 // grid stays in key when the mood or root changes. Lead and bass replace the
 // generator's lead and fifth voices; pulse replaces its tension pulse. Drums
 // replace the generator's drums, one lane each for kick, clap and shaker, in
-// groove notation: 2*Steps sixteenths of X (accent), x (hit), o (ghost) or .
-// (rest); a short lane rests for the remainder. With Bed set, the generator
-// keeps playing drone, pad and air underneath.
+// groove notation: 2*Steps sixteenths of X (accent), x (hit), o (ghost), g
+// (flam) or . (rest); a short lane rests for the remainder, and a lane ending
+// in | loops at its own length instead (polymetric). With Bed set, the
+// generator keeps playing drone, pad and air underneath.
 type Grid struct {
 	Lead  [Steps]int
 	Bass  [Steps]int
@@ -100,7 +101,7 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 		}
 	}
 	for d, lane := range g.Drums {
-		s.drums[d][row] = drumHit{on: gridDrumGain * drumAt(lane, 2*row), off: gridDrumGain * drumAt(lane, 2*row+1)}
+		s.drums[d][row] = gridHit(lane, row, s.pat*rows+row-s.runFrom)
 	}
 	s.pats[trackLead][row] = trackRow{}
 	if d := g.Lead[row]; d > 0 {
@@ -153,7 +154,12 @@ func SeedGrid(p Params) Grid {
 		for d, lane := range groove {
 			b := []byte(lane)
 			for i := range b {
-				switch v := stepLevel(b[i], p, &r); {
+				if b[i] == '|' { // a polymetric lane stays one
+					continue
+				}
+				switch v, _, flam := stepHit(b[i], p, &r); {
+				case flam:
+					b[i] = 'g'
 				case v >= 0.85:
 					b[i] = 'X'
 				case v >= 0.55:
@@ -170,13 +176,14 @@ func SeedGrid(p Params) Grid {
 	return g
 }
 
-// drumAt is the level of sixteenth i in a grid drum lane; anything but an
-// accent, hit or ghost rests.
-func drumAt(lane string, i int) float64 {
-	if i >= len(lane) {
-		return 0
+// gridHit is a grid drum lane's hit at row, run rows into the grid's run. A
+// grid plays the fixed steps only, X x o and g; anything else rests.
+func gridHit(lane string, row, run int) drumHit {
+	on, off := laneStep(lane, 2*row, 2*run), laneStep(lane, 2*row+1, 2*run+1)
+	return drumHit{
+		on: gridDrumGain * drumLevel(on), off: gridDrumGain * drumLevel(off),
+		onFlam: on == 'g', offFlam: off == 'g',
 	}
-	return drumLevel(lane[i])
 }
 
 // RowAt reports which grid row was sounding at a given output frame, for a

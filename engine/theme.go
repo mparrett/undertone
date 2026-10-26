@@ -65,7 +65,7 @@ func (s *Synth) startTheme(c *themeCmd) {
 	if s.row != 0 {
 		s.pat++ // the cut pattern ends here; the bed draws a fresh one
 	}
-	s.row, s.rowLeft = 0, 0
+	s.row, s.rowLeft, s.leadIn = 0, 0, true
 }
 
 // playingGrid is the grid that owns this pattern: the theme's, the silence
@@ -86,23 +86,68 @@ func (s *Synth) advanceTheme() {
 	if s.theme == nil {
 		return
 	}
-	if s.themeFresh {
-		s.themeFresh = false
+	at := s.themeNext()
+	s.themeFresh = false
+	if at >= 0 {
+		s.themeAt = at
 		return
 	}
-	s.themeAt++
-	if s.themeAt < len(s.theme.Grids) {
-		return
-	}
-	switch s.theme.Then {
-	case ThenLoop:
-		s.themeAt = 0
-		return
-	case ThenSilence:
+	if s.theme.Then == ThenSilence {
 		s.silent = true
 	}
 	s.theme = nil
 	s.finishTheme(s.themeOf)
+}
+
+// themeNext is the grid advanceTheme moves the playing theme to, or -1 when
+// the theme ends there.
+func (s *Synth) themeNext() int {
+	switch {
+	case s.themeFresh:
+		return s.themeAt
+	case s.themeAt+1 < len(s.theme.Grids):
+		return s.themeAt + 1
+	case s.theme.Then == ThenLoop:
+		return 0
+	}
+	return -1
+}
+
+// Who owns a row's drums. A grid's polymetric lanes run on while the owner
+// stays the same, through a theme's grids and SetGrid's edits alike.
+const (
+	ownGen = iota
+	ownGrid
+	ownTheme // and the silence after one
+)
+
+// nextOwner is the grid that will own the row about to step (nil for the
+// generator), its owner, and the row its polymetric lanes will count from:
+// that row itself when a theme starts or the owner changes there. It reads
+// ahead, as step will find things once advanceTheme has run.
+func (s *Synth) nextOwner() (g *Grid, own, from int) {
+	theme, silent, at, fresh := s.theme != nil, s.silent, s.themeAt, false
+	if theme && s.row == 0 {
+		fresh = s.themeFresh
+		if at = s.themeNext(); at < 0 {
+			theme, silent = false, s.theme.Then == ThenSilence
+		}
+	}
+	switch {
+	case theme:
+		g, own = &s.theme.Grids[at], ownTheme
+	case silent:
+		g, own = &silence, ownTheme
+	default:
+		if g = s.grid.Load(); g != nil {
+			own = ownGrid
+		}
+	}
+	from = s.runFrom
+	if fresh || own != s.owner {
+		from = s.pat*rows + s.row
+	}
+	return g, own, from
 }
 
 // finishTheme records that call gen has finished. themeDone only rises, so a

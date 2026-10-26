@@ -46,6 +46,7 @@ func openWorker(src io.Reader, opt Options) (*Player, error) {
 	p.data = g.Get("Uint8Array").New(samples)
 	p.ctrl = g.Get("Int32Array").New(ctrl)
 	p.cacheViews()
+	p.SetQueue(opt.Queue)
 
 	for p.queued() < p.target() {
 		if err := p.push(); err != nil {

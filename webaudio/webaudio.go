@@ -16,6 +16,11 @@
 // paying for it. Measured on an iPhone over HTTPS: clean, 0 underruns, lowest
 // queue 267 ms of 300, including with 120 ms main-thread stalls each second.
 //
+// The queue is also latency: a trigger is rendered behind everything already
+// queued, so at the default a one-shot lands up to 300 ms after what caused
+// it. A caller playing one-shots can ask for less, and SetQueue changes it
+// while playing; letgo asks for 80 ms (see letgo/output_js.go).
+//
 // Where the page is cross-origin isolated, the ring is a SharedArrayBuffer
 // the pump writes straight into; elsewhere (most hosting, itch.io embeds
 // without isolation) slices reach the worklet as transferred messages. Both
@@ -42,7 +47,7 @@ import (
 type Options struct {
 	SampleRate int           // [44100] of the source; the context is opened at this rate
 	Slice      int           // [512] frames rendered per step
-	Queue      time.Duration // [300 ms] audio kept queued ahead of the speaker
+	Queue      time.Duration // [300 ms] audio kept queued ahead of the speaker; see SetQueue
 	Budget     time.Duration // [3 ms] longest render run before yielding to the page
 }
 
@@ -56,6 +61,7 @@ type Player struct {
 
 	sent, played atomic.Int64 // frames posted to / consumed by the worklet
 	underruns    atomic.Int64
+	queue        atomic.Int64 // frames to keep queued (Options.Queue, then SetQueue)
 	closed       atomic.Bool
 	held         atomic.Bool // paused on purpose: gestures must not resume it
 	closeOnce    sync.Once
@@ -180,6 +186,7 @@ func Open(src io.Reader, opt Options) (*Player, error) {
 		})
 		p.listen()
 	}
+	p.SetQueue(opt.Queue)
 
 	// Prime the queue before connecting, so the first quantum has audio.
 	for p.queued() < p.target() {
@@ -224,8 +231,21 @@ func (p *Player) cacheViews() {
 	}
 }
 
-func (p *Player) target() int64 {
-	return int64(p.opt.Queue) * int64(p.opt.SampleRate) / int64(time.Second)
+// target is the queue to keep, in frames. Open and openWorker set it through
+// SetQueue, so Options.Queue gets the same clamp: a target the ring can't
+// hold would never be reached, and priming would spin forever.
+func (p *Player) target() int64 { return p.queue.Load() }
+
+// SetQueue changes how much audio is kept queued ahead of the speaker, while
+// playing: a shorter queue hears a trigger sooner, a longer one survives a
+// busier page. Lowering it lets the queue drain down; raising it refills. It
+// is held between one slice and the ring less one slice, and the value in
+// effect is returned.
+func (p *Player) SetQueue(d time.Duration) time.Duration {
+	f := int64(d) * int64(p.opt.SampleRate) / int64(time.Second)
+	f = min(max(f, int64(p.opt.Slice)), int64(p.cap-p.opt.Slice))
+	p.queue.Store(f)
+	return time.Duration(f) * time.Second / time.Duration(p.opt.SampleRate)
 }
 
 // queued counts slices still in flight to the worklet as queued. Topping up

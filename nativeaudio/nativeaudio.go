@@ -49,13 +49,18 @@ func Open(src io.Reader, opt Options) (*Player, error) {
 	if opt.Queue == 0 {
 		opt.Queue = playerBuffer
 	}
+	queue, frames, err := overrides(opt.SampleRate, opt.Queue)
+	if err != nil {
+		return nil, err
+	}
+	opt.Queue = queue
 	ctxOnce.Do(func() {
 		ctxRate = opt.SampleRate
 		ctx, ctxReady, ctxErr = oto.NewContext(&oto.NewContextOptions{
 			SampleRate:   opt.SampleRate,
 			ChannelCount: 2,
 			Format:       oto.FormatSignedInt16LE,
-			BufferSize:   deviceBuffer(opt.SampleRate),
+			BufferSize:   deviceBuffer(opt.SampleRate, frames),
 		})
 	})
 	if ctxErr != nil {

@@ -58,9 +58,12 @@ func deriveSpec(a []vm.Value) (vm.Value, error) {
 	for i, d := range p.Scale {
 		scale[i] = vm.Int(d)
 	}
-	groove := vm.Keyword("none")
+	groove, lead := vm.Keyword("none"), vm.Keyword("none")
 	if p.Groove != "" {
 		groove = vm.Keyword(p.Groove)
+	}
+	if p.LeadName != "" {
+		lead = vm.Keyword(p.LeadName)
 	}
 	return vm.NewPersistentMap([]vm.Value{
 		vm.Keyword("seed"), vm.Int(int64(p.Seed)),
@@ -79,7 +82,7 @@ func deriveSpec(a []vm.Value) (vm.Value, error) {
 		vm.Keyword("room-damp"), vm.Float(p.Room.Damp),
 		vm.Keyword("fifth-offset"), vm.Int(p.FifthOffset),
 		vm.Keyword("bell-lift"), vm.Int(p.BellLift),
-		vm.Keyword("lead"), vm.Keyword(p.LeadName),
+		vm.Keyword("lead"), lead,
 		vm.Keyword("groove"), groove,
 		vm.Keyword("drum-gain"), vm.Float(p.DrumGain),
 		vm.Keyword("drum-busy"), vm.Float(p.DrumBusy),
@@ -210,11 +213,15 @@ func onlyKeys(m *vm.PersistentMap, known map[string]bool) error {
 	return nil
 }
 
-// names reads a vector of keywords or strings.
+// names reads a vector of keywords or strings. An empty one reads as nil,
+// as MoodByName exports a mood without leads.
 func names(m *vm.PersistentMap, k string) ([]string, error) {
 	vec, ok := at(m, k).(vm.ArrayVector)
 	if !ok {
 		return nil, fmt.Errorf(":%s must be a vector of names", k)
+	}
+	if len(vec) == 0 {
+		return nil, nil
 	}
 	out := make([]string, len(vec))
 	for i, e := range vec {

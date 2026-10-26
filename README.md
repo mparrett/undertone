@@ -35,10 +35,14 @@ namespace without lgx.
 
 Music parameters come from game state:
 
-- **mood**: `dungeon` (minor ladder, saw drone, fifth), `overworld`
+- **mood**: `dungeon` (minor ladder, saw drone, fifth), `void` (past the
+  dungeon: lower and slower, phrygian to locrian, a lowpassed drone and
+  rumble in a large, dark room), `overworld`
   (mixolydian → major → lydian with elevation, sine bed, lifted bells),
   `meadow` (major, high and airy: near-silent drone, dense lifted bells),
   `aurora` (slow lydian veils through the delay, no drone, the odd chime),
+  `stratosphere` (above aurora: thinner still, a high sine haze and wind in
+  an open, bright room, with no lead),
   `village` (the first with drums: a swung kick, clap and shaker under
   kalimba and pluck, building to a festival with level), `rust`
   (industrial: detuned saws through swept resonant filters, a hiss bed, a

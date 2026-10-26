@@ -38,7 +38,7 @@ type mood struct {
 	calm     int // the second drone's interval from the chord at low tension; positive floats above it
 	bellLift int
 	palette  Palette
-	leads    []string // the seed picks one; repeats are the weights
+	leads    []string // the seed picks one; repeats are the weights; none leaves the lead silent
 
 	// Drums, for rhythmic moods; the zero values leave them off.
 	grooves []string // grooveLib names; the seed picks one
@@ -75,6 +75,26 @@ var moods = []mood{
 		calm:    -5, // perfect fifth above the low drone
 		palette: dungeonPalette,
 		leads:   dungeonLeads,
+	},
+	// Past the dungeon: where depth would take it if it kept going. Nine
+	// semitones under the dungeon and slower at every level, phrygian
+	// turning locrian, the drone and rumble lowpassed down to a pressure,
+	// pads swelling an octave down, and the odd chime far off in a large,
+	// dark room. Level sinks it further and thins what little moves.
+	{
+		name:     "void",
+		scales:   scalesForVoid,
+		bpm:      lin(42, -1).atLeast(34),
+		rootBase: 48, rootStep: -1,
+		drone:   lin(0.6, 0.03).atMost(0.8),
+		fifth:   lin(0.15, 0.04).atMost(0.45),
+		pad:     lin(0.45, -0.03).atLeast(0.2),
+		bell:    lin(0.07, -0.01).atLeast(0.02),
+		air:     lin(0.35, 0.03).atMost(0.55),
+		calm:    -5, // perfect fifth above the low drone
+		palette: voidPalette,
+		leads:   voidLeads,
+		room:    Room{Size: 0.8, Damp: 0.6},
 	},
 	// The bright mirror: elevation raises and opens (mixolydian -> major ->
 	// lydian, higher root, denser lifted bells, breeze instead of rumble).
@@ -130,6 +150,24 @@ var moods = []mood{
 		calm:    7, // a fifth above the chord, floating over it
 		palette: auroraPalette,
 		leads:   auroraLeads,
+	},
+	// Above the aurora: thinner still, with no lead at all. No drone, a
+	// single sine haze an octave over the chord, higher than aurora's veils,
+	// and wind, in an open, bright room. Level climbs: the root rises and
+	// the haze fills in a little.
+	{
+		name:     "stratosphere",
+		scales:   scalesForAurora,
+		bpm:      lin(46, 1).atMost(52),
+		rootBase: 74, rootStep: 1,
+		drone:   lin(0, 0),
+		fifth:   lin(0.2, 0.01).atMost(0.3),
+		pad:     lin(0.55, 0.02).atMost(0.7),
+		bell:    lin(0, 0),
+		air:     lin(0.3, 0.02).atMost(0.4),
+		calm:    12, // an octave above the chord: the thinnest interval
+		palette: stratospherePalette,
+		room:    Room{Size: 0.4, Damp: -0.8},
 	},
 	// The first mood with drums: a warm daytime village, mixolydian turning
 	// major, a light shuffle under kalimba and pluck. Level is the day
@@ -207,10 +245,6 @@ var moods = []mood{
 		busy:  lin(0.35, 0.05).atMost(0.6),
 		swing: 0.06,
 	},
-	// Candidates for later moods, on the dark-to-bright axis:
-	//   - Past dungeon, darker (Void, Below or Hades): lower and slower
-	//     than depth reaches today, perhaps with a new low patch.
-	//   - Stratosphere, a sibling of aurora: thinner still, with no lead.
 	// The table cannot express pentatonic scales yet: the sequencer and grid
 	// assume seven degrees.
 }

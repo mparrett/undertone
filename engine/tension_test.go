@@ -1,6 +1,10 @@
 package engine
 
-import "testing"
+import (
+	"math"
+	"reflect"
+	"testing"
+)
 
 func TestTensionZeroIsInert(t *testing.T) {
 	p := DeriveDungeon(1, 5, 0)
@@ -167,5 +171,113 @@ func TestAuroraIsThin(t *testing.T) {
 	}
 	if p, _ := DeriveMood("aurora", 1, 0, 0); p.Palette.Pad[3].op != opSend {
 		t.Fatal("aurora's pad should send into the delay")
+	}
+}
+
+// Stratosphere has no lead: it derives no lead name, and across levels,
+// tensions and patterns the lead track strikes nothing, so tension's
+// agitation cannot bring one in either.
+func TestStratosphereLeadStaysSilent(t *testing.T) {
+	for _, seed := range []uint64{1, 7, 42} {
+		for _, level := range []int{0, 5, 20} {
+			for _, tension := range []float64{0, 0.5, 1} {
+				p, ok := DeriveMood("stratosphere", seed, level, tension)
+				if !ok {
+					t.Fatal("stratosphere is not in the mood table")
+				}
+				if p.LeadName != "" {
+					t.Fatalf("stratosphere picked lead %q", p.LeadName)
+				}
+				for pat := range 8 {
+					for _, r := range buildPatterns(p, pat)[3] {
+						if r.patch != nil {
+							t.Fatalf("seed %d level %d tension %v pattern %d: the lead track plays %+v", seed, level, tension, pat, r)
+						}
+					}
+				}
+			}
+		}
+	}
+	aur, _ := DeriveMood("aurora", 1, 3, 0)
+	str, _ := DeriveMood("stratosphere", 1, 3, 0)
+	if str.Root <= aur.Root || str.PadDensity >= aur.PadDensity || str.DroneGain != 0 {
+		t.Errorf("stratosphere root/pad/drone %d/%v/%v, want above aurora's %d, thinner than %v, and no drone",
+			str.Root, str.PadDensity, str.DroneGain, aur.Root, aur.PadDensity)
+	}
+}
+
+// A mood without leads keeps a bell line's walk but strikes nothing, and the
+// walk's draws keep the rest of the pattern as it was with a lead.
+func TestLeadlessSpecSilencesOnlyTheLead(t *testing.T) {
+	s, _ := MoodByName("dungeon")
+	with, _ := s.Derive(7, 2, 1)
+	s.Leads = nil
+	without, err := s.Derive(7, 2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if without.BellDensity == 0 {
+		t.Fatal("the test needs a bell line that plays")
+	}
+	// A grid's lead is authored, so it still plays, on the palette's bell.
+	syn := NewSynth(without)
+	syn.SetGrid(&Grid{Lead: [Steps]int{1}})
+	syn.Read(make([]byte, 4*syn.samplesPerRow))
+	if !samePatch(syn.pats[trackLead][0].patch, bell) {
+		t.Error("a grid's lead does not play on the palette's bell in a mood without a lead")
+	}
+	for pat := range 8 {
+		a, b := buildPatterns(with, pat), buildPatterns(without, pat)
+		if !reflect.DeepEqual(b[3], [rows]trackRow{}) {
+			t.Fatalf("pattern %d: the lead track plays without a lead", pat)
+		}
+		a[3] = b[3]
+		if !reflect.DeepEqual(a, b) {
+			t.Fatalf("pattern %d: dropping the lead changed the other tracks", pat)
+		}
+	}
+}
+
+// Void is past the dungeon: lower and slower at every level and tension.
+func TestVoidIsBelowTheDungeon(t *testing.T) {
+	for _, seed := range []uint64{1, 7, 42} {
+		for level := 0; level <= 20; level++ {
+			for _, tension := range []float64{0, 0.5, 1} {
+				dun := DeriveDungeon(seed, level, tension)
+				void, ok := DeriveMood("void", seed, level, tension)
+				if !ok {
+					t.Fatal("void is not in the mood table")
+				}
+				if void.Root >= dun.Root || void.BPM >= dun.BPM {
+					t.Errorf("seed %d level %d tension %v: void root/bpm %d/%v, dungeon %d/%v",
+						seed, level, tension, void.Root, void.BPM, dun.Root, dun.BPM)
+				}
+			}
+		}
+	}
+	if p, _ := DeriveMood("void", 1, 0, 0); p.Room == (Room{}) {
+		t.Error("void plays in the default room")
+	}
+}
+
+// Void's large room builds on its low bed; its loudest scenes in a sweep of
+// levels 0-20, tensions 0/0.5/1 and three seeds (2026-10-25) must keep the
+// headroom village keeps.
+func TestVoidPeaks(t *testing.T) {
+	for _, c := range []struct {
+		seed    uint64
+		level   int
+		tension float64
+	}{{42, 5, 0}, {7, 5, 0.5}, {42, 2, 0.5}} {
+		p, _ := DeriveMood("void", c.seed, c.level, c.tension)
+		buf := make([]byte, SampleRate*4*12)
+		NewSynth(p).Read(buf)
+		peak := 0.0
+		for i := 0; i+1 < len(buf); i += 2 {
+			peak = max(peak, math.Abs(float64(int16(uint16(buf[i])|uint16(buf[i+1])<<8))))
+		}
+		if db := 20 * math.Log10(peak/32768); db > -2 {
+			t.Errorf("void %+v peaks at %.1f dBFS, want at most -2", c, db)
+		}
 	}
 }

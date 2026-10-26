@@ -162,7 +162,12 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	flt(lgm, "drum-busy", &p.DrumBusy)
 	flt(lgm, "swing", &p.Swing)
 	if s, ok := kwStr(lgm, "lead"); ok {
-		engine.ApplyLead(p, s)
+		if s == "none" {
+			// a lead-less mood's derivation: no name, so nothing plays
+			p.LeadName, p.LeadGate = "", 0
+		} else {
+			engine.ApplyLead(p, s)
+		}
 	}
 	// :seed is int64 on the lg side; the engine's rng streams are uint64.
 	var seed int

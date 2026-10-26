@@ -123,8 +123,18 @@ func TestShotVoicesDie(t *testing.T) {
 
 func TestPoolOverflowStealsInsteadOfGrowing(t *testing.T) {
 	s := NewSynth(silentParams)
-	for i := 0; i < nShots*4; i++ {
-		s.Trigger("hit", 45, 0.5, 0.5, float64(i), uint64(i))
+	for i := 0; i < nShots*4; i++ { // distinct notes, so the repeat gap thins none of them
+		s.Trigger("hit", 45+i, 0.5, 0.5, float64(i), uint64(i))
+	}
+	render(s, SampleRate*nShots*4/1000)
+	busy := 0
+	for i := range s.fx.shots {
+		if s.fx.shots[i].active {
+			busy++
+		}
+	}
+	if busy != nShots {
+		t.Fatalf("%d of %d shot voices busy: the burst never filled the pool", busy, nShots)
 	}
 	render(s, SampleRate) // must not panic, and everything must still decay
 	render(s, SampleRate*3)
@@ -209,5 +219,70 @@ func TestMusicGainZeroKeepsShots(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("sample %d: %d, want %d", i, got[i], want[i])
 		}
+	}
+}
+
+// A burst of the same shot at the same note starts once; a different note, or
+// a repeat after shotGapMS, starts again.
+func TestShotRepeatsWithinTheGapAreDropped(t *testing.T) {
+	active := func(s *Synth) (n int) {
+		for i := range s.fx.shots {
+			if s.fx.shots[i].active {
+				n++
+			}
+		}
+		return n
+	}
+	ms := func(m float64) int { return int(m * SampleRate / 1000) }
+	for _, c := range []struct {
+		name  string
+		shots func(s *Synth)
+		want  int
+	}{
+		{"a dozen at once", func(s *Synth) {
+			for i := 0; i < 12; i++ {
+				s.Trigger("hit", 40, 1, 0.5, 0, uint64(i))
+			}
+		}, 1},
+		{"two notes", func(s *Synth) {
+			s.Trigger("hit", 40, 1, 0.5, 0, 1)
+			s.Trigger("hit", 47, 1, 0.5, 0, 2)
+		}, 2},
+		{"a repeat inside the gap", func(s *Synth) {
+			s.Trigger("hit", 40, 1, 0.5, 0, 1)
+			s.Trigger("hit", 40, 1, 0.5, shotGapMS/2, 2)
+		}, 1},
+		{"a repeat after the gap", func(s *Synth) {
+			s.Trigger("hit", 40, 1, 0.5, 0, 1)
+			s.Trigger("hit", 40, 1, 0.5, shotGapMS+10, 2)
+		}, 2},
+	} {
+		s := NewSynth(silentParams)
+		c.shots(s)
+		render(s, ms(shotGapMS+20))
+		if got := active(s); got != c.want {
+			t.Errorf("%s: %d shot voices started, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+// Of repeats in the same frame the loudest plays, with its own pan.
+func TestLouderRepeatInTheSameFrameWins(t *testing.T) {
+	s := NewSynth(silentParams)
+	s.Trigger("hit", 40, 0.1, 0, 0, 1)
+	s.Trigger("hit", 40, 1, 1, 0, 2)
+	s.Trigger("hit", 40, 0.5, 0.5, 0, 3)
+	render(s, 64)
+	n := 0
+	for i := range s.fx.shots {
+		if v := &s.fx.shots[i]; v.active {
+			n++
+			if v.gain != 1 || s.fx.pan[i] != 1 {
+				t.Errorf("the hit that played has gain %v pan %v, want the loudest: 1, 1", v.gain, s.fx.pan[i])
+			}
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d hits started, want 1", n)
 	}
 }

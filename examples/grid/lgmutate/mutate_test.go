@@ -3,7 +3,7 @@ package lgmutate
 import (
 	"testing"
 
-	"github.com/mparrett/let-go-undertone/engine"
+	"github.com/mparrett/undertone/engine"
 )
 
 func TestMutateVariesWithinTheGrid(t *testing.T) {

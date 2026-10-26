@@ -1,12 +1,16 @@
 package engine
 
-import "sync/atomic"
+import (
+	"slices"
+	"sync/atomic"
+)
 
 // Steps is the length of a grid: one pattern, 16 eighth-note rows.
 const Steps = rows
 
-// Degrees is the number of pitch rows per melodic lane: a scale plus its
-// octave.
+// Degrees is the number of pitch rows per melodic lane: a seven-note scale
+// plus its octave. A degree is the nth tone of whatever scale is playing, so
+// in a five-note mood the 8 rows climb about 1.6 octaves instead.
 const Degrees = 8
 
 // DrumLanes is the number of drum lanes: kick, clap, shaker.
@@ -17,9 +21,13 @@ const DrumLanes = nDrums
 // grid stays in key when the mood or root changes. Lead and bass replace the
 // generator's lead and fifth voices; pulse replaces its tension pulse. Drums
 // replace the generator's drums, one lane each for kick, clap and shaker, in
-// groove notation: 2*Steps sixteenths of X (accent), x (hit), o (ghost) or .
-// (rest); a short lane rests for the remainder. With Bed set, the generator
-// keeps playing drone, pad and air underneath.
+// groove notation: 2*Steps sixteenths of X (accent), x (hit), o (ghost), g
+// (flam) or . (rest); a short lane rests for the remainder, and a lane ending
+// in | loops at its own length instead (polymetric). With Bed set, the
+// generator keeps playing drone, pad and air underneath.
+//
+// Degree n is the scale's nth tone, wrapping into the next octave: degree 6
+// is the octave in a five-note scale, and degree 8 in a seven-note one.
 type Grid struct {
 	Lead  [Steps]int
 	Bass  [Steps]int
@@ -46,10 +54,26 @@ func (s *Synth) SetGrid(g *Grid) {
 	s.grid.Store(g)
 }
 
+// DegreeNote is the note grid degree d (1-based) plays above base in p's
+// scale, for a host that labels a grid's rows; GridBases gives the bases.
+func DegreeNote(p Params, base, d int) int { return degreeNote(p, base, d) }
+
 // degreeNote is the note degree d (1-based) lands on above base.
 func degreeNote(p Params, base, d int) int {
-	d--
-	return base + 12*(d/7) + p.Scale[d%7]
+	return base + scaleTone(p.Scale, d-1)
+}
+
+// scaleTone is the semitone offset of tone i (0-based) of scale, wrapping by
+// octave past either end: in a five-note scale tone 5 is the root an octave
+// up, and tone -2 the fourth tone an octave down. Degrees count the scale's
+// own tones (ADR-001), so a five-note mood covers more pitch per degree.
+func scaleTone(scale []int, i int) int {
+	n := len(scale)
+	oct, k := i/n, i%n
+	if k < 0 {
+		oct, k = oct-1, k+n
+	}
+	return 12*oct + scale[k]
 }
 
 // GridBases is the note a grid's row 1 plays in the lead and bass lanes. It
@@ -100,7 +124,7 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 		}
 	}
 	for d, lane := range g.Drums {
-		s.drums[d][row] = drumHit{gridDrumGain * drumAt(lane, 2*row), gridDrumGain * drumAt(lane, 2*row+1)}
+		s.drums[d][row] = gridHit(lane, row, s.pat*rows+row-s.runFrom)
 	}
 	s.pats[trackLead][row] = trackRow{}
 	if d := g.Lead[row]; d > 0 {
@@ -136,10 +160,15 @@ func SeedGrid(p Params) Grid {
 			g.Lead[i] = d
 		}
 	}
+	// Degrees 5 and 3 are the fifth and third only in seven tones, so find
+	// them by pitch; a scale without one (locrian has no perfect fifth)
+	// keeps the seven-tone degree.
+	fifth := toneDegree(p.Scale, 5, 7)
+	third := toneDegree(p.Scale, 3, 3, 4)
 	for i := 0; i < Steps; i += 4 {
-		g.Bass[i] = []int{1, 1, 5, 1}[i/4]
+		g.Bass[i] = []int{1, 1, fifth, 1}[i/4]
 		if r.f() < 0.4 {
-			g.Bass[i+2] = []int{1, 5, 3}[r.n(3)]
+			g.Bass[i+2] = []int{1, fifth, third}[r.n(3)]
 		}
 	}
 	g.Pulse[0], g.Pulse[8] = true, true
@@ -153,7 +182,12 @@ func SeedGrid(p Params) Grid {
 		for d, lane := range groove {
 			b := []byte(lane)
 			for i := range b {
-				switch v := stepLevel(b[i], p, &r); {
+				if b[i] == '|' { // a polymetric lane stays one
+					continue
+				}
+				switch v, _, flam := stepHit(b[i], p, &r); {
+				case flam:
+					b[i] = 'g'
 				case v >= 0.85:
 					b[i] = 'X'
 				case v >= 0.55:
@@ -170,13 +204,25 @@ func SeedGrid(p Params) Grid {
 	return g
 }
 
-// drumAt is the level of sixteenth i in a grid drum lane; anything but an
-// accent, hit or ghost rests.
-func drumAt(lane string, i int) float64 {
-	if i >= len(lane) {
-		return 0
+// toneDegree is the degree (1-based) of scale's first tone among semitones,
+// or fallback if it has none of them.
+func toneDegree(scale []int, fallback int, semitones ...int) int {
+	for i, t := range scale {
+		if slices.Contains(semitones, t) {
+			return i + 1
+		}
 	}
-	return drumLevel(lane[i])
+	return fallback
+}
+
+// gridHit is a grid drum lane's hit at row, run rows into the grid's run. A
+// grid plays the fixed steps only, X x o and g; anything else rests.
+func gridHit(lane string, row, run int) drumHit {
+	on, off := laneStep(lane, 2*row, 2*run), laneStep(lane, 2*row+1, 2*run+1)
+	return drumHit{
+		on: gridDrumGain * drumLevel(on), off: gridDrumGain * drumLevel(off),
+		onFlam: on == 'g', offFlam: off == 'g',
+	}
 }
 
 // RowAt reports which grid row was sounding at a given output frame, for a

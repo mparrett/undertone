@@ -1,7 +1,7 @@
-// Package lg embeds the binding's lg sources so hosts without a filesystem
-// — GOOS=js above all — can load them through core's load-string instead of
-// the resolver's load path. The .lg files stay the single source of truth;
-// this package is only a carrier.
+// Package lg embeds the binding's lg sources, which package letgo registers
+// with let-go from init so (require 'undertone.ambience) resolves in any
+// binary that links it, with no source path and in the browser too. The .lg
+// files stay the single source of truth; this package is only a carrier.
 package lg
 
 import _ "embed"
@@ -15,9 +15,9 @@ type Source struct {
 	Text string
 }
 
-// Sources lists the namespaces in dependency order — load-string does not
-// consult the resolver for already-registered namespaces' requires to work,
-// it just needs each dependency registered before its dependents load.
+// Sources lists the namespaces package letgo registers at init. Order does
+// not matter: each loads through the resolver on first require, which
+// follows its own :require forms.
 var Sources = []Source{
-	{"ambience", ambience},
+	{"undertone.ambience", ambience},
 }

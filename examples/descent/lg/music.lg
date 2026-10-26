@@ -16,7 +16,7 @@
 ;; a value only the speakers ever read.
 
 (ns music
-  (:require [ambience]))
+  (:require [undertone.ambience :as ambience]))
 
 ;; ---- the two tension sources ----
 

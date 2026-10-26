@@ -298,6 +298,7 @@ var shotLib = map[string]shotDef{
 // shotReq is a staged trigger. delay is in samples, counted down in frame(),
 // so a two-note pickup arpeggio is sample-accurate rather than host-timed.
 type shotReq struct {
+	key   shotKey
 	patch Patch
 	note  int
 	gain  float64
@@ -308,6 +309,34 @@ type shotReq struct {
 }
 
 const nShots = 8
+
+// shotGapMS is how soon the same shot at the same note may start again. A
+// breakout cascade fires a dozen hits in one frame against nShots voices; the
+// repeats add nothing a listener can hear apart, and they would steal every
+// other sound in flight. Counted in audio time, when a shot starts, so a
+// burst that arrives in one Trigger batch is thinned as surely as one spread
+// over frames. A different note is a different sound: a plucked chord keeps
+// every note. Of repeats that land in the same frame, the loudest plays, so a
+// hard hit is not lost to a soft one queued ahead of it.
+const shotGapMS = 30
+
+type shotKey struct {
+	name string
+	note int
+}
+
+// recentShot is a shot that started lately, kept for shotGapMS. They live in
+// a fixed ring rather than a map because they are written on the audio
+// thread, which must not allocate; a burst of more distinct shots than the
+// ring holds only forgets the oldest, letting a repeat of it through.
+type recentShot struct {
+	key   shotKey
+	frame int64
+	voice int
+	gain  float64
+}
+
+const nRecent = 32
 
 // maxPending bounds the queue of shots waiting to start.
 const maxPending = 32
@@ -321,6 +350,18 @@ type sfx struct {
 	shots   [nShots]Voice
 	pan     [nShots]float64
 	pos     int
+	recent  [nRecent]recentShot
+	rpos    int
+}
+
+// lately finds a start of the same shot within shotGapMS of frame.
+func (fx *sfx) lately(k shotKey, frame int64) *recentShot {
+	for i := range fx.recent {
+		if r := &fx.recent[i]; r.key == k && frame-r.frame < shotGapMS*SampleRate/1000 {
+			return r
+		}
+	}
+	return nil
 }
 
 // Shot is one trigger-map's worth of intent, as the sfx vocabulary expresses
@@ -377,14 +418,14 @@ func (s *Synth) resolveDegree(degree, octave int) int {
 	if len(p.Scale) == 0 {
 		return p.Root + 12*octave
 	}
-	return p.Root + 12*(octave+degree/len(p.Scale)) + p.Scale[degree%len(p.Scale)]
+	return p.Root + 12*octave + scaleTone(p.Scale, degree)
 }
 
 // Trigger stages a one-shot. Unknown names are dropped, not errors: the sfx
 // vocabulary lives above this seam, and a stale name must not crash a game.
 // gain scales the patch's own levels; pan is 0..1; delayMS offsets the start.
 func (s *Synth) Trigger(name string, note int, gain, pan, delayMS float64, seed uint64) bool {
-	d, ok := shotLib[name]
+	d, ok := lookupShot(name)
 	if !ok {
 		return false
 	}
@@ -394,6 +435,7 @@ func (s *Synth) Trigger(name string, note int, gain, pan, delayMS float64, seed 
 		pan = 1
 	}
 	req := shotReq{
+		key:   shotKey{name, note},
 		patch: humanize(d.patch, seed),
 		note:  note,
 		gain:  gain,
@@ -447,7 +489,17 @@ func (s *Synth) runShots(l, r *float64) {
 				keep = append(keep, q)
 				continue
 			}
-			i := fx.voice()
+			i := -1
+			if r := fx.lately(q.key, s.nframe); r != nil {
+				if r.frame != s.nframe || q.gain <= r.gain {
+					continue
+				}
+				i, r.gain = r.voice, q.gain // a louder repeat in the same frame takes over
+			} else {
+				i = fx.voice()
+				fx.recent[fx.rpos] = recentShot{q.key, s.nframe, i, q.gain}
+				fx.rpos = (fx.rpos + 1) % nRecent
+			}
 			fx.shots[i].trigger(q.patch, q.note, 0, q.gain, q.seed)
 			fx.shots[i].gateSamples = q.gate
 			fx.pan[i] = q.pan
@@ -468,7 +520,7 @@ func (s *Synth) runShots(l, r *float64) {
 			}
 		}
 		var sl, sr float64
-		v.run(&sl, &sr, &s.dbus)
+		v.run(&sl, &sr, &s.bus)
 		mono := sl + sr
 		*l += mono * (1 - fx.pan[i])
 		*r += mono * fx.pan[i]

@@ -1,19 +1,15 @@
-;; ambience.lg — the (game state -> music) derivation, in lg.
+;; ambience.lg — the (game state -> music) derivation, as lg calls it.
 ;;
-;; This is the layer the audio surface sketch says belongs in the control
-;; language: a pure function from (seed, depth, tension) to a parameter map,
-;; handed to the engine through audio/set-parameters. Everything below the map
-;; — patches, the per-sample unit VM, the sequencer, the delay bus — stays in
-;; Go, because it runs at 44.1 kHz and lg has no business there.
+;; A pure function from (mood, seed, level, tension) to a parameter map,
+;; handed to the engine through undertone/set-parameters. The derivation
+;; itself is Go's (engine/mood.go and MoodSpec): moods are data and tension
+;; works the same in every mood, so one derivation serves both languages
+;; (#49). This namespace keeps the names lg callers use, the mood table as
+;; data, and the seeded rng that sound-effect code draws from.
 ;;
-;; The payoff of having it here: the score is a pure function of the world, so
-;; it is moddable and console-tweakable, and the same seed and depth give the
-;; same ambience byte for byte.
-;;
-;; The kaiju-elements trick, unchanged from the Go original: taste lives in
-;; hand-tuned option tables, the seed only picks from them.
+;; The same seed and level give the same ambience byte for byte.
 
-(ns ambience
+(ns undertone.ambience
   ;; `derive` is the public name for the derivation; core's (hierarchies) is
   ;; unused here, and shadowing it prints a warning on every load.
   (:refer-clojure :exclude [derive]))
@@ -24,11 +20,9 @@
 ;; need unchecked-multiply: lg's `*` raises "integer overflow" rather than
 ;; wrapping, which is the one real portability wrinkle in the whole file.
 
-;; 0x9e3779b97f4a7c15 and 0x1eadf00d, the Go original's mixing constants,
-;; written as signed int64 because lg has no unsigned integer type.
+;; 0x9e3779b97f4a7c15, the engine's mixing constant, written as a signed
+;; int64 because lg has no unsigned integer type.
 (def golden -7046029254386353131)
-(def lead-salt 514715661)
-(def groove-salt 9896165) ; 0x9700e5
 
 (defn xorshift
   "One xorshift64 step. Returns the next state."
@@ -40,7 +34,7 @@
 
 (defn umod
   "Remainder of s treated as UNSIGNED by a small positive m.
-  The Go original does uint64 % m; a plain (mod s m) on a negative int64
+  The engine does uint64 % m; a plain (mod s m) on a negative int64
   disagrees, and that silently changes which option the seed picks. Splitting
   s into its top 63 bits and its low bit keeps the arithmetic unsigned."
   [s m]
@@ -48,9 +42,7 @@
         lo (bit-and s 1)]
     (mod (+ (* 2 (mod hi m)) lo) m)))
 
-;; A draw returns [state value] so derivation stays pure — the option-table
-;; picks must happen in the same ORDER as the Go original or the streams
-;; diverge and the two ports stop agreeing.
+;; A draw returns [state value], so code drawing from the rng stays pure.
 
 (defn draw-n
   "Pick an index in [0,m): returns [state' index]."
@@ -64,195 +56,30 @@
   (let [[s i] (draw-n s (count coll))]
     [s (nth coll i)]))
 
-;; ---- option tables (the taste) ----
-
-(def scales-by-darkness
-  [[0 2 3 5 7 9 10]   ; dorian
-   [0 2 3 5 7 8 10]   ; aeolian
-   [0 1 3 5 7 8 10]]) ; phrygian
-
-(def scales-by-brightness
-  [[0 2 4 5 7 9 10]   ; mixolydian
-   [0 2 4 5 7 9 11]   ; major
-   [0 2 4 6 7 9 11]]) ; lydian
-
-(def scales-for-meadow
-  [[0 2 4 5 7 9 11]   ; major
-   [0 2 4 5 7 9 11]   ; major
-   [0 2 4 6 7 9 11]]) ; lydian
-
-(def scales-for-village
-  [[0 2 4 5 7 9 10]   ; mixolydian
-   [0 2 4 5 7 9 11]]) ; major
-
-(def scales-for-aurora
-  [[0 2 4 6 7 9 11]]) ; lydian, all the way up
-
-(def root-offsets [-2 0 0 3])
-
-;; mood-weighted lead audition lists; repeats are the weights
-(def dungeon-leads   [:bell :chime :chime :clang :kalimba :pluck :pluck])
-(def overworld-leads [:bell :bell :kalimba :kalimba :reed :pluck :pluck])
-(def meadow-leads    [:bell :kalimba :kalimba :reed :pluck :pluck])
-(def aurora-leads    [:chime :chime :bell :bell :kalimba])
-(def village-leads   [:kalimba :kalimba :pluck :pluck :reed])
-(def village-grooves [:amble :amble :skip :stomp])
-
-(defn tense-offset
-  "Slide the second drone's interval toward dissonance: the mood's calm
-  interval, then tritone, then minor-ninth territory. A voice floating above
-  the chord sours in place, an octave up."
-  [calm t]
-  (let [up (if (pos? calm) 12 0)]
-    (cond (>= t 0.75) (+ -11 up)
-          (>= t 0.4)  (+ -6 up)
-          :else       calm)))
-
-(defn seed-state
-  "The derivation rng's starting state, mixing seed with the level."
-  [seed level]
-  (bit-or (bit-xor seed (unchecked-multiply level golden)) 1))
-
-(defn pick-lead
-  "Draw the lead from a SEPARATE rng stream, so for a given seed the pattern
-  content is unchanged and only the instrument varies."
-  [seed names]
-  (let [s (bit-or (unchecked-add (unchecked-multiply seed golden) lead-salt) 1)]
-    (second (draw-pick s names))))
-
-(defn pick-groove
-  "Draw the groove from its own stream, as the lead is drawn."
-  [seed names]
-  (let [s (bit-or (unchecked-add (unchecked-multiply seed golden) groove-salt) 1)]
-    (second (draw-pick s names))))
-
-(defn clamp01 [t] (max 0.0 (min 1.0 (double t))))
-
-(defn scale-for [tables level]
-  (nth tables (max 0 (min (quot level 2) (dec (count tables))))))
-
 ;; ---- the moods ----
-;; A mood is a patch bank (chosen Go-side by :mood) plus a point in parameter
-;; space and how it moves with level. Each line is base + step*level, clamped
-;; by :lo/:hi where present. Tension works the same in every mood, so it is not
-;; in the table: tempo up, a low pulse fading in, the harmony souring, the calm
-;; layers thinning. tension 0 reproduces the pre-tension output exactly: it
-;; takes no extra rng draws. Mirrors engine/mood.go; the parity test holds the
-;; two to the same bits.
+;; The built-in table, from Go, in the shape derive-spec takes: a mood is a
+;; patch bank (chosen Go-side by :mood) plus a point in parameter space and
+;; how it moves with level. Each line is base + step*level, clamped by
+;; :lo/:hi where present. Entries carry no :palette; the host picks a
+;; built-in mood's patches by its name.
 
-(def moods
-  {;; Deeper is darker, slower, thicker.
-   :dungeon
-   {:scales    scales-by-darkness
-    :bpm       {:base 66.0 :step -3.0 :lo 46.0}
-    :root-base 57 :root-step -1
-    :drone     {:base 0.55 :step 0.06 :hi 0.9}
-    :fifth     {:base 0.0 :step 0.2 :hi 0.7}
-    :pad       {:base 0.6 :step -0.05}
-    :bell      {:base 0.16 :step -0.02 :lo 0.04}
-    :air       {:base 0.25 :step 0.05 :hi 0.6}
-    :calm      -5 ; perfect fifth above the low drone
-    :bell-lift 0
-    :leads     dungeon-leads}
-   ;; The bright mirror: elevation raises and opens (mixolydian -> major ->
-   ;; lydian, higher root, denser lifted bells, breeze instead of rumble).
-   :overworld
-   {:scales    scales-by-brightness
-    :bpm       {:base 74.0 :step 3.0}
-    :root-base 62 :root-step 1
-    :drone     {:base 0.25 :step 0.03}
-    :fifth     {:base 0.3 :step 0.05}
-    :pad       {:base 0.7 :step 0.0}
-    :bell      {:base 0.2 :step 0.04}
-    :air       {:base 0.15 :step 0.02}
-    :calm      -8 ; major third above: sunshine
-    :bell-lift 12
-    :leads     overworld-leads}
-   ;; Overworld without the floor: near-silent drone, high root, dense
-   ;; lifted bells, the second drone a major sixth up.
-   :meadow
-   {:scales    scales-for-meadow
-    :bpm       {:base 88.0 :step 2.0 :hi 100.0}
-    :root-base 67 :root-step 0
-    :drone     {:base 0.12 :step 0.0}
-    :fifth     {:base 0.25 :step 0.03 :hi 0.4}
-    :pad       {:base 0.5 :step 0.0}
-    :bell      {:base 0.3 :step 0.03 :hi 0.45}
-    :air       {:base 0.2 :step 0.02 :hi 0.3}
-    :calm      -3 ; major sixth above the low drone
-    :bell-lift 12
-    :leads     meadow-leads}
-   ;; Thin, not warm: no drone, slow lydian veils through the delay, a
-   ;; fifth floating over the chord, the odd chime.
-   :aurora
-   {:scales    scales-for-aurora
-    :bpm       {:base 52.0 :step 1.0 :hi 58.0}
-    :root-base 69 :root-step 1
-    :drone     {:base 0.0 :step 0.0}
-    :fifth     {:base 0.3 :step 0.02 :hi 0.4}
-    :pad       {:base 0.75 :step 0.02 :hi 0.85}
-    :bell      {:base 0.08 :step 0.01 :hi 0.14}
-    :air       {:base 0.3 :step 0.03 :hi 0.45}
-    :calm      7 ; a fifth above the chord
-    :bell-lift 0
-    :leads     aurora-leads}
-   ;; The first mood with drums: a warm daytime village building to a
-   ;; festival as level rises.
-   :village
-   {:scales    scales-for-village
-    :bpm       {:base 100.0 :step 2.0 :hi 112.0}
-    :root-base 62 :root-step 0
-    :drone     {:base 0.15 :step 0.0}
-    :fifth     {:base 0.25 :step 0.0}
-    :pad       {:base 0.55 :step 0.0}
-    :bell      {:base 0.22 :step 0.02 :hi 0.32}
-    :air       {:base 0.1 :step 0.0}
-    :calm      -8 ; major third above the low drone
-    :bell-lift 12
-    :leads     village-leads
-    :grooves   village-grooves
-    :drums     {:base 0.55 :step 0.05 :hi 0.8}
-    :busy      {:base 0.2 :step 0.12 :hi 0.8}
-    :swing     0.1}})
+(def moods (read-string (undertone/moods-edn)))
 
-(defn line-at
-  "Evaluate a mood line at level x."
-  [{:keys [base step lo hi]} x]
-  (let [v (+ base (* step x))
-        v (if lo (max lo v) v)]
-    (if hi (min hi v) v)))
+(defn derive-spec
+  "Derive from a mood entry itself rather than its name: a designer's export,
+  or any map in the shape of the moods table. The result has no :mood, so the
+  host keeps its current patches unless the entry names a :palette. An entry
+  with a misspelt or missing key is an error."
+  [m seed level tension]
+  (undertone/derive-spec m seed level tension))
 
 (defn derive-mood
   "Derive with the mood named explicitly. This is the real entry point; the
   signed-depth sugar below cannot reach every state. An unknown mood derives
   as the dungeon."
   [mood seed level tension]
-  (let [m (get moods mood (:dungeon moods))
-        mood (if (contains? moods mood) mood :dungeon)
-        l (double level)
-        t (clamp01 tension)
-        s (seed-state seed level)
-        [s bpm-jitter] (draw-n s 5)
-        [_ root-off]   (draw-pick s root-offsets)]
-    {:mood         mood
-     :seed         seed
-     :bpm          (+ (line-at (:bpm m) l) (double bpm-jitter) (* 30.0 t))
-     :root         (+ (:root-base m) (* (:root-step m) level) root-off)
-     :scale        (scale-for (:scales m) level)
-     :drone-gain   (line-at (:drone m) l)
-     :fifth-gain   (+ (line-at (:fifth m) l) (* 0.25 t))
-     :pad-density  (* (line-at (:pad m) l) (- 1.0 (* 0.6 t)))
-     :bell-density (* (line-at (:bell m) l) (- 1.0 (* 0.5 t)))
-     :air-gain     (+ (line-at (:air m) l) (* 0.1 t))
-     :pulse-gain   t
-     :fifth-offset (tense-offset (:calm m) t)
-     :bell-lift    (:bell-lift m)
-     :lead         (pick-lead seed (:leads m))
-     ;; drums: moods without grooves send :none and a zero gain
-     :groove       (if (:grooves m) (pick-groove seed (:grooves m)) :none)
-     :drum-gain    (if (:drums m) (line-at (:drums m) l) 0.0)
-     :drum-busy    (if (:busy m) (line-at (:busy m) l) 0.0)
-     :swing        (get m :swing 0.0)}))
+  (let [mood (if (contains? moods mood) mood :dungeon)]
+    (assoc (derive-spec (get moods mood) seed level tension) :mood mood)))
 
 (defn derive-dungeon [seed depth tension] (derive-mood :dungeon seed depth tension))
 (defn derive-overworld [seed elevation tension] (derive-mood :overworld seed elevation tension))
@@ -269,11 +96,16 @@
 (defn score-mood!
   "Push parameters for an explicit mood at the engine."
   [mood seed level tension]
-  (audio/set-parameters (derive-mood mood seed level tension)))
+  (undertone/set-parameters (derive-mood mood seed level tension)))
+
+(defn score-spec!
+  "Push parameters for a mood entry, such as one pasted from the designer."
+  [spec seed level tension]
+  (undertone/set-parameters (derive-spec spec seed level tension)))
 
 (defn score!
   "Push the derived parameters at the engine. Applied at the next pattern
   boundary, so calling this again mid-playback is a seamless transition —
   which is what a descend, or a console tweak, actually is."
   [seed depth tension]
-  (audio/set-parameters (derive seed depth tension)))
+  (undertone/set-parameters (derive seed depth tension)))

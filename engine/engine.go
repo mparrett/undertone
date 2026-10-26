@@ -12,8 +12,10 @@ import (
 	"bufio"
 	"encoding/binary"
 	"errors"
+	"io"
 	"math"
 	"os"
+	"slices"
 	"sync/atomic"
 )
 
@@ -30,6 +32,13 @@ const (
 	opOut          // p: gain, pan 0..1; pop x -> accumulate to L/R
 	opPluck        // p: transpose semis, feedback; Karplus-Strong string -> push sample
 	opHpf          // p: cutoff Hz; pop x -> push highpassed x
+	opSvf          // p: cutoff Hz, resonance 0..1, mode (0 low, 1 band, 2 high), depth octaves; [pop m;] pop x -> push filtered x
+	opLfo          // p: rate Hz, shape (0 sine, 1 triangle, 2 sample-and-hold) -> push -1..1
+	opDrive        // p: drive, bias -1..1; pop x -> push tanh(drive*x + bias) - tanh(bias)
+	opCrush        // p: hold Hz, bits; pop x -> push x held and quantized
+	opVerb         // p: amount; peek top, add top*amount to the reverb bus
+	opScale        // p: gain, offset; top = top*gain + offset
+	opPitch        // p: depth semis; pop m, bend every later osc by m*depth
 )
 
 const (
@@ -49,11 +58,15 @@ type Patch []Unit
 // per-voice, per-unit mutable state
 type ustate struct {
 	phase, env, lp, sweep float64
-	stage                 int // env: 0 attack, 1 decay, 2 sustain, 3 release
+	ic2                   float64 // svf: the second integrator (lp holds the first)
+	stage                 int     // env: 0 attack, 1 decay, 2 sustain, 3 release
 	rng                   uint64
 	ks                    []float64 // Karplus-Strong delay line, allocated on first sample
-	kpos                  int
-	k                     float64 // cached per-note coefficient: osc phase increment (no sweep) or lpf c
+	kpos                  int       // pluck: read position; swept svf and bent osc: control-rate counter
+	k                     float64   // cached per-note coefficient: osc phase increment (no sweep) or lpf c
+	g, g1, g2             float64   // svf, drive, crush: constants derived from grit g; osc: g1 is its bend ratio
+	gset                  bool      // g1 and g2 hold for grit g
+	ko                    float64   // svf: the open its coefficient k was computed at
 	kset                  bool
 }
 
@@ -65,6 +78,20 @@ type Voice struct {
 	gateRows int
 	units    []ustate
 	active   bool
+	// grit roughens drive, crush and svf. It glides to gritTo, which apply
+	// keeps at Params.Grit, so a sounding note roughens over about a tenth of
+	// a second rather than stepping. gtick counts samples between glide steps.
+	grit, gritTo float64
+	open, openTo float64 // Params.Open, gliding the same way: scales svf cutoff
+	gtick        int
+
+	// A mid-pattern mood change (applyNow) moves gain linearly to gainTo over
+	// fadeFrames rather than stepping it, which would click. A note it has to
+	// replace waits in pend until the old one has faded to silence.
+	gainTo, gainStep float64
+	pend             trackRow
+	pendRows         int
+	pendSeed         uint64
 
 	// gateSamples is the one-shot lane's gate clock (sfx.go). Sequencer
 	// voices gate in rows via step(); one-shots are off the grid, so their
@@ -73,18 +100,17 @@ type Voice struct {
 }
 
 func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint64) {
-	v.patch = patch
-	v.note = note
-	v.gain = gain
 	// A voice retriggered with the patch it is already sounding carries its
 	// phase, level and filter state into the new note and attacks from where
 	// it is. Starting from zero cut a sounding drone to silence in one sample:
 	// a click at every pattern boundary (a step of 2336 against a normal
 	// largest of 402). A plucked string is struck afresh either way.
-	legato := v.active && samePatch(v.patch, patch) && len(v.units) == len(patch)
+	legato := v.active && samePatch(v.patch, patch)
 	v.patch = patch
 	v.note = note
 	v.gain = gain
+	v.gainTo = gain
+	v.pend = trackRow{}
 	v.gate = true
 	v.gateRows = gateRows
 	v.active = true
@@ -95,13 +121,23 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 	for i := range v.units {
 		u := &v.units[i]
 		if legato {
-			*u = ustate{phase: u.phase, env: u.env, lp: u.lp, ks: u.ks[:0]}
+			*u = ustate{phase: u.phase, env: u.env, lp: u.lp, ic2: u.ic2, ks: u.ks[:0]}
 		} else {
 			*u = ustate{ks: u.ks[:0]}
 		}
 		u.sweep = 1
 		u.rng = seed*2862933555777941757 + uint64(i) + 3037000493
+		// a sample-and-hold lfo's first value; legato keeps the held one
+		if !legato && patch[i].op == opLfo {
+			u.lp = u.noise()
+		}
 	}
+}
+
+// noise steps the unit's LCG and returns a sample in -1..1.
+func (s *ustate) noise() float64 {
+	s.rng = s.rng*6364136223846793005 + 1442695040888963407
+	return float64(int64(s.rng>>11))/(1<<52) - 1
 }
 
 // level is the voice's loudest envelope times its gain: how much it would
@@ -116,6 +152,68 @@ func (v *Voice) level() float64 {
 	return l * v.gain
 }
 
+// glideKnobs moves grit and open a step toward their targets every 16
+// samples, so the units they scale recompute their constants at control
+// rate, not every sample.
+func (v *Voice) glideKnobs() {
+	v.gtick = (v.gtick + 1) & 15
+	if v.gtick != 0 {
+		return
+	}
+	glide := func(x *float64, to float64) {
+		*x += (to - *x) * 0.02
+		if math.Abs(to-*x) < 1e-3 {
+			*x = to
+		}
+	}
+	glide(&v.grit, v.gritTo)
+	glide(&v.open, v.openTo)
+}
+
+// fadeFrames is how long a gain glide takes: about 5 ms, short enough to
+// sound like a switch and long enough not to click.
+const fadeFrames = 220
+
+func (v *Voice) glideGain(to float64) {
+	v.gainTo = to
+	v.gainStep = (to - v.gain) / fadeFrames
+}
+
+// stepGain moves gain one sample toward gainTo, and starts a pending note
+// once the old one is silent.
+func (v *Voice) stepGain() {
+	if math.Abs(v.gainTo-v.gain) <= math.Abs(v.gainStep) {
+		v.gain = v.gainTo
+	} else {
+		v.gain += v.gainStep
+	}
+	if v.gain == 0 && v.pend.note != 0 {
+		v.firePend()
+	}
+}
+
+// firePend starts the pending note from silence: the old note has faded out
+// or died, so nothing of it carries over.
+func (v *Voice) firePend() {
+	tr := v.pend
+	v.active = false
+	v.trigger(tr.patch, tr.note, v.pendRows, tr.gain, v.pendSeed)
+	v.gain = 0
+	v.glideGain(tr.gain)
+}
+
+// retrigger starts tr on v without a click: a sounding voice fades out
+// first, and the new note fades in. A voice already below -60 dB, such as a
+// release tail, has nothing left to click, so the note starts at once.
+func (v *Voice) retrigger(tr trackRow, gateRows int, seed uint64) {
+	if !v.active || v.level() < 1e-3 {
+		v.trigger(tr.patch, tr.note, gateRows, tr.gain, seed)
+		return
+	}
+	v.pend, v.pendRows, v.pendSeed = tr, gateRows, seed
+	v.glideGain(0)
+}
+
 // samePatch reports whether a and b are the same patch value. Patches are
 // package-level tables, so identity is the first unit's address.
 func samePatch(a, b Patch) bool {
@@ -123,10 +221,17 @@ func samePatch(a, b Patch) bool {
 }
 
 // run executes the patch for one sample, accumulating into l/r.
-func (v *Voice) run(l, r, delay *float64) {
+func (v *Voice) run(l, r *float64, b *sends) {
+	if v.grit != v.gritTo || v.open != v.openTo {
+		v.glideKnobs()
+	}
+	if v.gain != v.gainTo {
+		v.stepGain()
+	}
 	var stack [8]float64
 	sp := 0
 	alive := false
+	bend := 0.0 // semitones from the last pitch unit, for the oscs after it
 	for i := range v.patch {
 		u := &v.patch[i]
 		s := &v.units[i]
@@ -170,6 +275,15 @@ func (v *Voice) run(l, r, delay *float64) {
 				s.sweep -= s.sweep / (u.p[3]*SampleRate + 1)
 				inc = 440 * math.Pow(2, (semis-69)/12) / SampleRate
 			}
+			if bend != 0 {
+				// exp2 every 16th sample, as a swept svf does: vibrato
+				// and drift are slow enough not to step audibly
+				if s.kpos == 0 {
+					s.g1 = math.Exp2(bend / 12)
+				}
+				s.kpos = (s.kpos + 1) & 15
+				inc *= s.g1
+			}
 			s.phase += inc
 			s.phase -= math.Floor(s.phase)
 			var x float64
@@ -185,8 +299,7 @@ func (v *Voice) run(l, r, delay *float64) {
 					x = -1
 				}
 			case shpNoise:
-				s.rng = s.rng*6364136223846793005 + 1442695040888963407
-				x = float64(int64(s.rng>>11))/(1<<52) - 1
+				x = s.noise()
 			}
 			stack[sp] = x
 			sp++
@@ -210,6 +323,109 @@ func (v *Voice) run(l, r, delay *float64) {
 			}
 			s.lp += s.k * (stack[sp-1] - s.lp)
 			stack[sp-1] -= s.lp
+		case opSvf:
+			// A state-variable filter in the trapezoidal form (Zavalishin,
+			// Simper), which stays stable while its cutoff moves every
+			// sample. A nonzero depth takes a modulation value from the
+			// top of the stack and moves the cutoff by that many octaves
+			// per unit, so an env or lfo pushed before it sweeps it.
+			fc := u.p[0]
+			if u.p[3] != 0 {
+				// tan and exp2 every 16th sample (0.36 ms) halve a swept
+				// filter's cost; a sweep that fast is still smooth
+				sp--
+				if s.kpos == 0 {
+					fc *= math.Exp2(stack[sp]*u.p[3] + 2*v.open)
+					fc = max(20, min(fc, 0.45*SampleRate))
+					s.k = math.Tan(math.Pi * fc / SampleRate)
+				}
+				s.kpos = (s.kpos + 1) & 15
+			} else if !s.kset || s.ko != v.open {
+				// open moves the cutoff up to two octaves either way
+				fc *= math.Exp2(2 * v.open)
+				s.k = math.Tan(math.Pi * max(20, min(fc, 0.45*SampleRate)) / SampleRate)
+				s.kset, s.ko = true, v.open
+			}
+			// resonance 1 leaves k at 0.2, a Q of 5: it rings and whistles
+			// but never self-oscillates, so a voice still dies with its env,
+			// and the lowpass peak at the cutoff stays within 14 dB
+			if !s.gset || s.g != v.grit {
+				res := u.p[1] + (1-u.p[1])*0.6*v.grit
+				s.g, s.g1, s.gset = v.grit, 2-1.8*res, true
+			}
+			g, k := s.k, s.g1
+			a1 := 1 / (1 + g*(g+k))
+			a2 := g * a1
+			x := stack[sp-1]
+			v3 := x - s.ic2
+			v1 := a1*s.lp + a2*v3
+			v2 := s.ic2 + a2*s.lp + g*a2*v3
+			s.lp, s.ic2 = flush(2*v1-s.lp), flush(2*v2-s.ic2)
+			switch int(u.p[2]) {
+			case 0:
+				stack[sp-1] = v2
+			case 1:
+				// scaled by k for unity gain at the cutoff, whatever
+				// the resonance: narrower, not louder
+				stack[sp-1] = k * v1
+			default:
+				stack[sp-1] = x - k*v1 - v2
+			}
+		case opLfo:
+			var x float64
+			switch int(u.p[1]) {
+			case 0:
+				x = math.Sin(2 * math.Pi * s.phase)
+			case 1:
+				x = 1 - 4*math.Abs(s.phase-0.5)
+			default:
+				x = s.lp
+			}
+			s.phase += u.p[0] / SampleRate
+			if s.phase >= 1 {
+				s.phase -= 1
+				s.lp = s.noise()
+			}
+			stack[sp] = x
+			sp++
+		case opDrive:
+			// Grit up to triples the drive, scaled back so a full-scale input
+			// peaks where it did at grit 0: grit squares the wave off rather
+			// than raising its peak. The bias makes the curve lopsided, for
+			// the even harmonics of an overdriven amp, and is subtracted
+			// back out so silence stays silent.
+			if !s.gset || s.g != v.grit {
+				k := u.p[0] * (1 + 2*v.grit)
+				s.g, s.g1, s.g2, s.gset = v.grit, k, math.Tanh(u.p[0])/math.Tanh(k), true
+			}
+			stack[sp-1] = (math.Tanh(s.g1*stack[sp-1]+u.p[1]) - math.Tanh(u.p[1])) * s.g2
+		case opCrush:
+			// Sample-rate reduction then bit depth, both computed only when
+			// a new sample is held. Grit takes off up to four bits and
+			// lowers the hold rate by up to an octave and a half.
+			if !s.kset { // a new note holds its first sample at once
+				s.phase, s.kset = 1, true
+			}
+			if !s.gset || s.g != v.grit {
+				s.g, s.gset = v.grit, true
+				s.g1 = u.p[0] * math.Exp2(-1.5*v.grit) / SampleRate
+				s.g2 = math.Exp2(max(1, u.p[1]-4*v.grit) - 1)
+			}
+			s.phase += s.g1
+			if s.phase >= 1 {
+				s.phase -= math.Floor(s.phase)
+				s.lp = math.Round(stack[sp-1]*s.g2) / s.g2
+			}
+			stack[sp-1] = s.lp
+		case opScale:
+			// an lfo's -1..1 made into a range: gain 0.3, offset 0.7 swings
+			// 0.4..1, a tremolo once multiplied into a signal
+			stack[sp-1] = stack[sp-1]*u.p[0] + u.p[1]
+		case opPitch:
+			// clamped: chained scales can grow a modulator past what
+			// validation sees, and exp2 of a huge bend would overflow
+			sp--
+			bend = max(-24, min(stack[sp]*u.p[0], 24))
 		case opPluck:
 			// Karplus-Strong: a noise burst circulating in a delay line
 			// the length of the period, averaged (lowpassed) each pass.
@@ -226,8 +442,7 @@ func (v *Voice) run(l, r, delay *float64) {
 					s.ks = make([]float64, n)
 				}
 				for i := range s.ks {
-					s.rng = s.rng*6364136223846793005 + 1442695040888963407
-					s.ks[i] = float64(int64(s.rng>>11))/(1<<52) - 1
+					s.ks[i] = s.noise()
 				}
 			}
 			x := s.ks[s.kpos]
@@ -237,7 +452,9 @@ func (v *Voice) run(l, r, delay *float64) {
 			stack[sp] = x
 			sp++
 		case opSend:
-			*delay += stack[sp-1] * u.p[0] * v.gain
+			b.delay += stack[sp-1] * u.p[0] * v.gain
+		case opVerb:
+			b.verb += stack[sp-1] * u.p[0] * v.gain
 		case opOut:
 			sp--
 			*l += stack[sp] * u.p[0] * (1 - u.p[1]) * v.gain
@@ -245,6 +462,9 @@ func (v *Voice) run(l, r, delay *float64) {
 		}
 	}
 	v.active = alive
+	if !alive && v.pend.note != 0 {
+		v.firePend() // the old note died before its fade finished
+	}
 }
 
 // ---- instruments (compact opcode tables, sointu-patch style) ----
@@ -385,6 +605,71 @@ var breeze = Patch{
 	{opOut, [4]float64{0.9, 0.5}},
 }
 
+// ---- the void palette (below the dungeon) ----
+// The dungeon's shapes taken lower and darker: lowpasses an octave or more
+// down, slower swells, and a reverb send on the bed, so a mood's room
+// (a large, dark one) has something to ring.
+
+// abyss: the drone's detuned saws through two lowpass stages at 140 Hz,
+// where the drone has one at 280, so only the fundamental and a hint of the
+// next partial get through
+var abyss = Patch{
+	{opEnv, [4]float64{4, 2, 1, 6}},
+	{opOsc, [4]float64{-0.06, shpSaw, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLpf, [4]float64{140, 0, 0, 0}},
+	{opLpf, [4]float64{140, 0, 0, 0}},
+	{opVerb, [4]float64{0.15}},
+	{opOut, [4]float64{0.4, 0.42}},
+	{opEnv, [4]float64{4, 2, 1, 6}},
+	{opOsc, [4]float64{0.06, shpSaw, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLpf, [4]float64{140, 0, 0, 0}},
+	{opLpf, [4]float64{140, 0, 0, 0}},
+	{opVerb, [4]float64{0.15}},
+	{opOut, [4]float64{0.4, 0.58}},
+}
+
+// murk: the pad's sine pair an octave down, swelling as slowly as the veil
+// and sent to the reverb instead of the delay
+var murk = Patch{
+	{opEnv, [4]float64{3, 2, 0.7, 4}},
+	{opOsc, [4]float64{-12.05, shpSine, 0, 1}},
+	{opMul, [4]float64{}},
+	{opVerb, [4]float64{0.3}},
+	{opOut, [4]float64{0.2, 0.35}},
+	{opEnv, [4]float64{3.4, 2, 0.7, 4}},
+	{opOsc, [4]float64{-11.95, shpSine, 0, 1}},
+	{opMul, [4]float64{}},
+	{opVerb, [4]float64{0.3}},
+	{opOut, [4]float64{0.2, 0.65}},
+}
+
+// rumble: the air's noise under two lowpasses at 180 Hz, a pressure more
+// than a sound, raised to make up the level the lower cutoff takes away
+var rumble = Patch{
+	{opEnv, [4]float64{3, 3, 0.4, 4.5}},
+	{opOsc, [4]float64{0, shpNoise, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLpf, [4]float64{180, 0, 0, 0}},
+	{opLpf, [4]float64{180, 0, 0, 0}},
+	{opVerb, [4]float64{0.25}},
+	{opOut, [4]float64{2.5, 0.5}},
+}
+
+// ---- the stratosphere's patch ----
+
+// haze: the veil thinned to a single sine with a reverb send beside its
+// delay send, so the mood's bright room carries the wash
+var haze = Patch{
+	{opEnv, [4]float64{3.5, 2, 0.6, 5}},
+	{opOsc, [4]float64{0, shpSine, 0, 1}},
+	{opMul, [4]float64{}},
+	{opSend, [4]float64{0.25, 0, 0, 0}},
+	{opVerb, [4]float64{0.4}},
+	{opOut, [4]float64{0.3, 0.5}},
+}
+
 // ---- the drum kit (rhythmic moods) ----
 // Each drum is played at a fixed note on its own track, so its trim is
 // baked into its output gain rather than kept in a table like leadTrim.
@@ -471,6 +756,125 @@ var air = Patch{
 	{opOut, [4]float64{1.1, 0.5}},
 }
 
+// ---- the rust palette (industrial) ----
+// Resonant filters that move within a note, so the bed breathes and grinds
+// instead of sitting still, and drive and crush for grit to work on: as
+// tension rises the saws overdrive, the hiss degrades and the pulse snarls.
+// Everything sends to the reverb: a large, dark room around the whole bed.
+
+// rust: detuned saws through a resonant lowpass, each side swept by its own
+// slow lfo at a different rate, so the pair drifts in and out of phase
+var rust = Patch{
+	{opEnv, [4]float64{3, 2, 1, 4}},
+	{opOsc, [4]float64{-0.08, shpSaw, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLfo, [4]float64{0.07, 0}},
+	{opSvf, [4]float64{260, 0.75, 0, 1.2}},
+	{opDrive, [4]float64{1.5, 0.1}},
+	{opSend, [4]float64{0.15, 0, 0, 0}},
+	{opVerb, [4]float64{0.35}},
+	{opOut, [4]float64{0.45, 0.35}},
+	{opEnv, [4]float64{3, 2, 1, 4}},
+	{opOsc, [4]float64{0.08, shpSaw, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLfo, [4]float64{0.05, 1}},
+	{opSvf, [4]float64{260, 0.75, 0, 1.2}},
+	{opDrive, [4]float64{1.5, 0.1}},
+	{opSend, [4]float64{0.15, 0, 0, 0}},
+	{opVerb, [4]float64{0.35}},
+	{opOut, [4]float64{0.45, 0.65}},
+}
+
+// smear: a pulse pad in a wandering bandpass, more vowel than chord
+var smear = Patch{
+	{opEnv, [4]float64{1.5, 2, 0.5, 2.5}},
+	{opOsc, [4]float64{0, shpPulse, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLfo, [4]float64{0.2, 1}},
+	{opSvf, [4]float64{700, 0.6, 1, 1}},
+	{opSend, [4]float64{0.35, 0, 0, 0}},
+	{opVerb, [4]float64{0.5}},
+	{opOut, [4]float64{0.5, 0.5}},
+}
+
+// hiss: noise as an instrument, a tape-hiss bed whose band jumps somewhere
+// new a couple of times a second
+var hiss = Patch{
+	{opEnv, [4]float64{2, 2.5, 0.5, 3.5}},
+	{opOsc, [4]float64{0, shpNoise, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLfo, [4]float64{2.3, 2}},
+	{opSvf, [4]float64{1500, 0.7, 1, 1.3}},
+	{opCrush, [4]float64{11025, 10}},
+	{opSend, [4]float64{0.4, 0, 0, 0}},
+	{opVerb, [4]float64{0.4}},
+	{opOut, [4]float64{0.55, 0.5}},
+}
+
+// grind: the tension pulse with teeth, a saw whose resonant lowpass snaps
+// open on each hit and closes as it decays: a filter envelope
+var grind = Patch{
+	{opEnv, [4]float64{0.002, 0.18, 0, 0.08}},
+	{opOsc, [4]float64{0, shpSaw, 0, 1}},
+	{opMul, [4]float64{}},
+	{opEnv, [4]float64{0.001, 0.09, 0, 0.05}},
+	{opSvf, [4]float64{90, 0.8, 0, 4}},
+	{opDrive, [4]float64{2, 0.2}},
+	{opVerb, [4]float64{0.2}},
+	{opOut, [4]float64{0.8, 0.5}},
+}
+
+// ---- the industrial kit (rust's drums) ----
+// The kick, backbeat and top rebuilt from the grit ops, so tension, which
+// brings them in, also roughens them.
+
+// slam: the kick's falling sine overdriven into a square-ish punch
+var slam = Patch{
+	{opEnv, [4]float64{0.001, 0.26, 0, 0.1}},
+	{opOsc, [4]float64{0, shpSine, 30, 0.03}},
+	{opMul, [4]float64{}},
+	{opDrive, [4]float64{3, 0.15}},
+	{opOut, [4]float64{0.75, 0.5}},
+	{opEnv, [4]float64{0.0005, 0.006, 0, 0.004}},
+	{opOsc, [4]float64{0, shpNoise, 0, 1}},
+	{opMul, [4]float64{}},
+	{opHpf, [4]float64{2500, 0, 0, 0}},
+	{opOut, [4]float64{0.5, 0.5}},
+}
+
+// clank: a snare of crushed noise through a ringing bandpass, over a
+// ring-modulated body that sounds struck rather than skinned
+var clank = Patch{
+	{opEnv, [4]float64{0.001, 0.14, 0, 0.08}},
+	{opOsc, [4]float64{0, shpNoise, 0, 1}},
+	{opMul, [4]float64{}},
+	{opSvf, [4]float64{1900, 0.55, 1, 0}},
+	{opCrush, [4]float64{9000, 7}},
+	{opVerb, [4]float64{0.3}},
+	{opOut, [4]float64{1.2, 0.45}},
+	{opEnv, [4]float64{0.001, 0.07, 0, 0.04}},
+	{opOsc, [4]float64{0, shpSine, 0, 1}},
+	{opOsc, [4]float64{13.7, shpSine, 0, 1}},
+	{opMul, [4]float64{}},
+	{opMul, [4]float64{}},
+	{opOut, [4]float64{0.45, 0.55}},
+}
+
+// tick: a metallic hat, two pulse waves ring-modulated at an inharmonic
+// ratio and highpassed, very short
+var tick = Patch{
+	{opEnv, [4]float64{0.001, 0.035, 0, 0.02}},
+	{opOsc, [4]float64{0, shpPulse, 0, 1}},
+	{opOsc, [4]float64{11.6, shpPulse, 0, 1}},
+	{opMul, [4]float64{}},
+	{opMul, [4]float64{}},
+	{opHpf, [4]float64{6000, 0, 0, 0}},
+	{opHpf, [4]float64{6000, 0, 0, 0}},
+	{opOut, [4]float64{0.9, 0.6}},
+}
+
+var industrialKit = kit{{slam, 33}, {clank, 50}, {tick, 84}}
+
 // ---- parameters: the (seed, depth) -> music map ----
 // The kaiju-elements trick: taste lives in hand-tuned option tables,
 // the seed just picks. Depth darkens the pick.
@@ -497,7 +901,40 @@ type Params struct {
 	DrumGain float64 // scales every drum hit
 	DrumBusy float64 // 0..1: chance each ? step in the groove plays
 	Swing    float64 // 0..0.25: how far past halfway the off 16th lands
+
+	// Grit roughens the patches built to take it, 0..1: more drive, fewer
+	// bits, a lower hold rate, more resonance. Moods derive it from
+	// tension; patches without those units ignore it.
+	Grit float64
+
+	// Open moves the svf filters' cutoffs, -1..1: up to two octaves up or
+	// down. Moods derive it from level, so a mood can open or close as a game
+	// goes deeper; patches without an svf ignore it.
+	Open float64
+
+	// Room shapes the reverb that the whole mix sends to; the zero Room is
+	// the long, dark room every mood had before rooms were a choice.
+	Room Room
+
+	// Mute silences layers at the mix, for listening to a mood a layer at a
+	// time. A muted layer still plays, unheard, so the patterns and the rng
+	// draws are those of the full mix; zeroing a density or gain instead would
+	// change what every other layer plays.
+	Mute Layers
 }
+
+// Layers is a set of the music's layers, one bit each.
+type Layers uint8
+
+const (
+	LayerDrone Layers = 1 << iota // the tracks, in track order
+	LayerFifth
+	LayerPad
+	LayerLead
+	LayerAir
+	LayerPulse
+	LayerDrums
+)
 
 // leadDef is one entry in the lead-instrument library.
 type leadDef struct {
@@ -530,10 +967,16 @@ var overworldLeads = []string{"bell", "bell", "kalimba", "kalimba", "reed", "plu
 var meadowLeads = []string{"bell", "kalimba", "kalimba", "reed", "pluck", "pluck"}
 var auroraLeads = []string{"chime", "chime", "bell", "bell", "kalimba"}
 var villageLeads = []string{"kalimba", "kalimba", "pluck", "pluck", "reed"}
+var rustLeads = []string{"clang", "clang", "pluck", "chime"}
+var voidLeads = []string{"chime", "chime", "clang"}
 
 // pickLead draws from a separate rng stream so the pattern content for a
-// given seed is unchanged — only the instrument varies.
+// given seed is unchanged — only the instrument varies. A mood without leads
+// leaves LeadName empty, and the lead track stays silent.
 func pickLead(p *Params, names []string) {
+	if len(names) == 0 {
+		return
+	}
 	r := rng{p.Seed*0x9e3779b97f4a7c15 + 0x1eadf00d | 1}
 	ApplyLead(p, names[r.n(len(names))])
 }
@@ -547,11 +990,15 @@ func ApplyLead(p *Params, name string) {
 // Palette is a mood's patch bank: mood = patches + a point in parameter space.
 type Palette struct {
 	Drone, Fifth, Pad, Bell, Air, Pulse Patch
+	Kit                                 kit // zero: drumKit
 }
 
 var dungeonPalette = Palette{Drone: drone, Fifth: pad, Pad: pad, Bell: bell, Air: air, Pulse: pulse}
 var overworldPalette = Palette{Drone: bed, Fifth: pad, Pad: pad, Bell: bell, Air: breeze, Pulse: pulse}
 var auroraPalette = Palette{Drone: bed, Fifth: veil, Pad: veil, Bell: bell, Air: breeze, Pulse: pulse}
+var rustPalette = Palette{Drone: rust, Fifth: smear, Pad: smear, Bell: bell, Air: hiss, Pulse: grind, Kit: industrialKit}
+var voidPalette = Palette{Drone: abyss, Fifth: pad, Pad: murk, Bell: bell, Air: rumble, Pulse: pulse}
+var stratospherePalette = Palette{Drone: bed, Fifth: haze, Pad: haze, Bell: bell, Air: breeze, Pulse: pulse}
 
 var scalesByDarkness = [][]int{
 	{0, 2, 3, 5, 7, 9, 10}, // dorian
@@ -573,6 +1020,25 @@ var scalesForVillage = [][]int{
 var scalesForAurora = [][]int{
 	{0, 2, 4, 6, 7, 9, 11}, // lydian, all the way up
 }
+
+// Void starts where the dungeon ends and goes one mode darker.
+var scalesForVoid = [][]int{
+	{0, 1, 3, 5, 7, 8, 10}, // phrygian
+	{0, 1, 3, 5, 6, 8, 10}, // locrian
+}
+
+var scalesForRust = [][]int{
+	{0, 1, 3, 5, 7, 8, 10}, // phrygian
+	{0, 1, 3, 5, 7, 8, 10}, // phrygian
+	{0, 1, 3, 5, 6, 8, 10}, // locrian
+}
+
+// Pentatonic scales, for a mood to name in its scales; no built-in mood
+// uses them yet.
+var (
+	majorPentatonic = []int{0, 2, 4, 7, 9}
+	minorPentatonic = []int{0, 3, 5, 7, 10}
+)
 
 // The meadow stays major longer and turns lydian only high up: its
 // brightness is register and air, not the mode.
@@ -629,7 +1095,9 @@ type trackRow struct {
 func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 	var out [nTracks][rows]trackRow
 	r := rng{p.Seed ^ uint64(pat)*0x9e3779b97f4a7c15 | 1}
-	chord := p.Root + []int{0, 0, p.Scale[5] - 12, p.Scale[3] - 12}[r.n(4)]
+	// VI and iv are the tones two and four degrees below the root, which a
+	// five-note scale also has: in major pentatonic they are V and II.
+	chord := p.Root + []int{0, 0, scaleTone(p.Scale, -2), scaleTone(p.Scale, -4)}[r.n(4)]
 
 	if p.DroneGain > 0.01 { // aurora has none; don't run a silent voice
 		out[0][0] = trackRow{chord - 12, p.DroneGain, rows, p.Palette.Drone}
@@ -641,17 +1109,29 @@ func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 	}
 	for _, row := range []int{0, 8} {
 		if r.f() < p.PadDensity {
+			// Every other tone: a triad in seven tones. In five it is the
+			// open voicing pentatonic music uses: root, third and sixth in
+			// major pentatonic, a stack of fourths in minor.
 			deg := []int{0, 2, 4}[r.n(3)]
 			out[2][row] = trackRow{chord + p.Scale[deg], 0.7, 6, p.Palette.Pad}
 		}
 	}
-	deg := 7 + r.n(7)
+	// The lead starts an octave above the chord and walks between the
+	// chord's fourth tone and the fourth tone two octaves up, counted in the
+	// scale's own tones.
+	n := len(p.Scale)
+	deg := n + r.n(n)
 	for i := 0; i < rows; i++ {
 		if r.f() < p.BellDensity {
 			deg += r.n(5) - 2
-			deg = max(3, min(deg, 17))
-			out[3][i] = trackRow{chord + 12*(deg/7) + p.Scale[deg%7] + p.BellLift, 0.55 * leadTrim[p.LeadName], p.LeadGate, p.Palette.Bell}
+			deg = max(3, min(deg, 2*n+3))
+			out[3][i] = trackRow{chord + scaleTone(p.Scale, deg) + p.BellLift, 0.55 * leadTrim[p.LeadName], p.LeadGate, p.Palette.Bell}
 		}
+	}
+	// Without a lead the walk is still drawn, so the pulse below draws the
+	// same numbers, but nothing strikes.
+	if p.LeadName == "" {
+		out[3] = [rows]trackRow{}
 	}
 	if pat%2 == 0 {
 		out[4][0] = trackRow{45, p.AirGain, 10, p.Palette.Air}
@@ -692,7 +1172,8 @@ type Synth struct {
 	pats          [nTracks][rows]trackRow
 	dl, dr        []float64 // delay lines
 	dpos          int
-	dbus          float64
+	bus           sends // this frame's delay and reverb sends
+	verb          *reverb
 	fx            sfx // one-shot lane (sfx.go); the sequencer never sees it
 
 	// drum lanes (drums.go), silent in moods without a groove
@@ -701,6 +1182,20 @@ type Synth struct {
 	offLeft [nDrums]int // frames until each lane's off 16th; 0 = none armed
 	offGain [nDrums]float64
 	offSeed [nDrums]uint64
+	offN    [nDrums]int // how many times the armed off 16th ratchets
+	rat     [nDrums]ratchet
+	// an off 16th's flam grace, armed as offLeft is; an on 16th's plays
+	// from flamsAhead instead
+	graceLeft [nDrums]int
+	graceGain [nDrums]float64
+	graceSeed [nDrums]uint64
+	// owner of the last row stepped (ownGen, ownGrid, ownTheme) and the row
+	// its grid's polymetric lanes count from
+	owner, runFrom int
+	// the next row has no row before it to lead its flams in from: the
+	// synth's first, or a theme's
+	leadIn bool
+	graced bool // the next row's graces have played
 
 	// VU meter tap: read-only from the synthesis path's view — nothing
 	// here feeds back into the samples, so renders stay byte-identical.
@@ -709,11 +1204,21 @@ type Synth struct {
 	mout [4]uint64  // envelopes published as float bits for cross-goroutine reads
 
 	// hand-written pattern (grid.go): nil plays the generator alone
-	grid   atomic.Pointer[Grid]
-	now    atomic.Pointer[Params] // staged for the next row (SetParametersNow)
-	nframe int64                  // frames rendered, synthesis-side
-	frames atomic.Int64           // nframe as of the end of the last Read
-	rowLog rowLog
+	grid atomic.Pointer[Grid]
+
+	// authored themes (theme.go): themeCmd is staged by PlayTheme; the rest
+	// belongs to the audio thread, except the two counters ThemePlaying reads
+	themeCmd            atomic.Pointer[themeCmd]
+	themeGen, themeDone atomic.Int64
+	theme               *Theme
+	themeAt             int
+	themeOf             int64
+	themeFresh          bool // the theme's first grid has not stepped yet
+	silent              bool
+	now                 atomic.Pointer[Params] // staged for the next block (SetParametersNow)
+	nframe              int64                  // frames rendered, synthesis-side
+	frames              atomic.Int64           // nframe as of the end of the last Read
+	rowLog              rowLog
 
 	// music bus level as float bits, set from the caller's goroutine. A mixer
 	// control rather than a Param: it never changes what the score derives,
@@ -763,7 +1268,11 @@ func (s *Synth) Levels() [4]float64 {
 }
 
 func NewSynth(p Params) *Synth {
-	s := &Synth{voices: make([]Voice, nTracks)}
+	// The reverb's lines (about 200 KB) are allocated here for every synth,
+	// even one whose mood never sends to it: a mood or one-shot that does may
+	// arrive at any pattern boundary, on the audio thread, which must not
+	// allocate them.
+	s := &Synth{voices: make([]Voice, nTracks), verb: newReverb(), leadIn: true}
 	s.musicGain.Store(math.Float64bits(1))
 	s.apply(p)
 	return s
@@ -780,55 +1289,176 @@ func (s *Synth) SetMusicGain(g float64) {
 }
 
 // SetParameters stages a new parameter map; it takes effect at the next
-// pattern boundary (the audio/set-parameters contract).
+// pattern boundary (the undertone/set-parameters contract).
 func (s *Synth) SetParameters(p Params) { s.next.Store(&p) }
 
-// SetParametersNow stages p for the next row instead of the next pattern:
-// for an editor, where a tempo or voice change should be heard at once. The
-// generator's notes for the rest of this pattern were already drawn from the
-// old parameters, so only tempo and the voices of new notes change mid-way.
-// Safe to call from any goroutine.
-func (s *Synth) SetParametersNow(p Params) { s.now.Store(&p) }
+// SetParametersNow applies p within nowBlock frames instead of at the next
+// pattern: for an editor, or a game switching scenes, where a mood change
+// should be heard at once. The rest of the pattern is redrawn from p, and
+// each track moves to the note p would be sounding by now, fading over
+// fadeFrames so the switch does not click. A change SetParameters staged
+// for the boundary is dropped, since p is newer and complete: otherwise it
+// would land at the boundary and undo p. Safe to call from any goroutine.
+func (s *Synth) SetParametersNow(p Params) {
+	s.next.Store(nil)
+	s.now.Store(&p)
+}
 
 func (s *Synth) apply(p Params) {
 	p = p.sanitized()
 	s.params = p
 	s.cur.Store(&p)
 	s.samplesPerRow = int(SampleRate * 60 / (p.BPM * 2)) // 2 rows per beat: ambient rows are long
-	if s.dl == nil {
-		s.dl = make([]float64, s.samplesPerRow*3)
-		s.dr = make([]float64, s.samplesPerRow*3)
+	s.fitDelay(s.samplesPerRow * 3)
+	// The music's voices only: one-shots stay at grit 0, as they stay at
+	// full level under SetMusicGain, so an sfx sounds the same in any fight.
+	for _, vs := range [][]Voice{s.voices, s.dvoices[:]} {
+		for i := range vs {
+			vs[i].gritTo = p.Grit
+			if !vs[i].active {
+				vs[i].grit = p.Grit
+			}
+		}
+	}
+	// Open reaches the bed only: a drum's filters are its tuning, which a
+	// level should not move.
+	for i := range s.voices {
+		s.voices[i].openTo = p.Open
+		if !s.voices[i].active {
+			s.voices[i].open = p.Open
+		}
+	}
+	s.verb.setRoom(p.Room)
+}
+
+// fitDelay keeps the delay three rows long as the tempo changes; set once,
+// it fell off the grid as soon as tension raised the tempo. The ring is first
+// rotated to read from its start, so the echoes due soonest play on without a
+// jump; a shorter line keeps those, and a longer one follows them with
+// silence rather than an old echo. Only a tempo slower than any this synth has
+// played allocates.
+func (s *Synth) fitDelay(n int) {
+	if n == len(s.dl) {
+		return
+	}
+	for _, d := range []*[]float64{&s.dl, &s.dr} {
+		line := *d
+		rotate(line, s.dpos)
+		if n > cap(line) {
+			grown := make([]float64, n)
+			copy(grown, line)
+			*d = grown
+			continue
+		}
+		old := len(line)
+		line = line[:n]
+		if n > old {
+			clear(line[old:])
+		}
+		*d = line
+	}
+	s.dpos = 0
+}
+
+// rotate moves a[k:] to the front of a, in place.
+func rotate(a []float64, k int) {
+	slices.Reverse(a[:k])
+	slices.Reverse(a[k:])
+	slices.Reverse(a)
+}
+
+// nowBlock is how often, in frames, the synth looks for a SetParametersNow:
+// about 3 ms, well inside one output buffer.
+const nowBlock = 128
+
+// applyNow switches to p mid-pattern. The pattern and drums are redrawn
+// for the pattern still playing (the previous one, if the last row has just
+// stepped); generation is deterministic per pattern, so unchanged params
+// redraw the same notes and nothing is retriggered.
+func (s *Synth) applyNow(p Params) {
+	old := s.samplesPerRow
+	s.apply(p)
+	s.rowLeft = max(1, s.rowLeft*s.samplesPerRow/old)
+	pat, row := s.pat, s.row-1
+	if row < 0 {
+		pat, row = pat-1, rows-1
+	}
+	s.pats = buildPatterns(s.params, pat)
+	s.drums = buildDrums(s.params, pat)
+	if g := s.playingGrid(); g != nil {
+		for r := 0; r <= row; r++ {
+			s.applyGrid(g, r)
+		}
+	}
+	for t := range s.voices {
+		s.revoice(t, pat, row)
 	}
 }
 
-func (s *Synth) step() {
-	if p := s.now.Swap(nil); p != nil {
-		s.apply(*p)
-		// The groove and drum gain follow at once, as swing does; buildDrums
-		// is deterministic for a pattern, so an unchanged groove rebuilds the
-		// same hits.
-		s.drums = buildDrums(s.params, s.pat)
+// revoice moves track t to the note the redrawn pattern has sounding at row:
+// the latest one there, if its gate has not run out.
+func (s *Synth) revoice(t, pat, row int) {
+	v := &s.voices[t]
+	for r := row; r >= 0; r-- {
+		tr := s.pats[t][r]
+		if tr.note == 0 {
+			continue
+		}
+		left := tr.gateRows - (row - r)
+		if left <= 0 {
+			break
+		}
+		if v.active && v.gate && v.note == tr.note && samePatch(v.patch, tr.patch) {
+			v.gateRows = left
+			if v.gainTo != tr.gain {
+				v.glideGain(tr.gain)
+			}
+		} else {
+			v.retrigger(tr, left, s.params.Seed+uint64(pat*rows+r))
+		}
+		return
 	}
+	v.gate = false
+}
+
+func (s *Synth) step() {
+	_, s.owner, s.runFrom = s.nextOwner()
 	if s.row == 0 {
+		s.advanceTheme()
 		if p := s.next.Swap(nil); p != nil {
 			s.apply(*p)
 		}
 		s.pats = buildPatterns(s.params, s.pat)
 		s.drums = buildDrums(s.params, s.pat)
 	}
-	if g := s.grid.Load(); g != nil {
+	if g := s.playingGrid(); g != nil {
 		s.applyGrid(g, s.row)
 	}
 	s.rowLog.add(s.nframe, s.row)
 	s.stepDrums()
 	for t := 0; t < nTracks; t++ {
 		v := &s.voices[t]
-		if tr := s.pats[t][s.row]; tr.note != 0 {
-			v.trigger(tr.patch, tr.note, tr.gateRows, tr.gain, s.params.Seed+uint64(s.pat*rows+s.row))
-		} else if v.active && v.gate {
-			v.gateRows--
-			if v.gateRows <= 0 {
-				v.gate = false
+		tr := s.pats[t][s.row]
+		seed := s.params.Seed + uint64(s.pat*rows+s.row)
+		switch {
+		case tr.note != 0 && (v.pend.note != 0 || v.gain != v.gainTo || v.active && !samePatch(v.patch, tr.patch)):
+			// mid-fade, a trigger would step the gain; on a new patch it
+			// would cut the old one off
+			v.retrigger(tr, tr.gateRows, seed)
+		case tr.note != 0:
+			v.trigger(tr.patch, tr.note, tr.gateRows, tr.gain, seed)
+		default:
+			if v.pend.note != 0 {
+				v.pendRows--
+				if v.pendRows <= 0 {
+					v.pend = trackRow{}
+				}
+			}
+			if v.active && v.gate {
+				v.gateRows--
+				if v.gateRows <= 0 {
+					v.gate = false
+				}
 			}
 		}
 	}
@@ -840,31 +1470,69 @@ func (s *Synth) step() {
 }
 
 func (s *Synth) frame() (int16, int16) {
+	if s.nframe%nowBlock == 0 {
+		if c := s.themeCmd.Swap(nil); c != nil {
+			s.startTheme(c)
+		}
+	}
+	if s.leadIn {
+		// hold the row back so its flams' graces can sound first
+		s.leadIn = false
+		if s.rowLeft == 0 && s.flamsAhead(false) {
+			s.rowLeft, s.graced = s.flamLead(), false
+		}
+	}
 	if s.rowLeft == 0 {
 		s.step()
-		s.rowLeft = s.samplesPerRow
+		s.rowLeft, s.graced = s.samplesPerRow, false
+	}
+	if s.nframe%nowBlock == 0 {
+		if p := s.now.Swap(nil); p != nil {
+			s.applyNow(*p)
+		}
+	}
+	// at or past the lead rather than on it: applyNow above can rescale
+	// rowLeft across it in either direction
+	if !s.graced && s.rowLeft <= s.flamLead() {
+		s.graced = true
+		s.flamsAhead(true)
 	}
 	s.rowLeft--
 	s.nframe++
 	var l, r float64
-	s.dbus = 0
+	s.bus = sends{}
+	var ml, mr float64 // where a muted layer plays
+	var mbus sends
 	for i := range s.voices {
 		if s.voices[i].active {
-			s.voices[i].run(&l, &r, &s.dbus)
+			if s.params.Mute&(1<<i) != 0 {
+				s.voices[i].run(&ml, &mr, &mbus)
+			} else {
+				s.voices[i].run(&l, &r, &s.bus)
+			}
 		}
 	}
-	s.runDrums(&l, &r)
+	if s.params.Mute&LayerDrums != 0 {
+		bus := s.bus
+		s.runDrums(&ml, &mr)
+		s.bus = bus
+	} else {
+		s.runDrums(&l, &r)
+	}
 	if g := math.Float64frombits(s.musicGain.Load()); g != 1 {
-		l, r, s.dbus = l*g, r*g, s.dbus*g
+		l, r = l*g, r*g
+		s.bus.delay, s.bus.verb = s.bus.delay*g, s.bus.verb*g
 	}
 	s.runShots(&l, &r)
 	// cross-fed stereo delay
 	wl, wr := s.dl[s.dpos], s.dr[s.dpos]
-	s.dl[s.dpos] = flush(s.dbus + wr*0.5)
-	s.dr[s.dpos] = flush(s.dbus*0.7 + wl*0.5)
+	s.dl[s.dpos] = flush(s.bus.delay + wr*0.5)
+	s.dr[s.dpos] = flush(s.bus.delay*0.7 + wl*0.5)
 	s.dpos = (s.dpos + 1) % len(s.dl)
 	l += wl * 0.5
 	r += wr * 0.5
+	vl, vr := s.verb.process(s.bus.verb)
+	l, r = l+vl, r+vr
 	l, r = math.Tanh(l*0.8), math.Tanh(r*0.8)
 	s.meter(l, r)
 	return int16(l * 32000), int16(r * 32000)
@@ -883,9 +1551,13 @@ func (s *Synth) Read(p []byte) (int, error) {
 
 // ---- output ----
 
-func WriteWAV(path string, s *Synth, seconds float64) error {
+// WriteWAV renders seconds of src, a Synth or something reading through one,
+// to a 16-bit stereo WAV at path.
+func WriteWAV(path string, src io.Reader, seconds float64) error {
 	data := make([]byte, int(seconds*SampleRate)*4)
-	s.Read(data)
+	if _, err := io.ReadFull(src, data); err != nil {
+		return err
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -925,12 +1597,12 @@ func WriteWAV(path string, s *Synth, seconds float64) error {
 }
 
 // sanitized makes p safe to play. Parameters arrive from lg code and pages,
-// and a bad one used to panic the synth (a scale under 7 notes indexes past
-// its end; a bpm of zero or NaN makes rows infinitely long), which in a
-// browser kills the whole wasm module. Out-of-range values are clamped or
+// and a bad one used to panic the synth (a scale under 5 notes indexes past
+// its end in the pad; a bpm of zero or NaN makes rows infinitely long), which
+// in a browser kills the whole wasm module. Out-of-range values are clamped or
 // replaced, never reported: the write-only contract has no way back.
 func (p Params) sanitized() Params {
-	if len(p.Scale) < 7 {
+	if len(p.Scale) < 5 {
 		p.Scale = scalesByBrightness[0]
 	}
 	if !(p.BPM >= 20) { // also catches NaN
@@ -959,6 +1631,20 @@ func (p Params) sanitized() Params {
 		p.Swing = 0
 	}
 	p.Swing = min(p.Swing, 0.25)
+	if !(p.Grit >= 0) {
+		p.Grit = 0
+	}
+	p.Grit = min(p.Grit, 1)
+	if math.IsNaN(p.Open) {
+		p.Open = 0
+	}
+	p.Open = max(-1, min(p.Open, 1))
+	for _, x := range []*float64{&p.Room.Size, &p.Room.Damp} {
+		if math.IsNaN(*x) {
+			*x = 0
+		}
+		*x = max(-1, min(*x, 1))
+	}
 	return p
 }
 

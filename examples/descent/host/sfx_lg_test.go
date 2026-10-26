@@ -7,13 +7,13 @@ import (
 	"github.com/nooga/let-go/pkg/api"
 	"github.com/nooga/let-go/pkg/vm"
 
-	"github.com/mparrett/let-go-undertone/engine"
-	"github.com/mparrett/let-go-undertone/letgo"
+	"github.com/mparrett/undertone/engine"
+	"github.com/mparrett/undertone/letgo"
 )
 
 // These tests are about the sfx VOCABULARY — the pure descriptor->trigger
-// derivation. The seam below it (audio/trigger reaching the engine) is pinned
-// in let-go-undertone's letgo/letgo_test.go, and the engine's own behaviour
+// derivation. The seam below it (undertone/trigger reaching the engine) is pinned
+// in undertone's letgo/letgo_test.go, and the engine's own behaviour
 // (pan, delay, voice death) in its engine/sfx_test.go; here the question is
 // whether the lg layer says the right things to it.
 

@@ -9,26 +9,26 @@
 // it: deriving music parameters and sfx triggers from game state, which
 // happens at human rates and is where a game's taste lives.
 //
-// The natives and Music state come from let-go-undertone's letgo package; the
+// The natives and Music state come from undertone's letgo package; the
 // demo driver lives in ../host so the browser front end (../web) runs the
 // identical turn. This file is only the native CLI: flags and stdout.
 //
 // The natives registered are the sketch's proposed surface plus the one-shot
 // lane:
 //
-//	audio/music-start            begin streaming
-//	audio/music-stop             stop
-//	audio/set-parameters         one map, merged over current state, applied
+//	undertone/music-start            begin streaming
+//	undertone/music-stop             stop
+//	undertone/set-parameters         one map, merged over current state, applied
 //	                             at the next pattern boundary
-//	audio/trigger                one-shot sfx: a trigger map or a vector of
+//	undertone/trigger                one-shot sfx: a trigger map or a vector of
 //	                             them (from sfx/for-events), fire-and-forget
 //
-// audio/render-wav is a fifth, spike-only: it is how determinism gets checked
+// undertone/render-wav is a fifth, spike-only: it is how determinism gets checked
 // without a sound card, not part of the proposed surface.
 //
 //	go run ./examples/descent/cli -demo        # the scripted arc, with sound
 //	go run ./examples/descent/cli -demo -dry   # the tension trace only
-//	go run ./examples/descent/cli -e '(do (ambience/score! 7 4 0.6) (audio/render-wav "out.wav" 20.0))'
+//	go run ./examples/descent/cli -e '(do (ambience/score! 7 4 0.6) (undertone/render-wav "out.wav" 20.0))'
 package main
 
 import (
@@ -40,15 +40,15 @@ import (
 	"github.com/nooga/let-go/pkg/api"
 	"github.com/nooga/let-go/pkg/vm"
 
-	"github.com/mparrett/let-go-undertone/engine"
-	"github.com/mparrett/let-go-undertone/letgo"
+	"github.com/mparrett/undertone/engine"
+	"github.com/mparrett/undertone/letgo"
 
-	"github.com/mparrett/let-go-undertone/examples/descent/host"
+	"github.com/mparrett/undertone/examples/descent/host"
 )
 
 func main() {
 	loadPath := flag.String("load-path", "lg", "directory for any namespaces beyond the embedded ones")
-	nsName := flag.String("ns", "ambience", "lg namespace to require")
+	nsName := flag.String("ns", "[undertone.ambience :as ambience]", "lg namespace to require, or a libspec")
 	expr := flag.String("e", "", "lg expression to run after the namespace loads")
 	demo := flag.Bool("demo", false, "walk demo.lg's scripted descent-and-fight arc")
 	dry := flag.Bool("dry", false, "with -demo: print the tension trace, make no sound")
@@ -56,7 +56,7 @@ func main() {
 	flag.Parse()
 
 	// The base params supply the patch palette and a lead default; the script
-	// is expected to overwrite every scalar via audio/set-parameters.
+	// is expected to overwrite every scalar via undertone/set-parameters.
 	m := letgo.NewMusic(engine.DeriveDungeon(1, 0, 0))
 	letgo.SetMusic(m)
 
@@ -65,9 +65,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	// ambience ships inside let-go-undertone, not in this directory, so the
-	// demo's namespaces load from the embedded copies; the load path is only
-	// for namespaces a caller adds.
+	// undertone.ambience ships inside undertone, registered by its init, and
+	// the demo's namespaces load from the embedded copies; the load path is
+	// only for namespaces a caller adds.
 	if err := host.LoadEmbedded(c); err != nil {
 		fmt.Fprintln(os.Stderr, "lg:", err)
 		os.Exit(1)

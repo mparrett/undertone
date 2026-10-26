@@ -1,7 +1,7 @@
 //go:build js
 
 // The descent demo's browser front end: the identical audio surface
-// (let-go-undertone/letgo, driven by ../host), the identical lg lane — loaded from embedded
+// (undertone/letgo, driven by ../host), the identical lg lane — loaded from embedded
 // sources via load-string, since GOOS=js has no filesystem — and the same
 // scripted arc, with the trace going to the page instead of stdout.
 //
@@ -23,10 +23,10 @@ import (
 	"github.com/nooga/let-go/pkg/api"
 	"github.com/nooga/let-go/pkg/vm"
 
-	"github.com/mparrett/let-go-undertone/engine"
-	"github.com/mparrett/let-go-undertone/letgo"
+	"github.com/mparrett/undertone/engine"
+	"github.com/mparrett/undertone/letgo"
 
-	"github.com/mparrett/let-go-undertone/examples/descent/host"
+	"github.com/mparrett/undertone/examples/descent/host"
 )
 
 var doc = js.Global().Get("document")

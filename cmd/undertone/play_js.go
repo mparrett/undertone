@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"syscall/js"
 
-	"github.com/mparrett/let-go-undertone/engine"
-	"github.com/mparrett/let-go-undertone/webaudio"
+	"github.com/mparrett/undertone/engine"
+	"github.com/mparrett/undertone/webaudio"
 )
 
 // startPlayback opens the browser output and returns at once: webaudio.Open waits for
@@ -33,7 +33,7 @@ var keep *webaudio.Player
 
 // exposeScenes lets the page switch scenes without reloading:
 // window.undertoneScene("?mood=overworld&depth=3") takes the same query the
-// page's flags come from, and the change lands on the next row. A reload would
+// page's flags come from, and the change is heard at once. A reload would
 // cost a fresh tap to unlock audio on iOS.
 func exposeScenes(syn *engine.Synth) {
 	js.Global().Set("undertoneScene", js.FuncOf(func(_ js.Value, a []js.Value) any {

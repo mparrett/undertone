@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"syscall/js"
 
-	"github.com/mparrett/let-go-undertone/examples/grid/lgmutate"
+	"github.com/mparrett/undertone/examples/grid/lgmutate"
 )
 
 // Built with -tags lg, the page gains a mutate button whose transform is lg

@@ -16,11 +16,20 @@
 // paying for it. Measured on an iPhone over HTTPS: clean, 0 underruns, lowest
 // queue 267 ms of 300, including with 120 ms main-thread stalls each second.
 //
+// The queue is also latency: a trigger is rendered behind everything already
+// queued, so at the default a one-shot lands up to 300 ms after what caused
+// it. A caller playing one-shots can ask for less, and SetQueue changes it
+// while playing; letgo asks for 80 ms (see letgo/output_js.go).
+//
 // Where the page is cross-origin isolated, the ring is a SharedArrayBuffer
 // the pump writes straight into; elsewhere (most hosting, itch.io embeds
 // without isolation) slices reach the worklet as transferred messages. Both
 // were clean on the phone; the shared ring held its queue steadier (lowest
 // 296 ms vs 267, ticks at most 13 ms apart).
+//
+// Open also works inside a Web Worker, which has no AudioContext: the pump
+// stays in the worker and page.js plays the ring on the main thread (see
+// worker.go).
 package webaudio
 
 import (
@@ -38,7 +47,7 @@ import (
 type Options struct {
 	SampleRate int           // [44100] of the source; the context is opened at this rate
 	Slice      int           // [512] frames rendered per step
-	Queue      time.Duration // [300 ms] audio kept queued ahead of the speaker
+	Queue      time.Duration // [300 ms] audio kept queued ahead of the speaker; see SetQueue
 	Budget     time.Duration // [3 ms] longest render run before yielding to the page
 }
 
@@ -52,6 +61,7 @@ type Player struct {
 
 	sent, played atomic.Int64 // frames posted to / consumed by the worklet
 	underruns    atomic.Int64
+	queue        atomic.Int64 // frames to keep queued (Options.Queue, then SetQueue)
 	closed       atomic.Bool
 	held         atomic.Bool // paused on purpose: gestures must not resume it
 	closeOnce    sync.Once
@@ -65,11 +75,17 @@ type Player struct {
 	cap        int
 
 	// Made once, not per slice: under TinyGo every js.Value that holds a JS
-	// object carries a finalizer, and ~86 new ones a second force a full
-	// collection of the guest VM's heap often enough to stall the page
+	// object carries a finalizer. Three per slice (~86 slices a second) plus
+	// one per queued() check came to several hundred a second, which forced
+	// a full collection of the guest VM's heap often enough to stall the page
 	// (TinyGo 0.42, 2026-10-15).
 	atomics js.Value
 	views   []js.Value // data.subarray for each slice-sized slot of the ring
+
+	// worker mode: no ctx or node here; page.js plays the ring, and id
+	// names this Player in its messages, since a worker may hold several
+	worker bool
+	id     int
 }
 
 // The worklet never allocates while playing: its ring is sized once, and an
@@ -109,6 +125,9 @@ registerProcessor('undertone-shared', UndertoneShared);`
 // for the next touch, click or key and resumes from there. It returns once
 // audio is running, which may be never if no gesture comes; call it from a
 // goroutine, never from a js.FuncOf callback (blocking one deadlocks wasm).
+//
+// In a Web Worker it returns once the ring is primed instead, and needs
+// page.js on the page and cross-origin isolation (see openWorker).
 func Open(src io.Reader, opt Options) (*Player, error) {
 	if opt.SampleRate == 0 {
 		opt.SampleRate = 44100
@@ -121,6 +140,9 @@ func Open(src io.Reader, opt Options) (*Player, error) {
 	}
 	if opt.Budget == 0 {
 		opt.Budget = 3 * time.Millisecond
+	}
+	if inWorker() {
+		return openWorker(src, opt)
 	}
 	ac := js.Global().Get("AudioContext")
 	if ac.IsUndefined() {
@@ -164,6 +186,7 @@ func Open(src io.Reader, opt Options) (*Player, error) {
 		})
 		p.listen()
 	}
+	p.SetQueue(opt.Queue)
 
 	// Prime the queue before connecting, so the first quantum has audio.
 	for p.queued() < p.target() {
@@ -208,8 +231,21 @@ func (p *Player) cacheViews() {
 	}
 }
 
-func (p *Player) target() int64 {
-	return int64(p.opt.Queue) * int64(p.opt.SampleRate) / int64(time.Second)
+// target is the queue to keep, in frames. Open and openWorker set it through
+// SetQueue, so Options.Queue gets the same clamp: a target the ring can't
+// hold would never be reached, and priming would spin forever.
+func (p *Player) target() int64 { return p.queue.Load() }
+
+// SetQueue changes how much audio is kept queued ahead of the speaker, while
+// playing: a shorter queue hears a trigger sooner, a longer one survives a
+// busier page. Lowering it lets the queue drain down; raising it refills. It
+// is held between one slice and the ring less one slice, and the value in
+// effect is returned.
+func (p *Player) SetQueue(d time.Duration) time.Duration {
+	f := int64(d) * int64(p.opt.SampleRate) / int64(time.Second)
+	f = min(max(f, int64(p.opt.Slice)), int64(p.cap-p.opt.Slice))
+	p.queue.Store(f)
+	return time.Duration(f) * time.Second / time.Duration(p.opt.SampleRate)
 }
 
 // queued counts slices still in flight to the worklet as queued. Topping up
@@ -293,6 +329,10 @@ func (p *Player) Shared() bool { return p.shared }
 // on the page don't resume it meanwhile, as they do an OS-suspended context.
 func (p *Player) Pause() {
 	p.held.Store(true)
+	if p.worker {
+		p.tell("pause")
+		return
+	}
 	p.ctx.Call("suspend")
 }
 
@@ -300,6 +340,10 @@ func (p *Player) Pause() {
 // gesture handler, or the context may stay suspended.
 func (p *Player) Resume() {
 	p.held.Store(false)
+	if p.worker {
+		p.tell("resume")
+		return
+	}
 	p.ctx.Call("resume")
 }
 
@@ -307,10 +351,14 @@ func (p *Player) Resume() {
 func (p *Player) Close() {
 	p.closeOnce.Do(func() {
 		p.closed.Store(true)
-		if !p.node.IsUndefined() && !p.node.IsNull() {
-			p.node.Call("disconnect")
+		if p.worker {
+			p.tell("close")
+		} else {
+			if !p.node.IsUndefined() && !p.node.IsNull() {
+				p.node.Call("disconnect")
+			}
+			p.ctx.Call("close")
 		}
-		p.ctx.Call("close")
 		for _, f := range p.funcs {
 			f.Release()
 		}

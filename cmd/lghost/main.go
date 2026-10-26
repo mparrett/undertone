@@ -8,13 +8,14 @@
 // layer that genuinely wants to be lg is the one above it: deriving music
 // parameters and sfx triggers from game state, which happens at human rates.
 //
-// The audio namespace comes from the letgo package's init (see its doc for the
-// natives). This file is only the native CLI: flags, the filesystem load path,
-// and stdout. An lg runtime built by lgx with the letgo package as a Go dep
+// The undertone namespace comes from the letgo package's init (see its doc for the
+// natives) and so does undertone.ambience, which the CLI requires as
+// ambience by default. This file is only the native CLI: flags, an optional
+// load path for your own namespaces, and stdout. An lg runtime built by lgx with the letgo package as a Go dep
 // does the same job.
 //
-//	go run ./cmd/lghost -load-path letgo/lg -e '(do (ambience/score! 7 4 0.6) (audio/music-start) (sleep 60000))'
-//	go run ./cmd/lghost -load-path letgo/lg -e '(do (ambience/score! 7 4 0.6) (audio/render-wav "out.wav" 20.0))'
+//	go run ./cmd/lghost -e '(do (ambience/score! 7 4 0.6) (undertone/music-start) (sleep 60000))'
+//	go run ./cmd/lghost -e '(do (ambience/score! 7 4 0.6) (undertone/render-wav "out.wav" 20.0))'
 package main
 
 import (
@@ -25,16 +26,16 @@ import (
 	"github.com/nooga/let-go/pkg/api"
 	"github.com/nooga/let-go/pkg/vm"
 
-	"github.com/mparrett/let-go-undertone/letgo"
+	"github.com/mparrett/undertone/letgo"
 )
 
 func main() {
-	loadPath := flag.String("load-path", "letgo/lg", "directory holding the lg namespaces")
-	nsName := flag.String("ns", "ambience", "lg namespace to require")
+	loadPath := flag.String("load-path", "", "directory holding your own lg namespaces (undertone's are built in)")
+	nsName := flag.String("ns", "[undertone.ambience :as ambience]", "lg namespace to require, or a libspec")
 	expr := flag.String("e", "", "lg expression to run after the namespace loads")
 	flag.Parse()
 
-	_ = letgo.CurrentMusic() // the import registers the audio namespace
+	_ = letgo.CurrentMusic() // the import registers the undertone namespace
 
 	c, err := api.NewLetGo("undertone.host")
 	if err != nil {
@@ -43,7 +44,9 @@ func main() {
 	}
 	// api.Run compiles a single form, so the whole-file lane is require, not a
 	// read-and-eval loop.
-	c.SetLoadPath([]string{*loadPath})
+	if *loadPath != "" {
+		c.SetLoadPath([]string{*loadPath})
+	}
 	if _, err := c.Run("(require '" + *nsName + ")"); err != nil {
 		fmt.Fprintln(os.Stderr, "lg:", err)
 		os.Exit(1)

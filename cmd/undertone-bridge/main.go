@@ -11,14 +11,14 @@
 // {"form": "<edn>"}, the EDN being one command vector:
 //
 //	[:score mood seed level tension]   ambience/derive-mood, then set-parameters
-//	[:params {...}]                    audio/set-parameters
-//	[:trigger m-or-vector]             audio/trigger
-//	[:music-gain g]                    audio/set-music-gain
+//	[:params {...}]                    undertone/set-parameters
+//	[:trigger m-or-vector]             undertone/trigger
+//	[:music-gain g]                    undertone/set-music-gain
 //
 // Only control-rate data crosses: a parameter map every few seconds and the
 // odd one-shot, never PCM. The device opens at load and starts on the first
 // gesture anywhere on the page (webaudio listens for it), so commands sent
-// before then update state and triggers drop, as audio/trigger documents.
+// before then update state and triggers drop, as undertone/trigger documents.
 //
 // window.undertoneBridge.stats() reports {received, errors, started} for
 // tests; nothing in it feeds back to the guest.
@@ -33,17 +33,17 @@ import (
 
 	"github.com/nooga/let-go/pkg/api"
 
-	"github.com/mparrett/let-go-undertone/engine"
-	"github.com/mparrett/let-go-undertone/letgo"
+	"github.com/mparrett/undertone/engine"
+	"github.com/mparrett/undertone/letgo"
 )
 
 const bridgeNS = `(ns undertone.bridge)
 (defn handle! [[op a & more]]
   (case op
-    :score      (audio/set-parameters (apply ambience/derive-mood a more))
-    :params     (audio/set-parameters a)
-    :trigger    (audio/trigger a)
-    :music-gain (audio/set-music-gain a)
+    :score      (undertone/set-parameters (apply ambience/derive-mood a more))
+    :params     (undertone/set-parameters a)
+    :trigger    (undertone/trigger a)
+    :music-gain (undertone/set-music-gain a)
     nil))`
 
 var received, errs atomic.Int64

@@ -1,0 +1,237 @@
+package letgo
+
+import (
+	"fmt"
+	"math"
+	"reflect"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/nooga/let-go/pkg/vm"
+
+	"github.com/mparrett/undertone/engine"
+)
+
+// ambience/moods is the built-in table: it names every mood, and each entry
+// reads back as that mood's spec, field for field, bar the palette.
+func TestAmbienceMoodsIsTheBuiltInTable(t *testing.T) {
+	c, _ := lgRuntime(t)
+	want := slices.Sorted(slices.Values(engine.MoodNames()))
+	v, err := c.Run(`(= (sort (map name (keys ambience/moods))) ["` + strings.Join(want, `" "`) + `"])`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.String() != "true" {
+		t.Errorf("ambience/moods does not hold exactly %v", want)
+	}
+	for _, name := range engine.MoodNames() {
+		v, err := c.Run("(get ambience/moods :" + name + ")")
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, _ := v.(*vm.PersistentMap)
+		if m == nil {
+			t.Fatalf("%s: no entry", name)
+		}
+		got, err := moodSpec(m)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		spec, _ := engine.MoodByName(name)
+		spec.Name, spec.Palette = "", ""
+		if !reflect.DeepEqual(got, spec) {
+			t.Errorf("%s: the entry reads back as\n%+v\nwant\n%+v", name, got, spec)
+		}
+	}
+}
+
+// An entry with a misspelt, missing or mistyped key is an error rather than
+// a mood that quietly derives zeros: it is authored data, so a slip is a bug.
+func TestDeriveSpecRejectsBadEntries(t *testing.T) {
+	c, _ := lgRuntime(t)
+	for _, bad := range []string{
+		`(assoc (:village ambience/moods) :swng 0.2)`,
+		`(dissoc (:village ambience/moods) :calm)`,
+		`(dissoc (:village ambience/moods) :bpm)`,
+		`(assoc (:village ambience/moods) :drums {:base 0.5})`,
+		`(assoc (:village ambience/moods) :root-base 62.5)`,
+		`(assoc (:village ambience/moods) :leads [:kazoo])`,
+		`(assoc (:village ambience/moods) :scales [[0 2 4]])`,
+		`(assoc (:village ambience/moods) :palette :nope)`,
+		`(assoc (:village ambience/moods) :drums {:base 0.55 :step 0.05 :hie 0.8})`,
+		`(assoc (:village ambience/moods) :drums {:base 0.55 :step 0.05 :hi "0.8"})`,
+		`(assoc (:village ambience/moods) :room 0.5)`,
+		`(assoc (:village ambience/moods) :room {:size 0.5 :dmap 0.1})`,
+		`(assoc (:village ambience/moods) :room {:size "big"})`,
+		`[:not :a :map]`,
+	} {
+		if _, err := c.Run("(ambience/derive-spec " + bad + " 7 2 0.5)"); err == nil {
+			t.Errorf("%s: want an error", bad)
+		}
+	}
+	if _, err := c.Run("(ambience/derive-spec (:village ambience/moods) 7 2.5 0.5)"); err == nil {
+		t.Error("a fractional level was accepted")
+	}
+}
+
+// An export under a name the host has never seen still plays as designed:
+// derive-spec takes the entry itself, and its :palette picks the patches that
+// the host would otherwise pick by mood name.
+func TestDeriveSpecMatchesMoodSpec(t *testing.T) {
+	c, m := lgRuntime(t)
+	s, _ := engine.MoodByName("village")
+	s.Name, s.Palette = "cavern", "aurora"
+	s.BPM.Base -= 9
+	s.Grooves = engine.GrooveNames()[:2]
+	if err := c.Def("cavern-src", "{"+s.EDN()+"}"); err != nil {
+		t.Fatal(err)
+	}
+	for _, seed := range []uint64{1, 7, 42} {
+		for _, level := range []int{0, 3, 8} {
+			for _, tension := range []float64{0, 0.6} {
+				want, err := s.Derive(seed, level, tension)
+				if err != nil {
+					t.Fatal(err)
+				}
+				name := fmt.Sprintf("cavern/seed%d/level%d/tension%.1f", seed, level, tension)
+				m.params = engine.DeriveDungeon(1, 0, 0)
+				expr := fmt.Sprintf("(ambience/score-spec! (:cavern (read-string cavern-src)) %d %d %v)", seed, level, tension)
+				if _, err := c.Run(expr); err != nil {
+					t.Fatalf("%s: %v", name, err)
+				}
+				checkParams(t, name, m.params, want)
+			}
+		}
+	}
+}
+
+// A palette the host lacks is an error, as it is for MoodSpec.Derive, and
+// leaves the current patches alone; an export with none still reads back.
+func TestSpecPaletteMustExist(t *testing.T) {
+	c, m := lgRuntime(t)
+	m.params = engine.DeriveDungeon(1, 0, 0)
+	before := m.params.Palette
+	if _, err := c.Run("(undertone/set-parameters {:palette :auroa :bpm 61})"); err == nil {
+		t.Error("an unknown :palette was accepted")
+	}
+	if m.params.BPM == 61 || !reflect.DeepEqual(m.params.Palette, before) {
+		t.Error("a rejected map still changed the music")
+	}
+	s, _ := engine.MoodByName("village")
+	s.Palette = ""
+	if _, err := c.Run("(get {" + s.EDN() + "} :village)"); err != nil {
+		t.Errorf("an export without a palette does not read: %v\n%s", err, s.EDN())
+	}
+}
+
+// Drums at zero gain stay silent under tension through lg too: the tension
+// term turns on only for drums that are playing.
+func TestDeriveSpecLeavesSilentDrumsSilent(t *testing.T) {
+	c, m := lgRuntime(t)
+	s, _ := engine.MoodByName("village")
+	s.Name = "hush"
+	s.Drums = engine.Line{Base: 0, Step: 0, Lo: math.Inf(-1), Hi: math.Inf(1)}
+	if err := c.Def("hush-src", "{"+s.EDN()+"}"); err != nil {
+		t.Fatal(err)
+	}
+	for _, level := range []int{0, 3} {
+		want, _ := s.Derive(7, level, 1)
+		m.params = engine.DeriveDungeon(1, 0, 0)
+		if _, err := c.Run(fmt.Sprintf("(ambience/score-spec! (:hush (read-string hush-src)) 7 %d 1.0)", level)); err != nil {
+			t.Fatal(err)
+		}
+		checkParams(t, fmt.Sprintf("hush/level%d", level), m.params, want)
+		if m.params.DrumGain != 0 {
+			t.Errorf("level %d: silent drums play at %v", level, m.params.DrumGain)
+		}
+	}
+}
+
+// A room travels from an entry to the engine: read strictly, derived, and
+// carried through the set-parameters map by derive-spec.
+func TestDeriveSpecCarriesRoom(t *testing.T) {
+	c, m := lgRuntime(t)
+	s, _ := engine.MoodByName("village")
+	s.Name, s.Palette = "hall", ""
+	s.Room = engine.Room{Size: 0.5, Damp: -0.25}
+	if err := c.Def("hall-src", "{"+s.EDN()+"}"); err != nil {
+		t.Fatal(err)
+	}
+	v, err := c.Run("(:hall (read-string hall-src))")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := moodSpec(v.(*vm.PersistentMap))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Room != s.Room {
+		t.Errorf("the entry reads back with room %+v, want %+v", got.Room, s.Room)
+	}
+	s.Palette = "dungeon" // derive-spec's stand-in for a palette-less entry
+	want, _ := s.Derive(7, 3, 0.5)
+	m.params = engine.DeriveDungeon(1, 0, 0)
+	if _, err := c.Run("(ambience/score-spec! (:hall (read-string hall-src)) 7 3 0.5)"); err != nil {
+		t.Fatal(err)
+	}
+	checkParams(t, "hall", m.params, want)
+}
+
+// A lead-less entry goes the whole way: its empty :leads reads back strictly,
+// derive-spec gives :lead :none, and set-parameters takes that back, dropping
+// the lead that was playing.
+func TestLeadlessEntryRoundTrips(t *testing.T) {
+	c, m := lgRuntime(t)
+	s, _ := engine.MoodByName("dungeon")
+	s.Name, s.Palette, s.Leads = "hollow", "", nil
+	if !strings.Contains(s.EDN(), ":leads     []") {
+		t.Fatalf("the export lacks an empty :leads:\n%s", s.EDN())
+	}
+	if err := c.Def("hollow-src", "{"+s.EDN()+"}"); err != nil {
+		t.Fatal(err)
+	}
+	v, err := c.Run("(:hollow (read-string hollow-src))")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := moodSpec(v.(*vm.PersistentMap))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := s
+	read.Name = ""
+	if !reflect.DeepEqual(got, read) {
+		t.Errorf("the entry reads back as\n%+v\nwant\n%+v", got, read)
+	}
+	lead, err := c.Run("(:lead (ambience/derive-spec (:hollow (read-string hollow-src)) 7 3 0.5))")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lead != vm.Keyword("none") {
+		t.Errorf("derive-spec gives :lead %v, want :none", lead)
+	}
+	s.Palette = "dungeon" // derive-spec's stand-in for a palette-less entry
+	want, _ := s.Derive(7, 3, 0.5)
+	m.params = engine.DeriveDungeon(1, 0, 0)
+	if m.params.LeadName == "" {
+		t.Fatal("the test needs a lead playing beforehand")
+	}
+	if _, err := c.Run("(ambience/score-spec! (:hollow (read-string hollow-src)) 7 3 0.5)"); err != nil {
+		t.Fatal(err)
+	}
+	checkParams(t, "hollow", m.params, want)
+
+	// Dropping the lead takes its patch out of the lead slot too, back to the
+	// new bank's own bell, where a grid's authored lead plays.
+	s.Name, s.Palette = "hollow", "void"
+	if err := c.Def("void-src", "{"+s.EDN()+"}"); err != nil {
+		t.Fatal(err)
+	}
+	want, _ = s.Derive(7, 3, 0.5)
+	engine.ApplyLead(&m.params, "kalimba")
+	if _, err := c.Run("(ambience/score-spec! (:hollow (read-string void-src)) 7 3 0.5)"); err != nil {
+		t.Fatal(err)
+	}
+	checkParams(t, "hollow on void", m.params, want)
+}

@@ -44,6 +44,7 @@ jobs:
           demo grid-lg examples/grid -tags lg ./examples/grid
           demo player examples/player ./cmd/undertone
           demo descent examples/descent/web ./examples/descent/web
+          demo designer examples/designer ./examples/designer
           ls -lh "$site"/*/main.wasm
       - uses: actions/upload-pages-artifact@v3
 

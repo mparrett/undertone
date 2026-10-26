@@ -5,8 +5,8 @@ import (
 
 	"github.com/nooga/let-go/pkg/api"
 
-	"github.com/mparrett/let-go-undertone/engine"
-	"github.com/mparrett/let-go-undertone/letgo"
+	"github.com/mparrett/undertone/engine"
+	"github.com/mparrett/undertone/letgo"
 )
 
 // LoadEmbedded is the browser's whole load lane — GOOS=js has no filesystem,

@@ -18,6 +18,11 @@ jobs:
           go-version-file: go.mod
       - run: go test ./...
       - run: go vet ./...
+      - run: GOOS=js GOARCH=wasm go vet ./examples/designer ./webaudio
+      # installed natively first: `go run` under GOOS=js would build the checker for js
+      - run: GOBIN="$(go env GOPATH)/bin" go install honnef.co/go/tools/cmd/staticcheck@2026.2.2
+      - run: '"$(go env GOPATH)/bin/staticcheck" ./...'
+      - run: GOOS=js GOARCH=wasm "$(go env GOPATH)/bin/staticcheck" ./examples/designer ./webaudio
 
   build:
     runs-on: ubuntu-latest

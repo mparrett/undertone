@@ -1,15 +1,18 @@
-// Package letgo binds the undertone engine to let-go as the `audio`
+// Package letgo binds the undertone engine to let-go as the `undertone`
 // namespace: the music/one-shot state, the lg-facing natives, and the loader
 // for the embedded lg sources.
 //
 // Importing the package registers the namespace (see init below), so an lg
 // runtime that links it needs no generated interop: lg code calls
-// audio/set-parameters, audio/music-start, audio/music-stop, audio/trigger
-// and audio/render-wav directly. The natives act on a default Music until a
+// undertone/set-parameters, undertone/set-parameters-now,
+// undertone/music-start, undertone/music-stop,
+// undertone/set-music-gain, undertone/trigger, undertone/register-shot and
+// undertone/render-wav directly. The natives act on a default Music until a
 // Go host points them elsewhere with SetMusic.
 //
-// Hosts with no filesystem (GOOS=js) load the lg sources through core's
-// load-string instead of the resolver's load path: see LoadEmbedded.
+// It also registers the embedded lg sources, so (require 'undertone.ambience)
+// resolves in any binary that links the package: a cli.Main host, a custom
+// lg, a browser build, with no source path.
 package letgo
 
 import (
@@ -17,6 +20,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -24,8 +28,8 @@ import (
 	"github.com/nooga/let-go/pkg/rt"
 	"github.com/nooga/let-go/pkg/vm"
 
-	"github.com/mparrett/let-go-undertone/engine"
-	"github.com/mparrett/let-go-undertone/letgo/lg"
+	"github.com/mparrett/undertone/engine"
+	"github.com/mparrett/undertone/letgo/lg"
 )
 
 // Music holds the host side of the audio surface. The mutex guards the
@@ -39,15 +43,22 @@ type Music struct {
 	// starting guards the window between opening the device and the unlock
 	// gesture arriving, so a second Start cannot open a second context.
 	starting bool
+	// nowWaiting is a set-parameters-now that came during that window; the
+	// catch-up applies it at once rather than at the first boundary.
+	nowWaiting bool
 
-	// musicGain is the last audio/set-music-gain, carried into a synth that
+	// musicGain is the last undertone/set-music-gain, carried into a synth that
 	// starts later; gainSet keeps the zero value from meaning silence.
 	musicGain float64
 	gainSet   bool
+
+	// theme is an undertone/play-theme that came before music-start; it
+	// starts with the music.
+	theme *engine.Theme
 }
 
 // NewMusic starts from base parameters; the lg script is expected to
-// overwrite every scalar via audio/set-parameters.
+// overwrite every scalar via undertone/set-parameters.
 func NewMusic(p engine.Params) *Music {
 	return &Music{params: p}
 }
@@ -63,60 +74,114 @@ func (m *Music) Params() engine.Params {
 // setParameters merges a partial lg map over current state and stages it.
 // Unknown keys are ignored (forward compatibility) and absent keys keep their
 // current value, so live-coding is just calling it again with what changed.
-func (m *Music) setParameters(v vm.Value) vm.Value {
+// An unknown :palette is the exception: it comes from an exported mood, which
+// MoodSpec.Derive rejects for the same name, so it is an error here too rather
+// than a mood playing on whatever patches were loaded before.
+//
+// With now, the change is heard within a block rather than at the next
+// pattern boundary (engine.Synth.SetParametersNow).
+func (m *Music) setParameters(v vm.Value, now bool) (vm.Value, error) {
 	lgm, ok := v.(*vm.PersistentMap)
 	if !ok {
-		return vm.NIL
+		return vm.NIL, nil
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := mergeParams(&m.params, lgm); err != nil {
+		fn := "set-parameters"
+		if now {
+			fn += "-now"
+		}
+		return vm.NIL, fmt.Errorf("undertone/%s: %w", fn, err)
+	}
+	switch {
+	case m.synth == nil:
+		m.nowWaiting = m.nowWaiting || now && m.starting
+	case now:
+		m.synth.SetParametersNow(m.params)
+	default:
+		m.synth.SetParameters(m.params)
+	}
+	return vm.NIL, nil
+}
 
+// mergeParams merges a partial lg map over p. Unknown keys are ignored
+// (forward compatibility) and absent keys keep their current value. An unknown
+// :palette is an error, checked before p changes.
+func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
+	var pal *engine.Palette
+	if s, ok := kwStr(lgm, "palette"); ok {
+		bank, ok := engine.PaletteByName(s)
+		if !ok {
+			return fmt.Errorf("unknown palette %q", s)
+		}
+		pal = &bank
+	}
 	// :mood selects the patch palette, which is the one thing not expressible
 	// as a scalar in the map. Deriving a throwaway params for the mood is how
 	// the host gets that palette without exporting the patch tables.
 	if s, ok := kwStr(lgm, "mood"); ok {
-		if p, ok := engine.DeriveMood(s, 1, 0, 0); ok {
+		if d, ok := engine.DeriveMood(s, 1, 0, 0); ok {
 			// The palette's bell is the mood's seed-1 lead, so its name and
 			// gate come too; a :lead below still overrides all three.
-			m.params.Palette = p.Palette
-			m.params.LeadName, m.params.LeadGate = p.LeadName, p.LeadGate
+			p.Palette = d.Palette
+			p.LeadName, p.LeadGate = d.LeadName, d.LeadGate
 		}
 	}
-	flt(lgm, "bpm", &m.params.BPM)
-	integer(lgm, "root", &m.params.Root)
-	flt(lgm, "drone-gain", &m.params.DroneGain)
-	flt(lgm, "fifth-gain", &m.params.FifthGain)
-	flt(lgm, "pad-density", &m.params.PadDensity)
-	flt(lgm, "bell-density", &m.params.BellDensity)
-	flt(lgm, "air-gain", &m.params.AirGain)
-	flt(lgm, "pulse-gain", &m.params.PulseGain)
-	integer(lgm, "fifth-offset", &m.params.FifthOffset)
-	integer(lgm, "bell-lift", &m.params.BellLift)
+	// :palette names a bank directly, for a mood the host has no row for. The
+	// bank's own bell is replaced by the current lead, since a partial map
+	// need not carry :lead.
+	if pal != nil {
+		p.Palette = *pal
+		engine.ApplyLead(p, p.LeadName)
+	}
+	flt(lgm, "bpm", &p.BPM)
+	integer(lgm, "root", &p.Root)
+	flt(lgm, "drone-gain", &p.DroneGain)
+	flt(lgm, "fifth-gain", &p.FifthGain)
+	flt(lgm, "pad-density", &p.PadDensity)
+	flt(lgm, "bell-density", &p.BellDensity)
+	flt(lgm, "air-gain", &p.AirGain)
+	flt(lgm, "pulse-gain", &p.PulseGain)
+	flt(lgm, "grit", &p.Grit)
+	flt(lgm, "open", &p.Open)
+	flt(lgm, "room-size", &p.Room.Size)
+	flt(lgm, "room-damp", &p.Room.Damp)
+	integer(lgm, "fifth-offset", &p.FifthOffset)
+	integer(lgm, "bell-lift", &p.BellLift)
 	if sc, ok := ints(lgm, "scale"); ok {
-		m.params.Scale = sc
+		p.Scale = sc
 	}
 	if s, ok := kwStr(lgm, "groove"); ok {
 		if s == "none" {
 			s = ""
 		}
-		m.params.Groove = s
+		p.Groove = s
 	}
-	flt(lgm, "drum-gain", &m.params.DrumGain)
-	flt(lgm, "drum-busy", &m.params.DrumBusy)
-	flt(lgm, "swing", &m.params.Swing)
+	flt(lgm, "drum-gain", &p.DrumGain)
+	flt(lgm, "drum-busy", &p.DrumBusy)
+	flt(lgm, "swing", &p.Swing)
 	if s, ok := kwStr(lgm, "lead"); ok {
-		engine.ApplyLead(&m.params, s)
+		if s == "none" {
+			// As a lead-less mood derives: no name, so the generator plays
+			// nothing, and the bank's own bell back in the slot, where a
+			// grid's authored lead plays. Every built-in bank has the same
+			// bell, so with no :palette here any bank's will do.
+			bank, _ := engine.PaletteByName("dungeon")
+			if pal != nil {
+				bank = *pal
+			}
+			p.LeadName, p.LeadGate, p.Palette.Bell = "", 0, bank.Bell
+		} else {
+			engine.ApplyLead(p, s)
+		}
 	}
 	// :seed is int64 on the lg side; the engine's rng streams are uint64.
 	var seed int
 	if integer(lgm, "seed", &seed) {
-		m.params.Seed = uint64(seed)
+		p.Seed = uint64(seed)
 	}
-
-	if m.synth != nil {
-		m.synth.SetParameters(m.params)
-	}
-	return vm.NIL
+	return nil
 }
 
 // trigger accepts one trigger map or a vector of them (the shape
@@ -130,6 +195,16 @@ func (m *Music) trigger(v vm.Value) vm.Value {
 	if m.synth == nil {
 		return vm.NIL
 	}
+	for _, sh := range shots(v) {
+		m.synth.TriggerShot(sh)
+	}
+	return vm.NIL
+}
+
+// shots reads one trigger map or a vector of them; a map without :shot is
+// skipped.
+func shots(v vm.Value) []engine.Shot {
+	var out []engine.Shot
 	var maps []*vm.PersistentMap
 	switch t := v.(type) {
 	case *vm.PersistentMap:
@@ -167,9 +242,9 @@ func (m *Music) trigger(v vm.Value) vm.Value {
 				sh.Seed = uint64(v)
 			}
 		}
-		m.synth.TriggerShot(sh)
+		out = append(out, sh)
 	}
-	return vm.NIL
+	return out
 }
 
 // Start opens the audio device and begins streaming. Exported because the
@@ -191,6 +266,10 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	if m.gainSet {
 		syn.SetMusicGain(m.musicGain)
 	}
+	opening := m.theme
+	if opening != nil {
+		syn.PlayTheme(opening)
+	}
 	m.mu.Unlock()
 
 	// Deliberately NOT holding the mutex here. In a browser the output is not
@@ -203,9 +282,10 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.starting = false
+	waited := m.nowWaiting
+	m.starting, m.nowWaiting = false, false
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "audio/music-start:", err)
+		fmt.Fprintln(os.Stderr, "undertone/music-start:", err)
 		return vm.NIL
 	}
 	m.out = out
@@ -215,7 +295,16 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	}
 	// Parameters may have moved while we waited for the gesture; the synth was
 	// built from a snapshot, so catch it up to whatever is current.
-	m.synth.SetParameters(m.params)
+	if waited {
+		m.synth.SetParametersNow(m.params)
+	} else {
+		m.synth.SetParameters(m.params)
+	}
+	// A play-theme during the wait replaces the one the synth opened with.
+	if m.theme != opening {
+		m.synth.PlayTheme(m.theme)
+	}
+	m.theme = nil
 	return vm.NIL
 }
 
@@ -231,7 +320,7 @@ func (m *Music) setMusicGain(g float64) {
 }
 
 // Started reports whether playback is live. Go-side only, deliberately not a
-// native: a guest-visible (audio/playing?) would let game logic branch on audio
+// native: a guest-visible (undertone/playing?) would let game logic branch on audio
 // state, which is exactly what the write-only rule forbids.
 func (m *Music) Started() bool {
 	m.mu.Lock()
@@ -271,18 +360,6 @@ func (m *Music) Stop() vm.Value {
 	return vm.NIL
 }
 
-// renderWAV is the offline lane: it makes "same parameters ->
-// byte-identical audio" checkable in a test rather than by ear.
-func (m *Music) renderWAV(path string, seconds float64) vm.Value {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s := engine.NewSynth(m.params)
-	if err := engine.WriteWAV(path, s, seconds); err != nil {
-		fmt.Fprintln(os.Stderr, "audio/render-wav:", err)
-	}
-	return vm.NIL
-}
-
 // output is where a started Music plays: oto natively, webaudio in the
 // browser (output_native.go, output_js.go).
 type output interface {
@@ -291,7 +368,54 @@ type output interface {
 	Resume()
 }
 
-// ---- lg map readers ----
+// shotSpec reads an lg shot map into a spec; RegisterShot judges the patch.
+func shotSpec(v vm.Value) (engine.ShotSpec, error) {
+	var s engine.ShotSpec
+	m, ok := v.(*vm.PersistentMap)
+	if !ok {
+		return s, fmt.Errorf("want a map, got %s", v.Type().Name())
+	}
+	if s.Name, ok = kwStr(m, "name"); !ok {
+		return s, fmt.Errorf("want :name as a keyword or string")
+	}
+	if !flt(m, "gate-ms", &s.GateMS) {
+		return s, fmt.Errorf("want :gate-ms as a number")
+	}
+	units, ok := at(m, "patch").(vm.ArrayVector)
+	if !ok {
+		return s, fmt.Errorf("want :patch as a vector of units")
+	}
+	for i, uv := range units {
+		u, ok := uv.(vm.ArrayVector)
+		if !ok || len(u) == 0 {
+			return s, fmt.Errorf("unit %d: want a vector such as [:out 0.5 0.5]", i)
+		}
+		var us engine.UnitSpec
+		if k, ok := u[0].(vm.Keyword); ok {
+			us.Op = string(k)
+		}
+		for j, x := range u[1:] {
+			switch x := x.(type) {
+			case vm.Float:
+				us.Args = append(us.Args, float64(x))
+			case vm.Int:
+				us.Args = append(us.Args, float64(x))
+			case vm.Keyword:
+				// an osc names its shape second: [:osc transpose :sine sweep decay]
+				if us.Op != "osc" || j != 1 {
+					return s, fmt.Errorf("unit %d: %s at %d; only an osc names a shape, second", i, x, j+1)
+				}
+				us.Shape = string(x)
+			default:
+				return s, fmt.Errorf("unit %d: %s is not a number or a shape", i, x.Type().Name())
+			}
+		}
+		s.Units = append(s.Units, us)
+	}
+	return s, nil
+}
+
+// lg map readers.
 // Absent keys leave the target untouched; that is the partial-merge contract.
 
 func at(m *vm.PersistentMap, k string) vm.Value {
@@ -349,7 +473,7 @@ func ints(m *vm.PersistentMap, k string) ([]int, bool) {
 
 // current is the Music instance the audio natives act on. It is indirect
 // because namespace registration must happen exactly once per process: a
-// second vm.NewNamespace("audio") does replace the registry entry, but lg code
+// second vm.NewNamespace("undertone") does replace the registry entry, but lg code
 // loaded against the first one keeps referring to the first one's Vars, so a
 // re-register silently leaves earlier callers writing to the abandoned
 // instance. Swapping the target instead keeps every caller pointed at the
@@ -363,10 +487,15 @@ var current atomic.Pointer[Music]
 // out-of-tree bindings.
 func init() {
 	current.Store(NewMusic(engine.DeriveDungeon(1, 0, 0)))
-	installAudioNS()
+	installNS()
+	// The name is qualified because a registered namespace shadows a file
+	// of the same name on any source path (nooga/let-go#1064).
+	for _, s := range lg.Sources {
+		rt.RegisterEmbeddedSource(s.Name, s.Text)
+	}
 }
 
-// SetMusic points the audio namespace at m. A Go host that wants to own the
+// SetMusic points the undertone namespace at m. A Go host that wants to own the
 // instance (to start it from a user gesture, or read Params for a trace)
 // creates its own and calls this before running lg code; until then the
 // natives act on a default dungeon-palette Music.
@@ -375,10 +504,17 @@ func SetMusic(m *Music) { current.Store(m) }
 // CurrentMusic returns the instance the audio natives act on.
 func CurrentMusic() *Music { return current.Load() }
 
-func installAudioNS() {
-	ns := vm.NewNamespace("audio")
+// maxRenderSeconds bounds an offline render, which is held in memory whole:
+// ten minutes is about 106 MB.
+const maxRenderSeconds = 600
+
+func installNS() {
+	ns := vm.NewNamespace("undertone")
 	ns.Def("set-parameters", native("set-parameters", 1, func(a []vm.Value) (vm.Value, error) {
-		return current.Load().setParameters(a[0]), nil
+		return current.Load().setParameters(a[0], false)
+	}))
+	ns.Def("set-parameters-now", native("set-parameters-now", 1, func(a []vm.Value) (vm.Value, error) {
+		return current.Load().setParameters(a[0], true)
 	}))
 	ns.Def("music-start", native("music-start", 0, func([]vm.Value) (vm.Value, error) {
 		return current.Load().Start(), nil
@@ -394,19 +530,46 @@ func installAudioNS() {
 		case vm.Int:
 			g = float64(v)
 		default:
-			return vm.NIL, fmt.Errorf("audio/set-music-gain: gain must be a number, got %s", a[0].Type().Name())
+			return vm.NIL, fmt.Errorf("undertone/set-music-gain: gain must be a number, got %s", a[0].Type().Name())
 		}
 		current.Load().setMusicGain(g)
 		return vm.NIL, nil
 	}))
+	// A game's own one-shot, in the shape engine.ShotSpec.EDN writes:
+	// {:name :ping :gate-ms 20 :patch [[:env 0.001 0.2 0 0.1] [:osc 0 :sine 0 1] [:mul] [:out 0.5 0.5]]}.
+	// Unlike a trigger it reports a bad patch, since one is a bug in the game.
+	ns.Def("register-shot", native("register-shot", 1, func(a []vm.Value) (vm.Value, error) {
+		s, err := shotSpec(a[0])
+		if err == nil {
+			err = engine.RegisterShot(s)
+		}
+		if err != nil {
+			return vm.NIL, fmt.Errorf("undertone/register-shot: %w", err)
+		}
+		return vm.NIL, nil
+	}))
+	ns.Def("play-theme", native("play-theme", 1, func(a []vm.Value) (vm.Value, error) {
+		return current.Load().playTheme(a[0])
+	}))
+	ns.Def("theme-playing?", native("theme-playing?", 0, func([]vm.Value) (vm.Value, error) {
+		return vm.Boolean(current.Load().themePlaying()), nil
+	}))
 	ns.Def("trigger", native("trigger", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().trigger(a[0]), nil
 	}))
+	// The mood derivation, for undertone.ambience: pure functions, not audio
+	// state, so the surface stays write-only.
+	ns.Def("derive-spec", native("derive-spec", 4, deriveSpec))
+	ns.Def("moods-edn", native("moods-edn", 0, func([]vm.Value) (vm.Value, error) {
+		return vm.String(moodsEDN()), nil
+	}))
 	// Offline render: how determinism gets checked without a sound card.
-	ns.Def("render-wav", native("render-wav", 2, func(a []vm.Value) (vm.Value, error) {
-		path, ok := a[0].(vm.String)
-		if !ok {
-			return vm.NIL, fmt.Errorf("audio/render-wav: path must be a string, got %s", a[0].Type().Name())
+	renderWAV, _ := vm.NativeFnType.Wrap(func(a []vm.Value) (vm.Value, error) {
+		if len(a) != 2 && len(a) != 3 {
+			return vm.NIL, fmt.Errorf("undertone/render-wav: wants a path, seconds and an optional script, got %d argument(s)", len(a))
+		}
+		if _, ok := a[0].(vm.String); !ok && a[0] != vm.NIL {
+			return vm.NIL, fmt.Errorf("undertone/render-wav: path must be a string or nil, got %s", a[0].Type().Name())
 		}
 		var secs float64
 		switch v := a[1].(type) {
@@ -415,21 +578,30 @@ func installAudioNS() {
 		case vm.Int:
 			secs = float64(v)
 		default:
-			return vm.NIL, fmt.Errorf("audio/render-wav: seconds must be a number, got %s", a[1].Type().Name())
+			return vm.NIL, fmt.Errorf("undertone/render-wav: seconds must be a number, got %s", a[1].Type().Name())
 		}
-		return current.Load().renderWAV(string(path), secs), nil
-	}))
+		if !(secs > 0 && secs <= maxRenderSeconds) { // also catches NaN
+			return vm.NIL, fmt.Errorf("undertone/render-wav: seconds must be above 0 and at most %d, got %v", maxRenderSeconds, secs)
+		}
+		script := vm.Value(vm.NIL)
+		if len(a) == 3 {
+			script = a[2]
+		}
+		return current.Load().renderWAV(a[0], secs, script)
+	})
+	renderWAV.(*vm.NativeFn).SetName("render-wav")
+	ns.Def("render-wav", renderWAV)
 	rt.RegisterNS(ns)
 }
 
 // native wraps fn as an lg function without reflection. vm.MustBox would
 // box a typed Go func through reflect.Value.Call, which TinyGo does not
-// implement: under TinyGo every audio/ call failed, and TinyGo is what gets a
+// implement: under TinyGo every undertone/ call failed, and TinyGo is what gets a
 // browser bundle with let-go in it from 28 MB down to under 6.
 func native(name string, arity int, fn func([]vm.Value) (vm.Value, error)) vm.Value {
 	v, _ := vm.NativeFnType.Wrap(func(a []vm.Value) (vm.Value, error) {
 		if len(a) != arity {
-			return vm.NIL, fmt.Errorf("audio/%s: wants %d argument(s), got %d", name, arity, len(a))
+			return vm.NIL, fmt.Errorf("undertone/%s: wants %d argument(s), got %d", name, arity, len(a))
 		}
 		return fn(a)
 	})
@@ -438,16 +610,14 @@ func native(name string, arity int, fn func([]vm.Value) (vm.Value, error)) vm.Va
 	return f
 }
 
-// LoadEmbedded loads the embedded lg sources (package lg, dependency order)
-// through core's load-string — the lane for hosts with no filesystem. Each
-// source is handed over as a Def'd var rather than spliced into the expression
-// string, so no escaping of the lg text is ever needed.
+// LoadEmbedded requires the embedded lg namespaces into c's current
+// namespace under their short names, so host code can call ambience/score!
+// as it could before the namespace was qualified. Since init registers
+// them, lg code needs only its own (:require [undertone.ambience ...]).
 func LoadEmbedded(c *api.LetGo) error {
 	for _, s := range lg.Sources {
-		if err := c.Def("undertone-embedded-src", s.Text); err != nil {
-			return fmt.Errorf("%s: %w", s.Name, err)
-		}
-		if _, err := c.Run("(load-string undertone-embedded-src)"); err != nil {
+		short := s.Name[strings.LastIndexByte(s.Name, '.')+1:]
+		if _, err := c.Run("(require '[" + s.Name + " :as " + short + "])"); err != nil {
 			return fmt.Errorf("%s: %w", s.Name, err)
 		}
 	}

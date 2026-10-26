@@ -14,7 +14,7 @@ func (l line) atMost(hi float64) line  { l.hi = hi; return l }
 
 // at evaluates the line at a level. The float64 conversion stops the compiler
 // fusing the multiply-add, which Go may do on arm64; unfused, the result is
-// the same on every architecture and in the lg port.
+// the same on every architecture.
 func (l line) at(x float64) float64 {
 	return math.Min(l.hi, math.Max(l.lo, l.base+float64(l.step*x)))
 }
@@ -22,7 +22,8 @@ func (l line) at(x float64) float64 {
 // mood is a patch bank plus a point in parameter space, and how that point
 // moves as the level rises. Tension works the same in every mood, so it is
 // not in the table: tempo up, pulse in, the second drone sliding to a tritone
-// and a minor ninth, the calm layers thinning.
+// and a minor ninth, the calm layers thinning, and drums, where a mood has
+// them, busier and harder.
 type mood struct {
 	name     string
 	scales   [][]int // indexed by level/2; the last one holds for higher levels
@@ -37,13 +38,26 @@ type mood struct {
 	calm     int // the second drone's interval from the chord at low tension; positive floats above it
 	bellLift int
 	palette  Palette
-	leads    []string // the seed picks one; repeats are the weights
+	leads    []string // the seed picks one; repeats are the weights; none leaves the lead silent
 
 	// Drums, for rhythmic moods; the zero values leave them off.
 	grooves []string // grooveLib names; the seed picks one
 	drums   line     // drum gain
 	busy    line     // chance each ? step plays
 	swing   float64
+
+	// open is how far the svf filters open with level, -1..1: up to two
+	// octaves of cutoff either way. The zero line leaves them where the
+	// patches set them.
+	open line
+
+	// tenseDrums brings in drums that the level leaves silent: from a
+	// quarter tension they rise to this gain at full, so a fight starts a
+	// beat under a mood that has none at rest.
+	tenseDrums float64
+
+	// room is the reverb room; the zero Room is the default long, dark one.
+	room Room
 }
 
 var moods = []mood{
@@ -61,6 +75,26 @@ var moods = []mood{
 		calm:    -5, // perfect fifth above the low drone
 		palette: dungeonPalette,
 		leads:   dungeonLeads,
+	},
+	// Past the dungeon: where depth would take it if it kept going. Nine
+	// semitones under the dungeon and slower at every level, phrygian
+	// turning locrian, the drone and rumble lowpassed down to a pressure,
+	// pads swelling an octave down, and the odd chime far off in a large,
+	// dark room. Level sinks it further and thins what little moves.
+	{
+		name:     "void",
+		scales:   scalesForVoid,
+		bpm:      lin(42, -1).atLeast(34),
+		rootBase: 48, rootStep: -1,
+		drone:   lin(0.6, 0.03).atMost(0.8),
+		fifth:   lin(0.15, 0.04).atMost(0.45),
+		pad:     lin(0.45, -0.03).atLeast(0.2),
+		bell:    lin(0.07, -0.01).atLeast(0.02),
+		air:     lin(0.35, 0.03).atMost(0.55),
+		calm:    -5, // perfect fifth above the low drone
+		palette: voidPalette,
+		leads:   voidLeads,
+		room:    Room{Size: 0.8, Damp: 0.6},
 	},
 	// The bright mirror: elevation raises and opens (mixolydian -> major ->
 	// lydian, higher root, denser lifted bells, breeze instead of rumble).
@@ -117,6 +151,24 @@ var moods = []mood{
 		palette: auroraPalette,
 		leads:   auroraLeads,
 	},
+	// Above the aurora: thinner still, with no lead at all. No drone, a
+	// single sine haze an octave over the chord, higher than aurora's veils,
+	// and wind, in an open, bright room. Level climbs: the root rises and
+	// the haze fills in a little.
+	{
+		name:     "stratosphere",
+		scales:   scalesForAurora,
+		bpm:      lin(46, 1).atMost(52),
+		rootBase: 74, rootStep: 1,
+		drone:   lin(0, 0),
+		fifth:   lin(0.2, 0.01).atMost(0.3),
+		pad:     lin(0.55, 0.02).atMost(0.7),
+		bell:    lin(0, 0),
+		air:     lin(0.3, 0.02).atMost(0.4),
+		calm:    12, // an octave above the chord: the thinnest interval
+		palette: stratospherePalette,
+		room:    Room{Size: 0.4, Damp: -0.8},
+	},
 	// The first mood with drums: a warm daytime village, mixolydian turning
 	// major, a light shuffle under kalimba and pluck. Level is the day
 	// building to a festival: the shaker fills in, the drums come up.
@@ -139,15 +191,63 @@ var moods = []mood{
 		busy:     lin(0.2, 0.12).atMost(0.8),
 		swing:    0.1,
 	},
-	// Candidates for later moods, on the dark-to-bright axis:
-	//   - Past dungeon, darker (Void, Below or Hades): lower and slower
-	//     than depth reaches today, perhaps with a new low patch.
-	//   - Stratosphere, a sibling of aurora: thinner still, with no lead.
-	// The table cannot express pentatonic scales yet: the sequencer and grid
-	// assume seven degrees.
+	// Industrial, after the bed of "Hurt": detuned saws grinding through
+	// resonant filters that never sit still, a hiss bed played like an
+	// instrument, a tritone where other moods have a fifth, and the odd
+	// clang. Level sinks it: slower, lower, phrygian turning locrian, the
+	// noise and the second drone coming up. Its tension pulse is a filter
+	// envelope with teeth rather than a heartbeat.
+	{
+		name:     "rust",
+		scales:   scalesForRust,
+		bpm:      lin(58, -2).atLeast(44),
+		rootBase: 45, rootStep: -1,
+		drone:   lin(0.6, 0.04).atMost(0.85),
+		fifth:   lin(0.15, 0.08).atMost(0.55),
+		pad:     lin(0.35, 0.03).atMost(0.6),
+		bell:    lin(0.06, 0),
+		air:     lin(0.35, 0.05).atMost(0.7),
+		calm:    -6, // a tritone from the start
+		palette: rustPalette,
+		leads:   rustLeads,
+		open:    lin(0, -0.12), // the filters close as it sinks
+		// no drums at rest; from a quarter tension the machine comes in
+		grooves:    []string{"machine"},
+		drums:      lin(0, 0),
+		busy:       lin(0.3, 0.05).atMost(0.6),
+		tenseDrums: 0.75,
+	},
+	// Rust's rhythmic sibling, after "Closer": the same saws, hiss and
+	// industrial kit, but the machine groove is the floor rather than the
+	// threat, playing from the first bar with a little swing in it. The
+	// harmony holds a plain fifth so the beat carries the menace until
+	// tension sours it. Level stokes it: faster, the drums busier, the
+	// filters opening where rust's close, dorian darkening to phrygian.
+	{
+		name:     "forge",
+		scales:   scalesByDarkness,
+		bpm:      lin(88, 2).atMost(98),
+		rootBase: 45, rootStep: 0,
+		drone:   lin(0.45, 0.02).atMost(0.55),
+		fifth:   lin(0.15, 0.03).atMost(0.3),
+		pad:     lin(0.3, 0),
+		bell:    lin(0.04, 0),
+		air:     lin(0.25, 0.03).atMost(0.4),
+		calm:    -5, // perfect fifth above the low drone
+		palette: rustPalette,
+		leads:   rustLeads,
+		open:    lin(0, 0.08),
+		grooves: []string{"machine"},
+		// Flat in level: tension's push is clamped to the same ceiling as
+		// the level line, so a rising line would leave tension no gain to
+		// add at high levels.
+		drums: lin(0.6, 0).atMost(0.75),
+		busy:  lin(0.35, 0.05).atMost(0.6),
+		swing: 0.06,
+	},
 }
 
-// MoodNames lists the moods DeriveMood knows, darkest first.
+// MoodNames lists the moods DeriveMood knows, in table order.
 func MoodNames() []string {
 	names := make([]string, len(moods))
 	for i, m := range moods {
@@ -184,6 +284,9 @@ func (m *mood) derive(seed uint64, level int, tension float64) Params {
 		BellDensity: m.bell.at(l) * (1 - float64(0.5*t)),
 		AirGain:     m.air.at(l) + float64(0.1*t),
 		PulseGain:   t,
+		Grit:        t,
+		Open:        math.Max(-1, math.Min(1, m.open.at(l))),
+		Room:        m.room,
 		FifthOffset: tenseOffset(m.calm, t),
 		BellLift:    m.bellLift,
 		Palette:     m.palette,
@@ -194,6 +297,20 @@ func (m *mood) derive(seed uint64, level int, tension float64) Params {
 	}
 	pickLead(&p, m.leads)
 	if len(m.grooves) > 0 {
+		// Tension drives drums that are playing: the shaker fills in and the
+		// hits land harder, so a fight builds a beat on top of the level's.
+		// Drums at zero gain stay silent, and the gain keeps the mood's own
+		// ceiling, which is set for balance against the bed; busy is a chance,
+		// so tension may push it past the level's ceiling, up to certainty.
+		// float64() keeps each product rounded on its own: without it arm64
+		// fuses the multiply-add, and amd64 would derive other bits.
+		if p.DrumGain > 0 {
+			p.DrumGain = math.Min(m.drums.hi, p.DrumGain+float64(0.15*t))
+			p.DrumBusy = min(1, p.DrumBusy+float64(0.4*t))
+		} else if m.tenseDrums > 0 && t > 0.25 {
+			p.DrumGain = float64(m.tenseDrums * float64((t-0.25)/0.75))
+			p.DrumBusy = min(1, p.DrumBusy+float64(0.4*t))
+		}
 		pickGroove(&p, m.grooves)
 	}
 	return p

@@ -8,8 +8,8 @@ import (
 	"github.com/nooga/let-go/pkg/api"
 	"github.com/nooga/let-go/pkg/vm"
 
-	"github.com/mparrett/let-go-undertone/engine"
-	"github.com/mparrett/let-go-undertone/letgo"
+	"github.com/mparrett/undertone/engine"
+	"github.com/mparrett/undertone/letgo"
 )
 
 // These tests are about the tension MODEL, not the plumbing. The model exists
@@ -260,7 +260,7 @@ func TestParamsForDrivesTheEngine(t *testing.T) {
 	}
 
 	read := func(tension string) engine.Params {
-		if _, err := c.Run(fmt.Sprintf(`(audio/set-parameters (music/params-for w %s))`, tension)); err != nil {
+		if _, err := c.Run(fmt.Sprintf(`(undertone/set-parameters (music/params-for w %s))`, tension)); err != nil {
 			t.Fatalf("tension %s: %v", tension, err)
 		}
 		return m.Params()

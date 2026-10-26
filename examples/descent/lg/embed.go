@@ -1,6 +1,7 @@
 // Package lg embeds the demo's lg sources so the browser front end (GOOS=js,
 // no filesystem) can load them through core's load-string. ambience.lg is not
-// here: it ships with let-go-undertone's letgo/lg package and loads first.
+// here: it ships with undertone's letgo package, which registers it as
+// undertone.ambience.
 package lg
 
 import _ "embed"

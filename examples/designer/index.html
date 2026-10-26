@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Undertone Designer</title>
+<style>
+  :root { --bg: #0d0d10; --panel: #15151a; --line: #26262e; --fg: #d6d1c2; --mut: #8a8576; --err: #c96a5f;
+          /* one hue per kind of section, shared with the grid's lanes */
+          --tempo: #e0b84f; --layer: #5fa8c9; --drum: #9cc46a; --aud: #b48ad6; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+         font: 14px/1.45 ui-monospace, Menlo, monospace; }
+  main { max-width: 1100px; margin: 0 auto; display: grid; gap: 24px; }
+  @media (min-width: 900px) { main { grid-template-columns: 290px 1fr; align-items: start; } body { padding: 32px; }
+                              aside { position: sticky; top: 32px; } }
+  h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 10px; font-weight: 600; }
+  .lab { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 16px 0 6px; font-weight: 600; }
+  #status { color: var(--mut); min-height: 1.45em; font-size: 13px; }
+  #status.err { color: var(--err); }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  button, .chip, select, input[type=number], input[type=text] {
+    font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  button, .chip { cursor: pointer; }
+  #play { min-width: 6.5em; font-size: 15px; border-color: #3d5a47; background: #18241d; }
+  #play.on { border-color: var(--tempo); background: #2a2414; }
+  .chip { font-size: 13px; color: var(--mut); padding: 4px 9px; }
+  .chip.on { color: var(--fg); border-color: var(--sec, var(--fg)); background: color-mix(in srgb, var(--sec, var(--fg)) 22%, var(--panel)); }
+  .chip small { color: var(--mut); font-size: 11px; margin-left: 4px; }
+  label.sl { display: grid; grid-template-columns: 5.5em 1fr 6ch; gap: 8px; align-items: center; font-size: 13px; color: var(--mut); margin: 6px 0; }
+  label.sl output { color: var(--fg); text-align: right; }
+  .card label.sl.bare { grid-template-columns: 1fr 6ch; }
+  input[type=range] { width: 100%; accent-color: var(--sec, var(--tempo)); }
+  input[type=text] { width: 100%; }
+  #dock { display: grid; gap: 8px; margin: 8px 0; }
+  #dock .row { display: flex; gap: 8px; align-items: stretch; }
+  /* the mix: a lit chip is a layer you hear; muting is for listening and never exported */
+  #mix { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  #mix .chip { --sec: var(--layer); padding: 3px 8px; font-size: 12px; }
+  #mix .chip[data-v=drums] { --sec: var(--drum); }
+  #mix .chip[data-v=pulse] { --sec: var(--aud); }
+  #mix .chip.on::before { content: "♪ "; }
+  #mix button { font-size: 12px; padding: 3px 8px; }
+  .card.muted { opacity: .55; }
+  .card.muted .hd span { color: var(--mut); }
+  #now { flex: 1; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  /* on a phone the dock rides the bottom edge, so play is in reach from any section */
+  @media (max-width: 899px) {
+    #dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; margin: 0; padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+            background: color-mix(in srgb, var(--bg) 92%, transparent); border-top: 1px solid var(--line); backdrop-filter: blur(6px); }
+  }
+  #now .k { color: var(--mut); }
+  textarea { width: 100%; min-height: 18em; font: 12px/1.4 ui-monospace, Menlo, monospace; color: var(--fg);
+             background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+
+  /* audition: a collapsed panel that says what it is set to */
+  details.aud { --sec: var(--aud); border: 1px solid var(--line); border-left: 3px solid var(--aud); border-radius: 8px;
+                background: var(--panel); padding: 8px 10px; margin-top: 12px; }
+  details.aud summary { cursor: pointer; font-size: 13px; color: var(--mut); }
+  details.aud summary b { color: var(--aud); font-weight: 600; letter-spacing: .1em; font-size: 12px; margin-right: 6px; }
+
+  /* sections: a coloured rule and title per kind; cards carry the colour on their edge */
+  .sec { --sec: var(--mut); margin-bottom: 26px; }
+  .sec.tempo { --sec: var(--tempo); } .sec.layer { --sec: var(--layer); } .sec.drum { --sec: var(--drum); }
+  .sec > header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+                  border-bottom: 1px solid color-mix(in srgb, var(--sec) 45%, transparent); padding-bottom: 6px; margin-bottom: 10px; }
+  .sec > header h2 { margin: 0; font-size: 12px; letter-spacing: .14em; color: var(--sec); font-weight: 700; }
+  .sec > header small { color: var(--mut); font-size: 12px; }
+  .cards { display: grid; gap: 10px; align-items: start; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
+  .card { background: color-mix(in srgb, var(--sec) 5%, var(--panel)); border: 1px solid var(--line);
+          border-left: 3px solid var(--sec); border-radius: 8px; padding: 10px 12px; }
+  .card .hd { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }
+  .card .hd b { font-weight: 600; }
+  .card .hd span { color: var(--sec); margin-left: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .hd b { flex: none; }
+  /* a grid item is as wide as its content by default; a long summary must truncate instead */
+  .card { min-width: 0; }
+  .card .note { font-size: 12px; color: var(--mut); }
+  /* collapsing: a card folds to its title row; a section's title opens or
+     shuts all its cards, and its arrow shows which a tap will do */
+  .sec > header h2, .card .hd { cursor: pointer; user-select: none; }
+  .sec > header h2::before, .card .hd b::before { content: "▾ "; color: var(--mut); }
+  .sec.someshut > header h2::before, .card.shut .hd b::before { content: "▸ "; }
+  .card.shut > :not(.hd) { display: none; }
+  details.help { font-size: 12px; color: var(--mut); margin: 2px 0 6px; }
+  details.help summary { cursor: pointer; color: var(--sec, var(--mut)); }
+  details.help p { margin: 6px 0; line-height: 1.45; }
+  .card label.sl { grid-template-columns: 3em 1fr 6ch; }
+  .clamps { display: flex; gap: 10px; font-size: 12px; color: var(--mut); align-items: center; flex-wrap: wrap; }
+  .clamps input[type=number] { width: 6.5em; padding: 3px 6px; }
+  .sweep { display: flex; align-items: flex-end; gap: 2px; height: 30px; margin-top: 8px; }
+  .sweep i { flex: 1; background: var(--line); border-radius: 2px 2px 0 0; min-height: 1px; }
+  .sweep i.cur { background: var(--sec); }
+  .sweep i.neg { opacity: .5; }
+  .sweepcap { display: flex; justify-content: space-between; font-size: 10px; color: var(--mut); margin-top: 2px; }
+  .off .cards { opacity: .35; pointer-events: none; }
+  /* the drums switch */
+  .switch { margin-left: auto; font-size: 12px; color: var(--mut); display: flex; gap: 6px; align-items: center; cursor: pointer;
+            border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px 4px 8px; align-self: center; }
+  .switch input { accent-color: var(--sec); width: 16px; height: 16px; }
+  main.loading section, main.loading .ctl { opacity: .35; pointer-events: none; }
+</style>
+</head>
+<body>
+<main class="loading">
+ <aside>
+  <h1>UNDERTONE · DESIGNER</h1>
+  <div id="status">loading the engine…</div>
+  <div id="dock"><div class="row"><button id="play" disabled>loading…</button><div id="now">–</div></div>
+   <div id="mix" title="tap a layer to mute or unmute it; none, then one layer, solos it"></div></div>
+  <div class="ctl">
+   <div class="lab">START FROM</div>
+   <div class="bar" id="moods"></div>
+   <label class="switch" id="buildup" style="margin-left:0;display:inline-flex" title="a mood starts with only its lowest layer; bring the rest in from the mix">
+    <input type="checkbox"> build up: start with one layer</label>
+   <details class="aud">
+    <summary><b>AUDITION</b><span id="audsum"></span></summary>
+    <div class="lab">PRESETS <small style="font-weight:400;letter-spacing:0">· each sets level and tension</small></div>
+    <div class="bar" id="presets"></div>
+    <label class="sl">level <input id="level" type="range" min="-2" max="10" step="1" value="0"><output id="levelv">0</output></label>
+    <label class="sl">tension <input id="tension" type="range" min="0" max="1" step="0.05" value="0"><output id="tensionv">0</output></label>
+    <label class="sl">seed <input id="seed" type="range" min="1" max="40" step="1" value="1"><output id="seedv">1</output></label>
+   </details>
+   <div id="exportbox">
+    <div class="lab">EXPORT</div>
+    <div class="bar"><input id="name" type="text" aria-label="mood name"></div>
+    <div class="bar"><button id="export">show EDN</button><button id="copy">copy</button></div>
+    <textarea id="edn" readonly hidden></textarea>
+   </div>
+  </div>
+ </aside>
+ <section id="sections"></section>
+</main>
+
+<script src="wasm_exec.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const status = $("status");
+  const GAIN = { min: 0, max: 1, step: 0.01, smin: -0.2, smax: 0.2, sstep: 0.01 };
+  // Sections in the order a mood is built: its time and key, then the
+  // layers from the floor up, then the drums.
+  const SECTIONS = [
+    { id: "tempo", title: "TEMPO & HARMONY", note: "how fast, in what key, where the lead sits", items: [
+      { line: "bpm", min: 30, max: 160, step: 1, smin: -10, smax: 10, sstep: 0.5, note: "tempo (the seed adds 0–4)" },
+      { group: "key & voicing", note: "root at level 0 and its climb; the second voice and the lead's register", ints: [
+        { int: "rootBase", label: "root", min: 36, max: 84, step: 1, tip: "root note at level 0 (MIDI)" },
+        { int: "rootStep", label: "climb", min: -3, max: 3, step: 1, tip: "root semitones per level" },
+        { int: "calm", label: "2nd", min: -12, max: 12, step: 1, tip: "second voice vs the chord, at rest" },
+        { int: "bellLift", label: "lift", min: 0, max: 24, step: 12, tip: "lead lifted by octaves" },
+      ]},
+      { patches: true },
+    ]},
+    { id: "layer", title: "LAYERS", note: "floor to sky · each value is base + step × level, kept within min and max", items: [
+      { line: "drone", ...GAIN, note: "the floor: low drone gain" },
+      { line: "fifth", ...GAIN, note: "the second voice's gain" },
+      { line: "pad",   ...GAIN, note: "pad chords: how often they play" },
+      { line: "bell",  ...GAIN, note: "the lead: how often it plays" },
+      { line: "air",   ...GAIN, note: "the top: air or breeze gain" },
+      { line: "open",  min: -1, max: 1, step: 0.05, smin: -0.3, smax: 0.3, sstep: 0.01, note: "the resonant filters: level opens (+) or closes (−) them, up to two octaves" },
+    ]},
+    { id: "drum", title: "DRUMS", note: "kick, backbeat, top: the palette's kit", toggle: true, items: [
+      { grooves: true },
+      { line: "drums", ...GAIN, note: "drum gain" },
+      { line: "busy",  ...GAIN, note: "how full the shaker is: the chance each optional hit plays" },
+      { int: "swing", min: 0, max: 0.33, step: 0.01, note: "off-16th push (0.17 ≈ triplet)" },
+      { int: "tenseDrums", label: "tense", min: 0, max: 1, step: 0.05, note: "drums that come with tension: their gain at full, when drum gain is 0" },
+    ]},
+  ];
+  const PRESETS = [
+    { name: "rest",  level: 0, tension: 0 },
+    { name: "climb", level: 4, tension: 0 },
+    { name: "peak",  level: 8, tension: 0 },
+    { name: "uneasy", level: 2, tension: 0.5 },
+    { name: "dread", level: 4, tension: 1 },
+  ];
+  let spec = null, ready = false, playing = false, stashedGrooves = null, grooveCopies = {};
+  // The layers apply() can silence, floor to sky; a line card names the lead "bell".
+  const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums"];
+  const muted = new Set();
+  const layerOf = (line) => line === "bell" ? "lead" : line;
+  const lineAt = (l, x) => Math.min(l.hi ?? Infinity, Math.max(l.lo ?? -Infinity, l.base + l.step * x));
+  const fmt = (v) => Number.isInteger(v) ? String(v) : v.toFixed(2);
+  const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
+  const syncers = [], sweeps = [];
+
+  function slider(label, min, max, step, get, set) {
+    const w = el("label", label ? "sl" : "sl bare", `${label ? `<span>${label}</span>` : ""}<input type="range" min="${min}" max="${max}" step="${step}"><output></output>`);
+    const inp = w.querySelector("input"), out = w.querySelector("output");
+    syncers.push(() => { inp.value = get(); out.textContent = fmt(+get()); });
+    inp.oninput = () => { set(+inp.value); out.textContent = fmt(+inp.value); changed(); };
+    return w;
+  }
+
+  function lineCard(c) {
+    const k = c.line, card = el("div", "card", `<div class="hd"><b>${k}</b><span></span></div><div class="note">${c.note}</div>`);
+    card.append(slider("base", c.min, c.max, c.step, () => spec[k].base, (v) => spec[k].base = v),
+                slider("step", c.smin, c.smax, c.sstep, () => spec[k].step, (v) => spec[k].step = v));
+    const cl = el("div", "clamps");
+    for (const side of ["lo", "hi"]) {
+      const lab = el("label", "", `<input type="checkbox"> ${side === "lo" ? "min" : "max"} <input type="number" step="${c.step}">`);
+      const [box, num] = lab.querySelectorAll("input");
+      box.onchange = () => { spec[k][side] = box.checked ? +(num.value || (side === "lo" ? c.min : c.max)) : null; sync(); changed(); };
+      num.oninput = () => { if (box.checked) { spec[k][side] = +num.value; changed(); } };
+      syncers.push(() => { box.checked = spec[k][side] != null; num.value = spec[k][side] ?? ""; num.disabled = !box.checked; });
+      cl.append(lab);
+    }
+    const sw = el("div", "sweep");
+    sw.title = "the value at each level, 0 to 10; the lit bar is the audition level";
+    for (let l = 0; l <= 10; l++) sw.append(el("i"));
+    card.append(cl, sw, el("div", "sweepcap", "<span>level 0</span><span>value by level · lit = now</span><span>10</span>"));
+    sweeps.push((level) => {
+      // a signed line (open) draws its size, dimmed below zero, so a
+      // closing slope shows as well as an opening one
+      const signed = c.min < 0, vals = [...Array(11)].map((_, l) => lineAt(spec[k], l));
+      const top = signed ? Math.max(-c.min, c.max) : Math.max(c.max, ...vals) || 1;
+      [...sw.children].forEach((b, l) => {
+        // open derives clamped to its range, so draw it that way
+        const v = signed ? Math.min(Math.abs(vals[l]), top) : Math.max(0, vals[l]);
+        b.style.height = `${v / top * 100}%`;
+        b.classList.toggle("neg", vals[l] < 0);
+        b.classList.toggle("cur", l === level);
+      });
+      const off = muted.has(layerOf(k));
+      card.classList.toggle("muted", off);
+      card.querySelector(".hd span").textContent = (off ? "muted · " : "") + fmt(lineAt(spec[k], level));
+    });
+    return card;
+  }
+
+  function intCard(c) {
+    const card = el("div", "card", `<div class="hd"><b>${c.label || c.int}</b></div><div class="note">${c.note}</div>`);
+    card.append(slider("", c.min, c.max, c.step, () => spec[c.int], (v) => spec[c.int] = v));
+    summary(card, () => fmt(spec[c.int]));
+    return card;
+  }
+
+  // summary puts a card's gist in its title row, so a shut card still says
+  // what it is set to. It refreshes on every change, as the line values do.
+  const NOTES = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
+  function summary(card, text) {
+    const span = el("span"); card.querySelector(".hd").append(span);
+    sweeps.push(() => { span.textContent = text(); });
+  }
+
+  function groupCard(g) {
+    const card = el("div", "card", `<div class="hd"><b>${g.group}</b></div><div class="note">${g.note}</div>`);
+    for (const c of g.ints) {
+      const s = slider(c.label, c.min, c.max, c.step, () => spec[c.int], (v) => spec[c.int] = v);
+      s.title = c.tip; s.style.gridTemplateColumns = "3.5em 1fr 4ch";
+      card.append(s);
+    }
+    summary(card, () => {
+      const r = spec.rootBase, key = NOTES[((r % 12) + 12) % 12] + (Math.floor(r / 12) - 1);
+      return spec.rootStep ? `${key} · ${spec.rootStep > 0 ? "+" : "−"}${Math.abs(spec.rootStep)}/level` : key;
+    });
+    return card;
+  }
+
+  // help adds a collapsed explanation under a card's note, for controls whose
+  // meaning the control itself does not show.
+  function help(card, html) {
+    card.querySelector(".note").after(el("details", "help", `<summary>what is this?</summary>${html}`));
+  }
+
+  function patchesCard() {
+    const card = el("div", "card", `<div class="hd"><b>patches</b></div><div class="note">sounds the mood plays with</div>
+      <label class="sl" style="grid-template-columns:5em 1fr">palette <select></select></label>
+      <div class="lab" style="margin:8px 0 0">LEADS <small style="font-weight:400;letter-spacing:0">· tap to add a copy; the odds follow the copies</small></div>`);
+    const sel = card.querySelector("select"), leads = el("div", "bar");
+    card.append(leads);
+    for (const p of JSON.parse(undertoneDesigner.palettes())) sel.append(Object.assign(el("option"), { value: p, textContent: p }));
+    sel.onchange = () => { spec.palette = sel.value; changed(); };
+    syncers.push(() => { sel.value = spec.palette; });
+    // A tap cycles a lead through 0–3 copies. Copies go in after the lead's
+    // last one and the rest keep their places, since the seed picks by index.
+    for (const name of JSON.parse(undertoneDesigner.leads())) {
+      const b = el("span", "chip"); b.dataset.v = name;
+      b.onclick = () => {
+        const n = spec.leads.filter((x) => x === name).length;
+        if (n >= 3) {
+          spec.leads = spec.leads.filter((x) => x !== name);
+        } else {
+          const at = spec.leads.lastIndexOf(name);
+          at < 0 ? spec.leads.push(name) : spec.leads.splice(at + 1, 0, name);
+        }
+        sync(); changed();
+      };
+      syncers.push(() => {
+        const n = spec.leads.filter((x) => x === name).length;
+        b.classList.toggle("on", n > 0);
+        b.innerHTML = name + (n ? `<small>${n > 1 ? "×" + n + " · " : ""}${Math.round(100 * n / spec.leads.length)}%</small>` : "");
+      });
+      leads.append(b);
+    }
+    summary(card, () => `${spec.palette} · ${[...new Set(spec.leads)].join(" ") || "no lead"}`);
+    help(card, `<p><b>palette</b> is a bank of instrument sounds, one for each layer: drone, fifth, pad, air and pulse.
+      Changing it changes how every layer sounds, not what they play.</p>
+      <p><b>leads</b> is the instrument that plays the melody (the lead layer). Only one plays at a time; the seed,
+      in audition, picks which. Tapping a lead adds a copy, up to three, and a fourth tap removes it;
+      each chip shows its chance of being picked. With none, the mood has no lead.
+      The leads are ${JSON.parse(undertoneDesigner.leads()).join(", ")}.</p>`);
+    return card;
+  }
+
+  function groovesCard() {
+    const card = el("div", "card", `<div class="hd"><b>grooves</b></div><div class="note">one of the chosen grooves plays; the seed (in audition) decides which</div>`);
+    const bar = el("div", "bar");
+    for (const g of JSON.parse(undertoneDesigner.grooves())) {
+      const b = el("span", "chip", g);
+      b.onclick = () => {
+        // A groove listed twice is twice as likely, so off remembers how many
+        // copies there were and on puts them all back.
+        const n = spec.grooves.filter((x) => x === g).length;
+        if (n) { grooveCopies[g] = n; spec.grooves = spec.grooves.filter((x) => x !== g); }
+        else spec.grooves = [...spec.grooves, ...Array(grooveCopies[g] || 1).fill(g)];
+        if (!spec.grooves.length) stashedGrooves = null;
+        sync(); changed();
+      };
+      syncers.push(() => b.classList.toggle("on", spec.grooves.includes(g)));
+      bar.append(b);
+    }
+    card.append(bar);
+    summary(card, () => [...new Set(spec.grooves)].join(" ") || "off");
+    return card;
+  }
+
+  // Built once the engine is ready: the patch and groove cards list its names.
+  // Open and shut state is a per-viewer convenience, so it lives in
+  // localStorage, which can be missing or throw; the defaults stand in.
+  const narrow = matchMedia("(max-width: 700px)").matches;
+  let folds = {};
+  try { folds = JSON.parse(localStorage.getItem("designer-folds") || "{}"); } catch {}
+  const saveFolds = () => { try { localStorage.setItem("designer-folds", JSON.stringify(folds)); } catch {} };
+  function foldSection(sec, id) {
+    const cards = [...sec.querySelectorAll(".card")];
+    const key = (card) => "card:" + id + ":" + card.querySelector(".hd b").textContent;
+    const mark = () => sec.classList.toggle("someshut", cards.some((c) => c.classList.contains("shut")));
+    const set = (card, shut) => { folds[key(card)] = card.classList.toggle("shut", shut); };
+    for (const card of cards) {
+      card.classList.toggle("shut", folds[key(card)] ?? narrow);
+      card.querySelector(".hd").onclick = () => { set(card, !card.classList.contains("shut")); mark(); saveFolds(); };
+    }
+    sec.querySelector("header h2").onclick = () => {
+      const open = sec.classList.contains("someshut");
+      for (const card of cards) set(card, !open);
+      mark(); saveFolds();
+    };
+    mark();
+  }
+
+  function buildSections() {
+   for (const s of SECTIONS) {
+    const sec = el("div", "sec " + s.id), head = el("header", "", `<h2>${s.title}</h2><small>${s.note}</small>`);
+    if (s.toggle) {
+      // Drums off empties the grooves (a mood with none plays no drums) and
+      // remembers them, so on brings the same ones back.
+      const sw = el("label", "switch", `<input type="checkbox"> on`), box = sw.querySelector("input");
+      box.onchange = () => {
+        if (box.checked) {
+          spec.grooves = stashedGrooves || ["amble"];
+          // a silent drum line is deliberate when tension brings the drums in
+          if (spec.drums.base === 0 && spec.drums.step === 0 && !(spec.tenseDrums > 0)) spec.drums.base = 0.55;
+          if (spec.busy.base === 0 && spec.busy.step === 0) spec.busy.base = 0.3;
+        } else { stashedGrooves = spec.grooves; spec.grooves = []; }
+        sync(); changed();
+      };
+      syncers.push(() => { box.checked = spec.grooves.length > 0; sec.classList.toggle("off", !box.checked); });
+      head.append(sw);
+    }
+    const cards = el("div", "cards");
+    for (const it of s.items) {
+      cards.append(it.line ? lineCard(it) : it.int ? intCard(it) : it.group ? groupCard(it)
+                   : it.patches ? patchesCard() : groovesCard());
+    }
+    sec.append(head, cards);
+    $("sections").append(sec);
+    foldSection(sec, s.id);
+   }
+  }
+
+  function sync() { for (const f of syncers) f(); $("name").value = spec.name; }
+  const audition = () => [+$("seed").value, +$("level").value, +$("tension").value];
+  function showAudition() {
+    const [seed, level, tension] = audition();
+    const p = PRESETS.find((p) => p.level === level && p.tension === tension);
+    $("audsum").textContent = `${p ? p.name + " · " : ""}level ${level} · tension ${tension} · seed ${seed}`;
+    for (const b of document.querySelectorAll("#presets .chip")) b.classList.toggle("on", p && b.dataset.v === p.name);
+  }
+
+  // Every edit re-derives and is heard at once.
+  function changed() {
+    if (!ready || !spec) return;
+    const [seed, level, tension] = audition();
+    showAudition();
+    for (const f of sweeps) f(level);
+    const r = JSON.parse(undertoneDesigner.apply(JSON.stringify(spec), seed, level, tension, JSON.stringify([...muted])));
+    status.classList.toggle("err", !!r.error);
+    if (r.error) { status.textContent = r.error; return; }
+    status.textContent = playing ? "playing" : "ready: tap play";
+    $("now").innerHTML = `<span class="k">now</span> ${r.bpm} bpm · ${r.key} · ${r.lead ? "lead " + r.lead : "no lead"}` +
+      (r.groove ? ` · groove ${r.groove}` : ` · no drums`);
+    if (!$("edn").hidden) $("edn").value = undertoneDesigner.edn(JSON.stringify(spec));
+  }
+
+  function load(name) {
+    spec = JSON.parse(undertoneDesigner.spec(name));
+    spec.grooves = spec.grooves || [];
+    spec.leads = spec.leads || [];
+    stashedGrooves = null; grooveCopies = {};
+    for (const b of document.querySelectorAll("#moods .chip")) b.classList.toggle("on", b.dataset.v === name);
+    if ($("buildup").querySelector("input").checked) {
+      // Start from the lowest layer the mood has at this level: aurora has no drone.
+      const level = +$("level").value;
+      const first = ["drone", "fifth", "pad", "bell", "air"].find((k) => lineAt(spec[k], level) > 0.01) || "drone";
+      setMuted(LAYERS.filter((l) => l !== layerOf(first)));
+    }
+    sync(); changed();
+  }
+
+  // The mix: a chip per layer, lit while you hear it. "none" and then one
+  // layer is a solo; build up starts every mood that way from its lowest layer.
+  function setMuted(layers) {
+    muted.clear(); for (const l of layers) muted.add(l);
+    for (const b of document.querySelectorAll("#mix .chip")) b.classList.toggle("on", !muted.has(b.dataset.v));
+  }
+  for (const l of LAYERS) {
+    const b = el("span", "chip on", l); b.dataset.v = l;
+    if (l === "pulse") b.title = "tension's pulse: silent at tension 0";
+    b.onclick = () => { muted.has(l) ? muted.delete(l) : muted.add(l); setMuted([...muted]); changed(); };
+    $("mix").append(b);
+  }
+  for (const [label, layers] of [["all", () => []], ["none", () => LAYERS]]) {
+    const b = el("button", "", label); b.onclick = () => { setMuted(layers()); changed(); }; $("mix").append(b);
+  }
+  {
+    const box = $("buildup").querySelector("input");
+    try { box.checked = localStorage.getItem("designer-buildup") === "1"; } catch {}
+    box.onchange = () => { try { localStorage.setItem("designer-buildup", box.checked ? "1" : "0"); } catch {} };
+  }
+
+  for (const p of PRESETS) {
+    const b = el("span", "chip", `${p.name}<small>${p.level}${p.tension ? " · " + p.tension : ""}</small>`);
+    b.dataset.v = p.name; b.title = `level ${p.level}, tension ${p.tension}`;
+    b.onclick = () => {
+      $("level").value = p.level; $("tension").value = p.tension;
+      $("levelv").textContent = p.level; $("tensionv").textContent = p.tension; changed();
+    };
+    $("presets").append(b);
+  }
+  for (const id of ["level", "tension", "seed"]) {
+    $(id).oninput = () => { $(id + "v").textContent = $(id).value; changed(); };
+  }
+  $("name").oninput = (e) => { spec.name = e.target.value.trim().replace(/[^\w-]/g, "") || "untitled"; changed(); };
+  $("export").onclick = () => { $("edn").hidden = false; $("edn").value = undertoneDesigner.edn(JSON.stringify(spec)); };
+  $("copy").onclick = async () => {
+    const t = undertoneDesigner.edn(JSON.stringify(spec));
+    try { await navigator.clipboard.writeText(t); status.textContent = "EDN copied"; }
+    catch { $("edn").hidden = false; $("edn").value = t; status.textContent = "select the EDN below to copy it"; }
+  };
+  function setPlaying(on) {
+    playing = on;
+    playing ? undertoneDesigner.play() : undertoneDesigner.stop();
+    $("play").classList.toggle("on", playing);
+    $("play").innerHTML = playing ? "&#10074;&#10074; stop" : "&#9654; play";
+    status.textContent = playing ? "playing" : "stopped";
+  }
+  $("play").onclick = () => setPlaying(!playing);
+
+  // Export sits in the sidebar on a wide screen; on a phone it follows the
+  // sections, since it is the last thing done.
+  const wide = matchMedia("(min-width: 900px)"), ctl = document.querySelector(".ctl");
+  const placeExport = () => (wide.matches ? ctl : document.querySelector("main")).append($("exportbox"));
+  wide.addEventListener("change", placeExport); placeExport();
+  // On a phone the dock is fixed and the mix may wrap, so the page pads by its height.
+  new ResizeObserver(() => { document.body.style.paddingBottom = wide.matches ? "" : `${$("dock").offsetHeight + 16}px`; }).observe($("dock"));
+
+  window.undertoneDesignerFailed = (msg) => { status.textContent = "audio failed: " + msg; };
+  window.undertoneDesignerReady = () => {
+    ready = true;
+    buildSections();
+    for (const m of JSON.parse(undertoneDesigner.moods())) {
+      const b = el("span", "chip", m); b.dataset.v = m; b.onclick = () => { load(m); if (!playing) setPlaying(true); }; $("moods").append(b);
+    }
+    load("village");
+    $("play").disabled = false; $("play").innerHTML = "&#9654; play";
+    document.querySelector("main").classList.remove("loading");
+  };
+  const go = new Go();
+  WebAssembly.instantiateStreaming(fetch("main.wasm", { cache: "no-cache" }), go.importObject)
+    .then((r) => go.run(r.instance))
+    .catch((e) => { status.textContent = "wasm failed: " + e; });
+</script>
+</body>
+</html>

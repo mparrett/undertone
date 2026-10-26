@@ -4,21 +4,25 @@
 // the whole track is derived deterministically from a seed.
 //
 // Register: roguelike ambience. Parameters derive from game state —
-// mood (dungeon/overworld/meadow/aurora/village), level (depth darkens, elevation brightens),
+// mood (dungeon/void/overworld/meadow/aurora/stratosphere/village/rust/forge), level (depth darkens, elevation brightens),
 // tension (tempo up, pulse in, harmony sours), and the seed, which also
 // picks the lead instrument from a mood-weighted library. SetParameters
 // applies a new map at the next pattern boundary, the same transactional
-// semantics the letgo binding exposes as audio/set-parameters.
+// semantics the letgo binding exposes as undertone/set-parameters.
 //
 // This is the Go CLI front end; the engine lives in ../../engine and the
 // let-go binding in ../../letgo.
 //
 //	go run ./cmd/undertone -play                          # live, endless (oto; webaudio in a browser)
 //	go run ./cmd/undertone -play -depth 5 -tension 0.8    # the abyss, something coming
+//	go run ./cmd/undertone -play -mood void               # past the dungeon
 //	go run ./cmd/undertone -play -mood overworld -depth 3 # bright mirror
 //	go run ./cmd/undertone -play -mood meadow             # brighter still
 //	go run ./cmd/undertone -play -mood aurora             # thin, slow, high
+//	go run ./cmd/undertone -play -mood stratosphere       # thinner still, no lead
 //	go run ./cmd/undertone -play -mood village -depth 5   # drums: the festival
+//	go run ./cmd/undertone -play -mood rust -tension 0.6  # industrial, grinding
+//	go run ./cmd/undertone -play -mood forge -depth 3     # industrial, driving
 //	go run ./cmd/undertone -wav out.wav -depth 4 -lead pluck  # deterministic render
 package main
 
@@ -28,7 +32,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mparrett/let-go-undertone/engine"
+	"github.com/mparrett/undertone/engine"
 )
 
 func main() {
@@ -51,7 +55,11 @@ func main() {
 	*mood = m
 	p := deriveParams(*mood, *seed, level, *tension, *lead)
 	s := engine.NewSynth(p)
-	desc := fmt.Sprintf("mood=%s seed=%d level=%d tension=%.2f lead=%s bpm=%.0f root=%d", *mood, *seed, level, *tension, p.LeadName, p.BPM, p.Root)
+	leadName := p.LeadName
+	if leadName == "" {
+		leadName = "none"
+	}
+	desc := fmt.Sprintf("mood=%s seed=%d level=%d tension=%.2f lead=%s bpm=%.0f root=%d", *mood, *seed, level, *tension, leadName, p.BPM, p.Root)
 	if p.Groove != "" {
 		desc += " groove=" + p.Groove
 	}

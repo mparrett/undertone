@@ -1,0 +1,404 @@
+{
+  "title": "undertone — layers (as of 2026-10-17)",
+  "width": 1600,
+  "height": 1025,
+  "theme": "warmburnoutlight",
+  "font": "sans",
+  "footer": "solid = live path  ·  dashed = future (#40)  |  blue = game, purple = control/knobs, green = engine, teal = output",
+  "dividers": [
+    {
+      "orient": "h",
+      "at": 190,
+      "label": "game ↔ control"
+    },
+    {
+      "orient": "h",
+      "at": 430,
+      "label": "control ↔ engine (atomic Params swap, pattern boundary)"
+    },
+    {
+      "orient": "h",
+      "at": 740,
+      "label": "engine ↔ output (io.Reader, int16 stereo)"
+    }
+  ],
+  "rowY": {
+    "0": 65,
+    "1": 255,
+    "2": 485,
+    "3": 635,
+    "4": 805
+  },
+  "nodes": [
+    {
+      "id": "gogame",
+      "label": "Go game",
+      "color": "blue",
+      "details": [
+        "sets Params, calls Trigger,",
+        "SetGrid"
+      ],
+      "row": 0,
+      "col": 2
+    },
+    {
+      "id": "lggame",
+      "label": "let-go game / REPL",
+      "color": "blue",
+      "details": [
+        "(undertone/...) calls, moods as data"
+      ],
+      "row": 0,
+      "col": 1
+    },
+    {
+      "id": "tools",
+      "label": "designer · grid · CLI",
+      "color": "blue",
+      "details": [
+        "examples/, cmd/undertone"
+      ],
+      "row": 0,
+      "col": 0
+    },
+    {
+      "id": "lgns",
+      "label": "lg undertone namespace",
+      "color": "purple",
+      "details": [
+        "letgo/letgo.go",
+        "Music, set-parameters, triggers"
+      ],
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "mood",
+      "label": "moods",
+      "color": "purple",
+      "details": [
+        "mood.go + undertone.ambience (lg)",
+        "(level",
+        " tension) → Params",
+        "MoodSpec / EDN"
+      ],
+      "row": 1,
+      "col": 2
+    },
+    {
+      "id": "params",
+      "label": "Params (knobs)",
+      "color": "purple",
+      "details": [
+        "BPM",
+        " key",
+        " track gains + densities",
+        "palette",
+        " groove",
+        " drum gain",
+        " swing",
+        "grit",
+        " open",
+        " seed",
+        " mute"
+      ],
+      "row": 1,
+      "col": 3
+    },
+    {
+      "id": "shots",
+      "label": "one-shots",
+      "color": "purple",
+      "details": [
+        "Trigger / ShotSpec",
+        "validated patches"
+      ],
+      "row": 1,
+      "col": 4
+    },
+    {
+      "id": "seq",
+      "label": "sequencer + drums",
+      "color": "green",
+      "details": [
+        "builds 16 rows at pattern boundary",
+        "from Params + seeded rng; grooves",
+        " ratchets"
+      ],
+      "row": 2,
+      "col": 0
+    },
+    {
+      "id": "vm",
+      "label": "voices: unit VM",
+      "color": "green",
+      "details": [
+        "per-sample stack VM",
+        "env osc svf lfo drive crush …"
+      ],
+      "row": 2,
+      "col": 1
+    },
+    {
+      "id": "pool",
+      "label": "shot pool",
+      "color": "green",
+      "details": [
+        "nShots voices, above music gain"
+      ],
+      "row": 2,
+      "col": 2
+    },
+    {
+      "id": "bus",
+      "label": "buses + mix",
+      "color": "green",
+      "details": [
+        "delay · reverb · tanh"
+      ],
+      "row": 3,
+      "col": 1
+    },
+    {
+      "id": "oto",
+      "label": "oto player",
+      "color": "teal",
+      "details": [
+        "native (output_native.go)"
+      ],
+      "row": 4,
+      "col": 0
+    },
+    {
+      "id": "wa",
+      "label": "WebAudio worklet",
+      "color": "teal",
+      "details": [
+        "wasm (webaudio/, output_js.go)"
+      ],
+      "row": 4,
+      "col": 1
+    },
+    {
+      "id": "seam",
+      "label": "let-go audio seam",
+      "color": "gray",
+      "details": [
+        "future: replaces both players"
+      ],
+      "row": 4,
+      "col": 2
+    },
+    {
+      "id": "grid",
+      "label": "Grid (authored)",
+      "color": "purple",
+      "details": [
+        "SetGrid, Go only",
+        "overrides rows it sets"
+      ],
+      "row": 1,
+      "col": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "gogame",
+      "to": "params",
+      "style": "solid",
+      "id": "gogame~params"
+    },
+    {
+      "from": "gogame",
+      "to": "shots",
+      "style": "solid",
+      "id": "gogame~shots"
+    },
+    {
+      "from": "lggame",
+      "to": "lgns",
+      "style": "solid",
+      "id": "lggame~lgns"
+    },
+    {
+      "from": "tools",
+      "to": "lgns",
+      "style": "solid",
+      "id": "tools~lgns"
+    },
+    {
+      "from": "lgns",
+      "to": "mood",
+      "style": "solid",
+      "label": "derive",
+      "id": "lgns~mood"
+    },
+    {
+      "from": "mood",
+      "to": "params",
+      "style": "solid",
+      "id": "mood~params"
+    },
+    {
+      "from": "lgns",
+      "to": "shots",
+      "style": "solid",
+      "id": "lgns~shots"
+    },
+    {
+      "from": "params",
+      "to": "seq",
+      "style": "solid",
+      "label": "tempo + patterns",
+      "id": "params~seq"
+    },
+    {
+      "from": "seq",
+      "to": "vm",
+      "style": "solid",
+      "label": "notes",
+      "id": "seq~vm"
+    },
+    {
+      "from": "shots",
+      "to": "pool",
+      "style": "solid",
+      "id": "shots~pool"
+    },
+    {
+      "from": "vm",
+      "to": "bus",
+      "style": "solid",
+      "id": "vm~bus"
+    },
+    {
+      "from": "pool",
+      "to": "bus",
+      "style": "solid",
+      "id": "pool~bus"
+    },
+    {
+      "from": "bus",
+      "to": "oto",
+      "style": "solid",
+      "id": "bus~oto"
+    },
+    {
+      "from": "bus",
+      "to": "wa",
+      "style": "solid",
+      "id": "bus~wa"
+    },
+    {
+      "from": "bus",
+      "to": "seam",
+      "style": "dashed",
+      "id": "bus~seam"
+    },
+    {
+      "id": "tools~grid",
+      "from": "tools",
+      "to": "grid",
+      "style": "solid"
+    },
+    {
+      "id": "grid~seq",
+      "from": "grid",
+      "to": "seq",
+      "style": "solid",
+      "label": "every row"
+    },
+    {
+      "id": "params~vm",
+      "from": "params",
+      "to": "vm",
+      "style": "solid",
+      "label": "grit, open (glide)"
+    },
+    {
+      "id": "params~bus",
+      "from": "params",
+      "to": "bus",
+      "style": "solid",
+      "label": "delay = 3 rows",
+      "labelPos": {
+        "side": "left",
+        "offset": 211,
+        "seg": 0
+      }
+    }
+  ],
+  "legend": false,
+  "flow": "down",
+  "layout": {
+    "grid": {
+      "x": 90,
+      "y": 255
+    },
+    "lgns": {
+      "x": 315,
+      "y": 195
+    },
+    "mood": {
+      "x": 315,
+      "y": 330
+    },
+    "params": {
+      "x": 615,
+      "y": 330
+    },
+    "shots": {
+      "x": 900,
+      "y": 225
+    },
+    "seq": {
+      "x": 240,
+      "y": 465
+    },
+    "vm": {
+      "x": 375,
+      "y": 615
+    },
+    "pool": {
+      "x": 780,
+      "y": 465
+    },
+    "wa": {
+      "x": 345,
+      "y": 810
+    },
+    "tools": {
+      "x": 180,
+      "y": 60
+    },
+    "lggame": {
+      "x": 405,
+      "y": 60
+    },
+    "gogame": {
+      "x": 660,
+      "y": 60
+    },
+    "bus": {
+      "x": 660,
+      "y": 615
+    }
+  },
+  "noteLayout": {},
+  "rev": 72,
+  "pinned": [
+    "tools",
+    "grid",
+    "lgns",
+    "mood",
+    "params",
+    "shots",
+    "seq",
+    "vm",
+    "pool",
+    "wa",
+    "lggame",
+    "gogame",
+    "bus"
+  ]
+}

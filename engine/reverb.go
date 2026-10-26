@@ -89,12 +89,21 @@ func (v *reverb) setRoom(r Room) {
 	v.fbTo = verbFeedback + span*r.Size
 	v.dampTo = verbDamp + verbDamp*r.Damp
 	v.keepTo = (1 - verbDamp) - verbDamp*r.Damp
-	// The tail falls by a factor of fb each pass, so the time it takes to
-	// fall below -100 dB scales with 1/ln(fb). Damping only shortens it.
-	v.idleAfter = int(verbIdle * (math.Log(verbFeedback) / math.Log(v.fbTo)))
 	if !v.on {
 		v.fb, v.damp, v.keep = v.fbTo, v.dampTo, v.keepTo
+		v.idleAfter = idleFor(v.fbTo)
+		return
 	}
+	// The tail already ringing was set by the larger room, so a smaller one
+	// must not cut it short; clear restores the cutoff once it has rung out.
+	v.idleAfter = max(v.idleAfter, idleFor(v.fbTo))
+}
+
+// idleFor rescales verbIdle to a room's feedback. The tail falls by a factor
+// of fb each pass, so the time it takes to fall below -100 dB scales with
+// 1/ln(fb). Damping only shortens it.
+func idleFor(fb float64) int {
+	return int(verbIdle * (math.Log(verbFeedback) / math.Log(fb)))
 }
 
 // verbGlide is the share of the way to a new room covered per sample: a
@@ -125,6 +134,8 @@ func (v *reverb) clear() {
 		}
 	}
 	v.on, v.idle = false, 0
+	v.fb, v.damp, v.keep = v.fbTo, v.dampTo, v.keepTo
+	v.idleAfter = idleFor(v.fbTo)
 }
 
 // process takes one sample of the reverb bus and returns the wet stereo pair.

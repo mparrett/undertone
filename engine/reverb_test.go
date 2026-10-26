@@ -124,8 +124,13 @@ func TestRoomChangeGlides(t *testing.T) {
 		if v.fb >= 1 || v.fb < verbFeedback {
 			t.Fatalf("sample %d: feedback %v", i, v.fb)
 		}
-		if i == 1640 && v.fb > verbFeedback+0.6*(v.fbTo-verbFeedback) {
-			t.Errorf("feedback %v a comb pass in: more a step than a glide", v.fb)
+		// After one pass of the shortest comb, a glide has covered no more
+		// than its rate allows; a step would have covered all of it.
+		if n := combTuning[0]; i == n-1 {
+			most := 1 - math.Pow(1-verbGlide, float64(n))
+			if moved := (v.fb - verbFeedback) / (v.fbTo - verbFeedback); moved <= 0 || moved > most+1e-9 {
+				t.Errorf("a comb pass in, feedback has moved %.2f of the way, want at most %.2f", moved, most)
+			}
 		}
 	}
 	if v.fb != v.fbTo {
@@ -143,5 +148,33 @@ func TestSetParametersNowChangesTheRoom(t *testing.T) {
 	render(s, 2*nowBlock)
 	if s.verb.fbTo != 0.7 {
 		t.Errorf("feedback heading for %v, want 0.7", s.verb.fbTo)
+	}
+}
+
+// A room shrunk while a large room's tail rings does not cut that tail: the
+// cutoff counts from the last send, and the tail rang in the large room.
+func TestShrunkRoomKeepsItsTail(t *testing.T) {
+	v := newReverb()
+	v.setRoom(Room{Size: 1})
+	v.process(1)
+	var out []float64 // every sample's peak, up to the one that turns it off
+	ring := func() {
+		l, r := v.process(0)
+		out = append(out, max(math.Abs(l), math.Abs(r)))
+	}
+	for range 3 * SampleRate {
+		ring()
+	}
+	v.setRoom(Room{Size: -1})
+	for v.on {
+		ring()
+	}
+	last := 0.0
+	for _, x := range out[len(out)-SampleRate/10 : len(out)-1] {
+		last = max(last, x)
+	}
+	if last > 1e-5 {
+		t.Errorf("the tail peaks at %.2g in the tenth of a second before it is cut, %.2f s after the room shrank",
+			last, float64(len(out))/SampleRate-3)
 	}
 }

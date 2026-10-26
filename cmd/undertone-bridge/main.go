@@ -21,20 +21,27 @@
 // before then update state and triggers drop, as undertone/trigger documents.
 //
 // window.undertoneBridge.stats() reports {received, errors, started} for
-// tests; nothing in it feeds back to the guest.
+// tests, and once playing {queuedMs, underruns, queueMs} for latency work;
+// nothing in it feeds back to the guest. setQueue(ms) changes how much audio
+// webaudio keeps queued ahead of the speaker (letgo's 80 ms until set), and
+// returns the value in effect, or null before audio starts; ?queue=<ms> on
+// the page's URL applies one when it does.
 //
 //	GOOS=js GOARCH=wasm go build -o undertone-bridge.wasm ./cmd/undertone-bridge
 package main
 
 import (
 	"fmt"
+	"strconv"
 	"sync/atomic"
 	"syscall/js"
+	"time"
 
 	"github.com/nooga/let-go/pkg/api"
 
 	"github.com/mparrett/undertone/engine"
 	"github.com/mparrett/undertone/letgo"
+	"github.com/mparrett/undertone/webaudio"
 )
 
 const bridgeNS = `(ns undertone.bridge)
@@ -46,7 +53,7 @@ const bridgeNS = `(ns undertone.bridge)
     :music-gain (undertone/set-music-gain a)
     nil))`
 
-var received, errs atomic.Int64
+var received, errs, queueMs atomic.Int64 // queueMs: the last setQueue in effect, 0 for letgo's default
 
 func main() {
 	m := letgo.NewMusic(engine.DeriveDungeon(1, 0, 0))
@@ -66,7 +73,13 @@ func main() {
 
 	// Open now and let Start block until the unlocking gesture: creating the
 	// context inside a later handler misses that gesture (see descent/web).
-	go m.Start()
+	go func() {
+		m.Start()
+		q := js.Global().Get("URLSearchParams").New(js.Global().Get("location").Get("search")).Call("get", "queue")
+		if ms, err := strconv.Atoi(q.String()); q.Truthy() && err == nil {
+			setQueue(m, ms)
+		}
+	}()
 
 	// Handlers must not block the wasm scheduler, so they only enqueue.
 	msgs := make(chan string, 256)
@@ -99,9 +112,34 @@ func main() {
 	}))
 	js.Global().Set("undertoneBridge", map[string]any{
 		"stats": js.FuncOf(func(js.Value, []js.Value) any {
-			return map[string]any{"received": received.Load(), "errors": errs.Load(), "started": m.Started()}
+			s := map[string]any{"received": received.Load(), "errors": errs.Load(), "started": m.Started()}
+			if t := m.Tuner(); t != nil {
+				s["queuedMs"], s["underruns"], s["queueMs"] = t.Queued().Milliseconds(), t.Underruns(), queueMs.Load()
+			}
+			return s
+		}),
+		"setQueue": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			if len(a) != 1 || a[0].Type() != js.TypeNumber {
+				return nil
+			}
+			return setQueue(m, a[0].Int())
 		}),
 	})
 	fmt.Println("undertone-bridge: ready")
 	select {}
+}
+
+// The browser output must stay a Tuner, or m.Tuner() is silently nil.
+var _ letgo.Tuner = (*webaudio.Player)(nil)
+
+// setQueue sets webaudio's queue to ms and returns the value in effect, or nil
+// before audio has started. Depends on webaudio.Player.SetQueue (#74).
+func setQueue(m *letgo.Music, ms int) any {
+	t := m.Tuner()
+	if t == nil {
+		return nil
+	}
+	got := t.SetQueue(time.Duration(ms) * time.Millisecond).Milliseconds()
+	queueMs.Store(got)
+	return got
 }

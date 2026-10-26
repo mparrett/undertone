@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/nooga/let-go/pkg/api"
 	"github.com/nooga/let-go/pkg/rt"
@@ -366,6 +367,25 @@ type output interface {
 	Close()
 	Pause()
 	Resume()
+}
+
+// Tuner is an output whose queue can change while it plays, traded between
+// latency and slack against the underruns it reports: webaudio's Player.
+type Tuner interface {
+	SetQueue(time.Duration) time.Duration
+	Queued() time.Duration
+	Underruns() int64
+}
+
+// Tuner returns the started output if it is a Tuner, and nil before Start
+// finishes or natively. Go-side only, like Started: a latency experiment is
+// the page's business, never the game's. Spike-only (spike/tesserae-bridge),
+// for cmd/undertone-bridge; its shape is open until the bridge lands (#42).
+func (m *Music) Tuner() Tuner {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, _ := m.out.(Tuner)
+	return t
 }
 
 // shotSpec reads an lg shot map into a spec; RegisterShot judges the patch.

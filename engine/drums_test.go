@@ -31,7 +31,8 @@ func TestGroovesAreWellFormed(t *testing.T) {
 // Drums belong to the moods that ask for them; the rest stay silent. Rust's
 // come only with tension: none at rest or at a quarter, a beat at a half.
 func TestDrumsOnlyInRhythmicMoods(t *testing.T) {
-	for _, name := range MoodNames() {
+	for _, m := range moods {
+		name := m.name
 		for level := 0; level <= 5; level++ {
 			p, _ := DeriveMood(name, 1, level, 0.5)
 			hits := 0
@@ -42,7 +43,7 @@ func TestDrumsOnlyInRhythmicMoods(t *testing.T) {
 					}
 				}
 			}
-			if rhythmic := name == "village" || name == "rust" || name == "forge"; rhythmic != (hits > 0) {
+			if rhythmic := len(m.grooves) > 0; rhythmic != (hits > 0) {
 				t.Errorf("%s level %d: %d drum hits", name, level, hits)
 			}
 		}
@@ -56,10 +57,10 @@ func TestDrumsOnlyInRhythmicMoods(t *testing.T) {
 }
 
 // Forge is rust's kit and groove at rest: the beat plays at tension 0, and
-// tension plays it harder and busier, ratchets included.
+// tension plays it harder and busier, ratchets included, at every level.
 func TestForgeDrivesTheMachineAtRest(t *testing.T) {
-	hits := func(tension float64) (n, ratchets int, gain float64) {
-		p, _ := DeriveMood("forge", 1, 2, tension)
+	hits := func(level int, tension float64) (n, ratchets int, gain float64) {
+		p, _ := DeriveMood("forge", 1, level, tension)
 		if p.Groove != "machine" || !samePatch(NewSynth(p).sound(0).patch, industrialKit[0].patch) {
 			t.Fatalf("forge at tension %v plays groove %q off the industrial kit", tension, p.Groove)
 		}
@@ -79,14 +80,16 @@ func TestForgeDrivesTheMachineAtRest(t *testing.T) {
 		}
 		return n, ratchets, p.DrumGain
 	}
-	restN, restR, restGain := hits(0)
-	if restN == 0 || restGain == 0 {
-		t.Fatalf("forge at rest: %d hits at gain %v, want a beat", restN, restGain)
-	}
-	tenseN, tenseR, tenseGain := hits(1)
-	if tenseN <= restN || tenseR <= restR || tenseGain <= restGain {
-		t.Errorf("tension did not drive forge: hits %d -> %d, ratchets %d -> %d, gain %v -> %v",
-			restN, tenseN, restR, tenseR, restGain, tenseGain)
+	for _, level := range []int{0, 2, 15} {
+		restN, restR, restGain := hits(level, 0)
+		if restN == 0 || restGain == 0 {
+			t.Fatalf("forge level %d at rest: %d hits at gain %v, want a beat", level, restN, restGain)
+		}
+		tenseN, tenseR, tenseGain := hits(level, 1)
+		if tenseN <= restN || tenseR <= restR || tenseGain <= restGain {
+			t.Errorf("tension did not drive forge at level %d: hits %d -> %d, ratchets %d -> %d, gain %v -> %v",
+				level, restN, tenseN, restR, tenseR, restGain, tenseGain)
+		}
 	}
 }
 

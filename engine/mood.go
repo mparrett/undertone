@@ -180,8 +180,8 @@ var moods = []mood{
 	// industrial kit, but the machine groove is the floor rather than the
 	// threat, playing from the first bar with a little swing in it. The
 	// harmony holds a plain fifth so the beat carries the menace until
-	// tension sours it. Level stokes it: faster, the drums up and busier,
-	// the filters opening where rust's close, dorian darkening to phrygian.
+	// tension sours it. Level stokes it: faster, the drums busier, the
+	// filters opening where rust's close, dorian darkening to phrygian.
 	{
 		name:     "forge",
 		scales:   scalesByDarkness,
@@ -197,9 +197,12 @@ var moods = []mood{
 		leads:   rustLeads,
 		open:    lin(0, 0.08),
 		grooves: []string{"machine"},
-		drums:   lin(0.55, 0.03).atMost(0.75),
-		busy:    lin(0.35, 0.05).atMost(0.6),
-		swing:   0.06,
+		// Flat in level: tension's push is clamped to the same ceiling as
+		// the level line, so a rising line would leave tension no gain to
+		// add at high levels.
+		drums: lin(0.6, 0).atMost(0.75),
+		busy:  lin(0.35, 0.05).atMost(0.6),
+		swing: 0.06,
 	},
 	// Candidates for later moods, on the dark-to-bright axis:
 	//   - Past dungeon, darker (Void, Below or Hades): lower and slower
@@ -209,7 +212,7 @@ var moods = []mood{
 	// assume seven degrees.
 }
 
-// MoodNames lists the moods DeriveMood knows, darkest first.
+// MoodNames lists the moods DeriveMood knows, in table order.
 func MoodNames() []string {
 	names := make([]string, len(moods))
 	for i, m := range moods {

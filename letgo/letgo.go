@@ -162,7 +162,19 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	flt(lgm, "drum-busy", &p.DrumBusy)
 	flt(lgm, "swing", &p.Swing)
 	if s, ok := kwStr(lgm, "lead"); ok {
-		engine.ApplyLead(p, s)
+		if s == "none" {
+			// As a lead-less mood derives: no name, so the generator plays
+			// nothing, and the bank's own bell back in the slot, where a
+			// grid's authored lead plays. Every built-in bank has the same
+			// bell, so with no :palette here any bank's will do.
+			bank, _ := engine.PaletteByName("dungeon")
+			if pal != nil {
+				bank = *pal
+			}
+			p.LeadName, p.LeadGate, p.Palette.Bell = "", 0, bank.Bell
+		} else {
+			engine.ApplyLead(p, s)
+		}
 	}
 	// :seed is int64 on the lg side; the engine's rng streams are uint64.
 	var seed int

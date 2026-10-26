@@ -177,3 +177,61 @@ func TestDeriveSpecCarriesRoom(t *testing.T) {
 	}
 	checkParams(t, "hall", m.params, want)
 }
+
+// A lead-less entry goes the whole way: its empty :leads reads back strictly,
+// derive-spec gives :lead :none, and set-parameters takes that back, dropping
+// the lead that was playing.
+func TestLeadlessEntryRoundTrips(t *testing.T) {
+	c, m := lgRuntime(t)
+	s, _ := engine.MoodByName("dungeon")
+	s.Name, s.Palette, s.Leads = "hollow", "", nil
+	if !strings.Contains(s.EDN(), ":leads     []") {
+		t.Fatalf("the export lacks an empty :leads:\n%s", s.EDN())
+	}
+	if err := c.Def("hollow-src", "{"+s.EDN()+"}"); err != nil {
+		t.Fatal(err)
+	}
+	v, err := c.Run("(:hollow (read-string hollow-src))")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := moodSpec(v.(*vm.PersistentMap))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := s
+	read.Name = ""
+	if !reflect.DeepEqual(got, read) {
+		t.Errorf("the entry reads back as\n%+v\nwant\n%+v", got, read)
+	}
+	lead, err := c.Run("(:lead (ambience/derive-spec (:hollow (read-string hollow-src)) 7 3 0.5))")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lead != vm.Keyword("none") {
+		t.Errorf("derive-spec gives :lead %v, want :none", lead)
+	}
+	s.Palette = "dungeon" // derive-spec's stand-in for a palette-less entry
+	want, _ := s.Derive(7, 3, 0.5)
+	m.params = engine.DeriveDungeon(1, 0, 0)
+	if m.params.LeadName == "" {
+		t.Fatal("the test needs a lead playing beforehand")
+	}
+	if _, err := c.Run("(ambience/score-spec! (:hollow (read-string hollow-src)) 7 3 0.5)"); err != nil {
+		t.Fatal(err)
+	}
+	checkParams(t, "hollow", m.params, want)
+
+	// Dropping the lead takes its patch out of the lead slot too, back to the
+	// new bank's own bell, where a grid's authored lead plays.
+	s.Name, s.Palette = "hollow", "void"
+	if err := c.Def("void-src", "{"+s.EDN()+"}"); err != nil {
+		t.Fatal(err)
+	}
+	want, _ = s.Derive(7, 3, 0.5)
+	engine.ApplyLead(&m.params, "kalimba")
+	if _, err := c.Run("(ambience/score-spec! (:hollow (read-string void-src)) 7 3 0.5)"); err != nil {
+		t.Fatal(err)
+	}
+	checkParams(t, "hollow on void", m.params, want)
+}

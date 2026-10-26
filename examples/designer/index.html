@@ -278,7 +278,6 @@
       b.onclick = () => {
         const n = spec.leads.filter((x) => x === name).length;
         if (n >= 3) {
-          if (spec.leads.length === n) return; // a mood needs one lead
           spec.leads = spec.leads.filter((x) => x !== name);
         } else {
           const at = spec.leads.lastIndexOf(name);
@@ -293,12 +292,12 @@
       });
       leads.append(b);
     }
-    summary(card, () => `${spec.palette} · ${[...new Set(spec.leads)].join(" ")}`);
+    summary(card, () => `${spec.palette} · ${[...new Set(spec.leads)].join(" ") || "no lead"}`);
     help(card, `<p><b>palette</b> is a bank of instrument sounds, one for each layer: drone, fifth, pad, air and pulse.
       Changing it changes how every layer sounds, not what they play.</p>
       <p><b>leads</b> is the instrument that plays the melody (the lead layer). Only one plays at a time; the seed,
       in audition, picks which. Tapping a lead adds a copy, up to three, and a fourth tap removes it;
-      each chip shows its chance of being picked.
+      each chip shows its chance of being picked. With none, the mood has no lead.
       The leads are ${JSON.parse(undertoneDesigner.leads()).join(", ")}.</p>`);
     return card;
   }
@@ -398,7 +397,7 @@
     status.classList.toggle("err", !!r.error);
     if (r.error) { status.textContent = r.error; return; }
     status.textContent = playing ? "playing" : "ready: tap play";
-    $("now").innerHTML = `<span class="k">now</span> ${r.bpm} bpm · ${r.key} · lead ${r.lead}` +
+    $("now").innerHTML = `<span class="k">now</span> ${r.bpm} bpm · ${r.key} · ${r.lead ? "lead " + r.lead : "no lead"}` +
       (r.groove ? ` · groove ${r.groove}` : ` · no drums`);
     if (!$("edn").hidden) $("edn").value = undertoneDesigner.edn(JSON.stringify(spec));
   }
@@ -406,6 +405,7 @@
   function load(name) {
     spec = JSON.parse(undertoneDesigner.spec(name));
     spec.grooves = spec.grooves || [];
+    spec.leads = spec.leads || [];
     stashedGrooves = null; grooveCopies = {};
     for (const b of document.querySelectorAll("#moods .chip")) b.classList.toggle("on", b.dataset.v === name);
     if ($("buildup").querySelector("input").checked) {

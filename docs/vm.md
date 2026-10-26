@@ -78,7 +78,8 @@ crackle (sparse impulses) all need a filter or a new source.
 the tempo, and has no damping. The reverb is a single room (Freeverb's combs
 and allpasses), long and dark unless a mood's `Room` (`:room {:size s :damp
 d}`) moves its size or damping; one room serves the whole mix, one-shots
-included.
+included. Only patches with a `verb` send reach it, so `void` (a large, dark
+room) and `stratosphere` (an open, bright one) have palettes that send.
 
 **The sequencer is a fixed grid.** A pattern is 16 rows at two rows per beat,
 so two bars. Drums play 16th notes within it, with swing, probability steps,

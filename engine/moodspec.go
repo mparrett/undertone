@@ -25,7 +25,7 @@ type MoodSpec struct {
 	Pad, Bell, Air     Line
 	Calm, BellLift     int
 	Palette            string
-	Leads              []string
+	Leads              []string // empty for a mood with no lead
 	Grooves            []string
 	Drums, Busy        Line
 	Swing              float64
@@ -35,10 +35,12 @@ type MoodSpec struct {
 }
 
 var palettes = map[string]Palette{
-	"dungeon":   dungeonPalette,
-	"overworld": overworldPalette,
-	"aurora":    auroraPalette,
-	"rust":      rustPalette,
+	"dungeon":      dungeonPalette,
+	"overworld":    overworldPalette,
+	"aurora":       auroraPalette,
+	"rust":         rustPalette,
+	"void":         voidPalette,
+	"stratosphere": stratospherePalette,
 }
 
 // GrooveNames lists the grooves a MoodSpec can name, sorted.
@@ -62,7 +64,9 @@ func LeadNames() []string {
 }
 
 // PaletteNames lists the patch banks a MoodSpec can name.
-func PaletteNames() []string { return []string{"dungeon", "overworld", "aurora", "rust"} }
+func PaletteNames() []string {
+	return []string{"dungeon", "overworld", "aurora", "rust", "void", "stratosphere"}
+}
 
 // PaletteByName returns a patch bank by the name a MoodSpec uses for it.
 func PaletteByName(name string) (Palette, bool) {
@@ -122,14 +126,15 @@ func MoodByName(name string) (MoodSpec, bool) {
 // Derive maps game state to music for this spec, exactly as DeriveMood does
 // for a built-in mood. It reports an error for a spec that names a palette,
 // lead or groove the engine does not have, or has no scales or a scale
-// outside five to seven tones.
+// outside five to seven tones. A spec with no leads derives with LeadName
+// empty and plays no lead.
 func (s MoodSpec) Derive(seed uint64, level int, tension float64) (Params, error) {
 	pal, ok := palettes[s.Palette]
 	if !ok {
 		return Params{}, fmt.Errorf("unknown palette %q", s.Palette)
 	}
-	if len(s.Scales) == 0 || len(s.Leads) == 0 {
-		return Params{}, fmt.Errorf("a mood needs scales and leads")
+	if len(s.Scales) == 0 {
+		return Params{}, fmt.Errorf("a mood needs scales")
 	}
 	for _, sc := range s.Scales {
 		// Five tones is the fewest the pad's chord (tones 1, 3 and 5) can

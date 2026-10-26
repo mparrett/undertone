@@ -605,6 +605,71 @@ var breeze = Patch{
 	{opOut, [4]float64{0.9, 0.5}},
 }
 
+// ---- the void palette (below the dungeon) ----
+// The dungeon's shapes taken lower and darker: lowpasses an octave or more
+// down, slower swells, and a reverb send on the bed, so a mood's room
+// (a large, dark one) has something to ring.
+
+// abyss: the drone's detuned saws through two lowpass stages at 140 Hz,
+// where the drone has one at 280, so only the fundamental and a hint of the
+// next partial get through
+var abyss = Patch{
+	{opEnv, [4]float64{4, 2, 1, 6}},
+	{opOsc, [4]float64{-0.06, shpSaw, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLpf, [4]float64{140, 0, 0, 0}},
+	{opLpf, [4]float64{140, 0, 0, 0}},
+	{opVerb, [4]float64{0.15}},
+	{opOut, [4]float64{0.4, 0.42}},
+	{opEnv, [4]float64{4, 2, 1, 6}},
+	{opOsc, [4]float64{0.06, shpSaw, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLpf, [4]float64{140, 0, 0, 0}},
+	{opLpf, [4]float64{140, 0, 0, 0}},
+	{opVerb, [4]float64{0.15}},
+	{opOut, [4]float64{0.4, 0.58}},
+}
+
+// murk: the pad's sine pair an octave down, swelling as slowly as the veil
+// and sent to the reverb instead of the delay
+var murk = Patch{
+	{opEnv, [4]float64{3, 2, 0.7, 4}},
+	{opOsc, [4]float64{-12.05, shpSine, 0, 1}},
+	{opMul, [4]float64{}},
+	{opVerb, [4]float64{0.3}},
+	{opOut, [4]float64{0.2, 0.35}},
+	{opEnv, [4]float64{3.4, 2, 0.7, 4}},
+	{opOsc, [4]float64{-11.95, shpSine, 0, 1}},
+	{opMul, [4]float64{}},
+	{opVerb, [4]float64{0.3}},
+	{opOut, [4]float64{0.2, 0.65}},
+}
+
+// rumble: the air's noise under two lowpasses at 180 Hz, a pressure more
+// than a sound, raised to make up the level the lower cutoff takes away
+var rumble = Patch{
+	{opEnv, [4]float64{3, 3, 0.4, 4.5}},
+	{opOsc, [4]float64{0, shpNoise, 0, 1}},
+	{opMul, [4]float64{}},
+	{opLpf, [4]float64{180, 0, 0, 0}},
+	{opLpf, [4]float64{180, 0, 0, 0}},
+	{opVerb, [4]float64{0.25}},
+	{opOut, [4]float64{2.5, 0.5}},
+}
+
+// ---- the stratosphere's patch ----
+
+// haze: the veil thinned to a single sine with a reverb send beside its
+// delay send, so the mood's bright room carries the wash
+var haze = Patch{
+	{opEnv, [4]float64{3.5, 2, 0.6, 5}},
+	{opOsc, [4]float64{0, shpSine, 0, 1}},
+	{opMul, [4]float64{}},
+	{opSend, [4]float64{0.25, 0, 0, 0}},
+	{opVerb, [4]float64{0.4}},
+	{opOut, [4]float64{0.3, 0.5}},
+}
+
 // ---- the drum kit (rhythmic moods) ----
 // Each drum is played at a fixed note on its own track, so its trim is
 // baked into its output gain rather than kept in a table like leadTrim.
@@ -903,10 +968,15 @@ var meadowLeads = []string{"bell", "kalimba", "kalimba", "reed", "pluck", "pluck
 var auroraLeads = []string{"chime", "chime", "bell", "bell", "kalimba"}
 var villageLeads = []string{"kalimba", "kalimba", "pluck", "pluck", "reed"}
 var rustLeads = []string{"clang", "clang", "pluck", "chime"}
+var voidLeads = []string{"chime", "chime", "clang"}
 
 // pickLead draws from a separate rng stream so the pattern content for a
-// given seed is unchanged — only the instrument varies.
+// given seed is unchanged — only the instrument varies. A mood without leads
+// leaves LeadName empty, and the lead track stays silent.
 func pickLead(p *Params, names []string) {
+	if len(names) == 0 {
+		return
+	}
 	r := rng{p.Seed*0x9e3779b97f4a7c15 + 0x1eadf00d | 1}
 	ApplyLead(p, names[r.n(len(names))])
 }
@@ -927,6 +997,8 @@ var dungeonPalette = Palette{Drone: drone, Fifth: pad, Pad: pad, Bell: bell, Air
 var overworldPalette = Palette{Drone: bed, Fifth: pad, Pad: pad, Bell: bell, Air: breeze, Pulse: pulse}
 var auroraPalette = Palette{Drone: bed, Fifth: veil, Pad: veil, Bell: bell, Air: breeze, Pulse: pulse}
 var rustPalette = Palette{Drone: rust, Fifth: smear, Pad: smear, Bell: bell, Air: hiss, Pulse: grind, Kit: industrialKit}
+var voidPalette = Palette{Drone: abyss, Fifth: pad, Pad: murk, Bell: bell, Air: rumble, Pulse: pulse}
+var stratospherePalette = Palette{Drone: bed, Fifth: haze, Pad: haze, Bell: bell, Air: breeze, Pulse: pulse}
 
 var scalesByDarkness = [][]int{
 	{0, 2, 3, 5, 7, 9, 10}, // dorian
@@ -947,6 +1019,12 @@ var scalesForVillage = [][]int{
 
 var scalesForAurora = [][]int{
 	{0, 2, 4, 6, 7, 9, 11}, // lydian, all the way up
+}
+
+// Void starts where the dungeon ends and goes one mode darker.
+var scalesForVoid = [][]int{
+	{0, 1, 3, 5, 7, 8, 10}, // phrygian
+	{0, 1, 3, 5, 6, 8, 10}, // locrian
 }
 
 var scalesForRust = [][]int{
@@ -1049,6 +1127,11 @@ func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 			deg = max(3, min(deg, 2*n+3))
 			out[3][i] = trackRow{chord + scaleTone(p.Scale, deg) + p.BellLift, 0.55 * leadTrim[p.LeadName], p.LeadGate, p.Palette.Bell}
 		}
+	}
+	// Without a lead the walk is still drawn, so the pulse below draws the
+	// same numbers, but nothing strikes.
+	if p.LeadName == "" {
+		out[3] = [rows]trackRow{}
 	}
 	if pat%2 == 0 {
 		out[4][0] = trackRow{45, p.AirGain, 10, p.Palette.Air}

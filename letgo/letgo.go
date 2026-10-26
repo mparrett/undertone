@@ -163,8 +163,15 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	flt(lgm, "swing", &p.Swing)
 	if s, ok := kwStr(lgm, "lead"); ok {
 		if s == "none" {
-			// a lead-less mood's derivation: no name, so nothing plays
-			p.LeadName, p.LeadGate = "", 0
+			// As a lead-less mood derives: no name, so the generator plays
+			// nothing, and the bank's own bell back in the slot, where a
+			// grid's authored lead plays. Every built-in bank has the same
+			// bell, so with no :palette here any bank's will do.
+			bank, _ := engine.PaletteByName("dungeon")
+			if pal != nil {
+				bank = *pal
+			}
+			p.LeadName, p.LeadGate, p.Palette.Bell = "", 0, bank.Bell
 		} else {
 			engine.ApplyLead(p, s)
 		}

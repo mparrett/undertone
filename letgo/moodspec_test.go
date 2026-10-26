@@ -221,4 +221,17 @@ func TestLeadlessEntryRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkParams(t, "hollow", m.params, want)
+
+	// Dropping the lead takes its patch out of the lead slot too, back to the
+	// new bank's own bell, where a grid's authored lead plays.
+	s.Name, s.Palette = "hollow", "void"
+	if err := c.Def("void-src", "{"+s.EDN()+"}"); err != nil {
+		t.Fatal(err)
+	}
+	want, _ = s.Derive(7, 3, 0.5)
+	engine.ApplyLead(&m.params, "kalimba")
+	if _, err := c.Run("(ambience/score-spec! (:hollow (read-string void-src)) 7 3 0.5)"); err != nil {
+		t.Fatal(err)
+	}
+	checkParams(t, "hollow on void", m.params, want)
 }

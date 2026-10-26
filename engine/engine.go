@@ -645,7 +645,7 @@ var murk = Patch{
 	{opOut, [4]float64{0.2, 0.65}},
 }
 
-// rumble: the air's noise under two lowpasses at 120 Hz, a pressure more
+// rumble: the air's noise under two lowpasses at 180 Hz, a pressure more
 // than a sound, raised to make up the level the lower cutoff takes away
 var rumble = Patch{
 	{opEnv, [4]float64{3, 3, 0.4, 4.5}},
@@ -1125,13 +1125,13 @@ func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 		if r.f() < p.BellDensity {
 			deg += r.n(5) - 2
 			deg = max(3, min(deg, 2*n+3))
-			// Without a lead the walk is still drawn, so the pulse below
-			// draws the same numbers, but nothing strikes.
-			if p.LeadName == "" {
-				continue
-			}
 			out[3][i] = trackRow{chord + scaleTone(p.Scale, deg) + p.BellLift, 0.55 * leadTrim[p.LeadName], p.LeadGate, p.Palette.Bell}
 		}
+	}
+	// Without a lead the walk is still drawn, so the pulse below draws the
+	// same numbers, but nothing strikes.
+	if p.LeadName == "" {
+		out[3] = [rows]trackRow{}
 	}
 	if pat%2 == 0 {
 		out[4][0] = trackRow{45, p.AirGain, 10, p.Palette.Air}

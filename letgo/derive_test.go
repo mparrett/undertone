@@ -3,6 +3,7 @@ package letgo
 import (
 	"crypto/sha256"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/mparrett/undertone/engine"
@@ -52,6 +53,10 @@ func checkParams(t *testing.T, name string, got, want engine.Params) {
 	}
 	if got.LeadName != want.LeadName || got.LeadGate != want.LeadGate {
 		t.Errorf("%s: lead = %s/%d, want %s/%d", name, got.LeadName, got.LeadGate, want.LeadName, want.LeadGate)
+	}
+	// The lead slot's patch is heard by a grid even with no lead named.
+	if !reflect.DeepEqual(got.Palette.Bell, want.Palette.Bell) {
+		t.Errorf("%s: the lead slot holds another patch than the derivation's", name)
 	}
 	if got.FifthOffset != want.FifthOffset || got.BellLift != want.BellLift {
 		t.Errorf("%s: offset/lift = %d/%d, want %d/%d", name, got.FifthOffset, got.BellLift, want.FifthOffset, want.BellLift)

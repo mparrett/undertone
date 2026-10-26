@@ -68,9 +68,10 @@ stays a safety limiter.
 crackle (sparse impulses) all need a filter or a new source.
 
 **Space is one delay and one room.** The delay is three rows long, following
-the tempo, and has no damping. The reverb is a single long, dark room
-(Freeverb's combs and allpasses, fixed size and damping); a mood cannot
-choose its room yet.
+the tempo, and has no damping. The reverb is a single room (Freeverb's combs
+and allpasses), long and dark unless a mood's `Room` (`:room {:size s :damp
+d}`) moves its size or damping; one room serves the whole mix, one-shots
+included.
 
 **The sequencer is a fixed grid.** A pattern is 16 rows at two rows per beat,
 so two bars. Drums play 16th notes within it, with swing, probability steps,
@@ -179,7 +180,8 @@ test can extend.
    them in its `machine` groove on the industrial kit (`slam`, `clank`,
    `tick`, built from the grit ops), which a palette can now carry in place of
    the village kit. Its drums come only with tension: `tenseDrums` brings in
-   drums the level leaves silent, from a quarter tension up.
+   drums the level leaves silent, from a quarter tension up. `forge` plays
+   the same groove and kit at rest.
 
 The cost to watch is per-sample math. A fixed `svf` computes its coefficient
 once per note, as `lpf` does; a swept one recomputes it every 16 samples. On

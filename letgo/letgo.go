@@ -145,6 +145,8 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	flt(lgm, "pulse-gain", &p.PulseGain)
 	flt(lgm, "grit", &p.Grit)
 	flt(lgm, "open", &p.Open)
+	flt(lgm, "room-size", &p.Room.Size)
+	flt(lgm, "room-damp", &p.Room.Damp)
 	integer(lgm, "fifth-offset", &p.FifthOffset)
 	integer(lgm, "bell-lift", &p.BellLift)
 	if sc, ok := ints(lgm, "scale"); ok {

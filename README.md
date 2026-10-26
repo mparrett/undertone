@@ -40,10 +40,12 @@ Music parameters come from game state:
   `meadow` (major, high and airy: near-silent drone, dense lifted bells),
   `aurora` (slow lydian veils through the delay, no drone, the odd chime),
   `village` (the first with drums: a swung kick, clap and shaker under
-  kalimba and pluck, building to a festival with level) or `rust`
+  kalimba and pluck, building to a festival with level), `rust`
   (industrial: detuned saws through swept resonant filters, a hiss bed, a
   tritone, sinking as level rises; under tension a broken beat with ratchets
-  comes in on an industrial kit).
+  comes in on an industrial kit) or `forge` (rust's rhythmic sibling: the
+  same kit and broken beat playing from the start, faster and opening with
+  level, driven harder by tension).
   Moods are rows in a table (`engine/mood.go`), so adding one is an entry
   there
 - **level**: depth darkens, slows and thickens; elevation brightens; a mood's `open`

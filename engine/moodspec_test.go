@@ -101,3 +101,18 @@ func TestOpenClampExports(t *testing.T) {
 		t.Errorf("a clamped open line was dropped:\n%s", s.EDN())
 	}
 }
+
+// A room exports only when it is not the default, and derives as itself.
+func TestRoomExports(t *testing.T) {
+	s, _ := MoodByName("aurora")
+	if strings.Contains(s.EDN(), ":room") {
+		t.Error("a mood with the default room exports one")
+	}
+	s.Room = Room{Size: 0.5, Damp: -0.25}
+	if !strings.Contains(s.EDN(), " :room      {:size 0.5 :damp -0.25}\n") {
+		t.Errorf("a room was dropped:\n%s", s.EDN())
+	}
+	if p, _ := s.Derive(7, 3, 0.5); p.Room != s.Room {
+		t.Errorf("derived room %+v, want %+v", p.Room, s.Room)
+	}
+}

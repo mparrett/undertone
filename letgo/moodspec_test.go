@@ -61,6 +61,9 @@ func TestDeriveSpecRejectsBadEntries(t *testing.T) {
 		`(assoc (:village ambience/moods) :palette :nope)`,
 		`(assoc (:village ambience/moods) :drums {:base 0.55 :step 0.05 :hie 0.8})`,
 		`(assoc (:village ambience/moods) :drums {:base 0.55 :step 0.05 :hi "0.8"})`,
+		`(assoc (:village ambience/moods) :room 0.5)`,
+		`(assoc (:village ambience/moods) :room {:size 0.5 :dmap 0.1})`,
+		`(assoc (:village ambience/moods) :room {:size "big"})`,
 		`[:not :a :map]`,
 	} {
 		if _, err := c.Run("(ambience/derive-spec " + bad + " 7 2 0.5)"); err == nil {
@@ -143,4 +146,34 @@ func TestDeriveSpecLeavesSilentDrumsSilent(t *testing.T) {
 			t.Errorf("level %d: silent drums play at %v", level, m.params.DrumGain)
 		}
 	}
+}
+
+// A room travels from an entry to the engine: read strictly, derived, and
+// carried through the set-parameters map by derive-spec.
+func TestDeriveSpecCarriesRoom(t *testing.T) {
+	c, m := lgRuntime(t)
+	s, _ := engine.MoodByName("village")
+	s.Name, s.Palette = "hall", ""
+	s.Room = engine.Room{Size: 0.5, Damp: -0.25}
+	if err := c.Def("hall-src", "{"+s.EDN()+"}"); err != nil {
+		t.Fatal(err)
+	}
+	v, err := c.Run("(:hall (read-string hall-src))")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := moodSpec(v.(*vm.PersistentMap))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Room != s.Room {
+		t.Errorf("the entry reads back with room %+v, want %+v", got.Room, s.Room)
+	}
+	s.Palette = "dungeon" // derive-spec's stand-in for a palette-less entry
+	want, _ := s.Derive(7, 3, 0.5)
+	m.params = engine.DeriveDungeon(1, 0, 0)
+	if _, err := c.Run("(ambience/score-spec! (:hall (read-string hall-src)) 7 3 0.5)"); err != nil {
+		t.Fatal(err)
+	}
+	checkParams(t, "hall", m.params, want)
 }

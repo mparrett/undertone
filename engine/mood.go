@@ -55,6 +55,9 @@ type mood struct {
 	// quarter tension they rise to this gain at full, so a fight starts a
 	// beat under a mood that has none at rest.
 	tenseDrums float64
+
+	// room is the reverb room; the zero Room is the default long, dark one.
+	room Room
 }
 
 var moods = []mood{
@@ -176,6 +179,34 @@ var moods = []mood{
 		busy:       lin(0.3, 0.05).atMost(0.6),
 		tenseDrums: 0.75,
 	},
+	// Rust's rhythmic sibling, after "Closer": the same saws, hiss and
+	// industrial kit, but the machine groove is the floor rather than the
+	// threat, playing from the first bar with a little swing in it. The
+	// harmony holds a plain fifth so the beat carries the menace until
+	// tension sours it. Level stokes it: faster, the drums busier, the
+	// filters opening where rust's close, dorian darkening to phrygian.
+	{
+		name:     "forge",
+		scales:   scalesByDarkness,
+		bpm:      lin(88, 2).atMost(98),
+		rootBase: 45, rootStep: 0,
+		drone:   lin(0.45, 0.02).atMost(0.55),
+		fifth:   lin(0.15, 0.03).atMost(0.3),
+		pad:     lin(0.3, 0),
+		bell:    lin(0.04, 0),
+		air:     lin(0.25, 0.03).atMost(0.4),
+		calm:    -5, // perfect fifth above the low drone
+		palette: rustPalette,
+		leads:   rustLeads,
+		open:    lin(0, 0.08),
+		grooves: []string{"machine"},
+		// Flat in level: tension's push is clamped to the same ceiling as
+		// the level line, so a rising line would leave tension no gain to
+		// add at high levels.
+		drums: lin(0.6, 0).atMost(0.75),
+		busy:  lin(0.35, 0.05).atMost(0.6),
+		swing: 0.06,
+	},
 	// Candidates for later moods, on the dark-to-bright axis:
 	//   - Past dungeon, darker (Void, Below or Hades): lower and slower
 	//     than depth reaches today, perhaps with a new low patch.
@@ -184,7 +215,7 @@ var moods = []mood{
 	// assume seven degrees.
 }
 
-// MoodNames lists the moods DeriveMood knows, darkest first.
+// MoodNames lists the moods DeriveMood knows, in table order.
 func MoodNames() []string {
 	names := make([]string, len(moods))
 	for i, m := range moods {
@@ -223,6 +254,7 @@ func (m *mood) derive(seed uint64, level int, tension float64) Params {
 		PulseGain:   t,
 		Grit:        t,
 		Open:        math.Max(-1, math.Min(1, m.open.at(l))),
+		Room:        m.room,
 		FifthOffset: tenseOffset(m.calm, t),
 		BellLift:    m.bellLift,
 		Palette:     m.palette,

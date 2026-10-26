@@ -160,3 +160,40 @@ func TestShotsInAFiveNoteScale(t *testing.T) {
 		t.Errorf("sanitized kept a four-note scale %v", got)
 	}
 }
+
+// A seeded grid's bass marks the root and fifth, and passes through the
+// third, by pitch: in a pentatonic scale the fifth is degree 4.
+func TestSeedGridBassFindsTheFifth(t *testing.T) {
+	for _, sc := range [][]int{majorPentatonic, minorPentatonic} {
+		p := Params{Scale: sc}
+		for seed := range uint64(20) {
+			p.Seed = seed
+			g := SeedGrid(p)
+			if got := degreeNote(p, 0, g.Bass[8]); got != 7 {
+				t.Fatalf("%v seed %d: bass on beat 3 is %d semitones up, want the fifth", sc, seed, got)
+			}
+			for i, d := range g.Bass {
+				if d == 0 {
+					continue
+				}
+				if got := degreeNote(p, 0, d); !slices.Contains([]int{0, 3, 4, 7}, got) {
+					t.Errorf("%v seed %d step %d: bass %d semitones up, want root, third or fifth", sc, seed, i, got)
+				}
+			}
+		}
+	}
+}
+
+// Every scale a built-in mood plays already has its fifth at degree 5 and
+// its third at degree 3, or no fifth at all, so their seeded grids are
+// unchanged.
+func TestSeedGridDegreesHoldForBuiltInScales(t *testing.T) {
+	for _, name := range MoodNames() {
+		s, _ := MoodByName(name)
+		for _, sc := range s.Scales {
+			if f, th := toneDegree(sc, 5, 7), toneDegree(sc, 3, 3, 4); f != 5 || th != 3 {
+				t.Errorf("%s %v: fifth at degree %d, third at %d", name, sc, f, th)
+			}
+		}
+	}
+}

@@ -125,13 +125,11 @@ func keyJSON(p engine.Params) string {
 		mode = "custom scale"
 	}
 	lead, bass := engine.GridBases(p)
-	top := engine.Degrees - 1
-	up := 12*(top/len(p.Scale)) + p.Scale[top%len(p.Scale)]
 	name := func(midi int) string { return fmt.Sprintf("%s%d", noteNames[midi%12], midi/12-1) }
 	b, _ := json.Marshal(map[string]string{
 		"key":  noteNames[p.Root%12] + " " + mode,
-		"lead": name(lead), "lead8": name(lead + up),
-		"bass": name(bass), "bass8": name(bass + up),
+		"lead": name(lead), "lead8": name(engine.DegreeNote(p, lead, engine.Degrees)),
+		"bass": name(bass), "bass8": name(engine.DegreeNote(p, bass, engine.Degrees)),
 	})
 	return string(b)
 }

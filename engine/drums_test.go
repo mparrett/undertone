@@ -596,3 +596,83 @@ func TestPolymetricGrooveLaneRunsFromTheFirstPattern(t *testing.T) {
 		}
 	}
 }
+
+// A tempo change landing near a grace point still plays the grace exactly
+// once: a speed-up that jumps the frames left in the row past the lead, and
+// a slow-down that brings them back above it after the grace has struck.
+func TestFlamGraceSurvivesATempoChange(t *testing.T) {
+	grooveLib["flamall"] = groove{strings.Repeat("g.", rows)}
+	t.Cleanup(func() { delete(grooveLib, "flamall") })
+	p, _ := DeriveMood("aurora", 1, 2, 0)
+	p.Groove, p.DrumGain = "flamall", 1
+	for _, c := range []struct {
+		name   string
+		factor float64
+		near   func(left, lead int) bool // rowLeft at the block the change lands in
+		want   []float64
+	}{
+		{"speed-up", 2, func(left, lead int) bool { return left > lead+64 && left < 2*lead-64 }, []float64{0.9 * 0.7 * flamGrace, 0.9 * 0.7}},
+		{"slow-down", 0.5, func(left, lead int) bool { return left > lead/2+64 && left < lead-64 }, []float64{0.9 * 0.7}},
+	} {
+		s := NewSynth(p)
+		render(s, 2*s.samplesPerRow)
+		for !(s.nframe%nowBlock == 0 && s.row != 0 && c.near(s.rowLeft, s.flamLead())) {
+			render(s, 1)
+		}
+		q := p
+		q.BPM, q.DrumGain = p.BPM*c.factor, 0.9 // the new gain tells its strikes apart
+		s.SetParametersNow(q)
+		_, gain := strikes(s, 0, int(float64(s.rowLeft)/c.factor)+2)
+		if len(gain) != len(c.want) {
+			t.Errorf("%s: struck at gains %v, want %v", c.name, gain, c.want)
+			continue
+		}
+		for i := range gain {
+			if math.Abs(gain[i]-c.want[i]) > 1e-9 {
+				t.Errorf("%s: struck at gains %v, want %v", c.name, gain, c.want)
+				break
+			}
+		}
+	}
+}
+
+// A ratchet's re-hits end before the grace of a flam that follows it on the
+// same lane, rather than cutting the grace off: from an off 16th into the next
+// row's flam, and from an on 16th into its own row's off-16th flam.
+func TestRatchetEndsBeforeAFlamsGrace(t *testing.T) {
+	for _, c := range []struct {
+		lane       string
+		bpm, swing float64
+	}{
+		{"...rg", 140, 1.0 / 6},
+		{"rg", 240, 0},
+	} {
+		grooveLib["ratflam"] = groove{c.lane}
+		p, _ := DeriveMood("aurora", 1, 2, 0)
+		p.Groove, p.DrumGain, p.BPM, p.Swing = "ratflam", 1, c.bpm, c.swing
+		s := NewSynth(p)
+		at, gain := strikes(s, 0, 3*s.samplesPerRow)
+		// off hit or ratchet, two re-hits, the grace, then the flam's hit
+		if n := len(gain); n != 5 || gain[3] != 0.7*flamGrace || gain[4] != 0.7 ||
+			at[4]-at[3] != int64(s.flamLead()) {
+			t.Errorf("%q at %v bpm: struck at %v, gains %v; want the ratchet done before the grace", c.lane, c.bpm, at, gain)
+		}
+	}
+	delete(grooveLib, "ratflam")
+}
+
+// A theme whose first row flams plays its grace even when a tempo change
+// lands in the same block and rescales the held-back row.
+func TestThemeLeadInSurvivesATempoChange(t *testing.T) {
+	p, _ := DeriveMood("aurora", 1, 2, 0)
+	s := NewSynth(p)
+	render(s, 5*s.samplesPerRow+77)
+	q := p
+	q.BPM *= 2
+	s.PlayTheme(&Theme{Grids: []Grid{{Drums: [DrumLanes]string{"g"}}}})
+	s.SetParametersNow(q)
+	_, gain := strikes(s, 0, nowBlock+s.samplesPerRow)
+	if len(gain) < 2 || math.Abs(gain[0]-flamGrace*gain[1]) > 1e-12 || math.Abs(gain[1]-gridDrumGain*0.7) > 1e-12 {
+		t.Errorf("theme start under a tempo change struck at gains %v; want a grace, then the hit", gain)
+	}
+}

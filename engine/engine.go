@@ -1096,6 +1096,7 @@ type Synth struct {
 	// the next row has no row before it to lead its flams in from: the
 	// synth's first, or a theme's
 	leadIn bool
+	graced bool // the next row's graces have played
 
 	// VU meter tap: read-only from the synthesis path's view — nothing
 	// here feeds back into the samples, so renders stay byte-identical.
@@ -1379,19 +1380,22 @@ func (s *Synth) frame() (int16, int16) {
 		// hold the row back so its flams' graces can sound first
 		s.leadIn = false
 		if s.rowLeft == 0 && s.flamsAhead(false) {
-			s.rowLeft = s.flamLead()
+			s.rowLeft, s.graced = s.flamLead(), false
 		}
 	}
 	if s.rowLeft == 0 {
 		s.step()
-		s.rowLeft = s.samplesPerRow
+		s.rowLeft, s.graced = s.samplesPerRow, false
 	}
 	if s.nframe%nowBlock == 0 {
 		if p := s.now.Swap(nil); p != nil {
 			s.applyNow(*p)
 		}
 	}
-	if s.rowLeft == s.flamLead() {
+	// at or past the lead rather than on it: applyNow above can rescale
+	// rowLeft across it in either direction
+	if !s.graced && s.rowLeft <= s.flamLead() {
+		s.graced = true
 		s.flamsAhead(true)
 	}
 	s.rowLeft--

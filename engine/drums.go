@@ -196,7 +196,11 @@ func (s *Synth) stepDrums() {
 		s.rat[d] = ratchet{}
 		if h.on > 0 {
 			v.strike(s.sound(d), h.on, s.drumSeed(d))
-			s.rat[d].arm(h.onN, half, h.on, s.drumSeed(d)+2<<32)
+			span := half
+			if h.off > 0 && h.offFlam {
+				span = max(1, half-s.flamLead()) // done before the off 16th's grace
+			}
+			s.rat[d].arm(h.onN, span, h.on, s.drumSeed(d)+2<<32)
 		} else if v.active && v.gate {
 			v.gate = false
 		}
@@ -218,44 +222,45 @@ func (s *Synth) stepDrums() {
 
 // flamsAhead looks at the on 16ths of the row about to step and reports
 // whether any is a flam; with strike it plays their grace hits. frame calls
-// it flamLead frames before each step, so a grace sounds ahead of its beat
-// even when the row is the next pattern's or the first of a grid.
+// it once a row, flamLead frames before the step, so a grace sounds ahead of
+// its beat even when the row is the next pattern's or the first of a grid.
 func (s *Synth) flamsAhead(strike bool) bool {
+	any := false
+	for d := range s.dvoices {
+		gain, k, ok := s.flamAhead(d)
+		if !ok {
+			continue
+		}
+		any = true
+		if strike {
+			s.dvoices[d].strike(k, gain*flamGrace, s.drumSeed(d)+3<<32)
+		}
+	}
+	return any
+}
+
+// flamAhead reports whether lane d's on 16th in the row about to step is a
+// flam, with its gain and the sound it will play.
+func (s *Synth) flamAhead(d int) (float64, drumSound, bool) {
 	p := &s.params
 	if n := s.next.Load(); n != nil && s.row == 0 {
 		q := n.sanitized() // step applies it before this row
 		p = &q
 	}
-	g, _, from := s.nextOwner()
-	var built *[nDrums][rows]drumHit
-	any := false
-	for d := range s.dvoices {
-		var h drumHit
-		switch {
-		case g != nil:
-			h = gridHit(g.Drums[d], s.row, s.pat*rows+s.row-from)
-		case s.row != 0:
-			h = s.drums[d][s.row]
-		default: // the generator's next pattern, not drawn yet
-			lanes, ok := grooveLib[p.Groove]
-			if !ok || !strings.ContainsAny(lanes[d], "gG") {
-				continue
-			}
-			if built == nil {
-				b := buildDrums(*p, s.pat)
-				built = &b
-			}
-			h = built[d][0]
+	var h drumHit
+	switch g, _, from := s.nextOwner(); {
+	case g != nil:
+		h = gridHit(g.Drums[d], s.row, s.pat*rows+s.row-from)
+	case s.row != 0:
+		h = s.drums[d][s.row]
+	default: // the generator's next pattern, not drawn yet
+		lanes, ok := grooveLib[p.Groove]
+		if !ok || !strings.ContainsAny(lanes[d], "gG") {
+			return 0, drumSound{}, false
 		}
-		if h.on <= 0 || !h.onFlam {
-			continue
-		}
-		any = true
-		if strike {
-			s.dvoices[d].strike(p.sound(d), h.on*flamGrace, s.drumSeed(d)+3<<32)
-		}
+		h = buildDrums(*p, s.pat)[d][0]
 	}
-	return any
+	return h.on, p.sound(d), h.on > 0 && h.onFlam
 }
 
 // drumSeed seeds lane d's hit on the current row.
@@ -306,8 +311,13 @@ func (s *Synth) runDrums(l, r *float64) {
 			s.offLeft[d]--
 			if s.offLeft[d] == 0 {
 				v.strike(s.sound(d), s.offGain[d], s.offSeed[d])
-				// the off 16th's ratchet fills what is left of the row
-				s.rat[d].arm(s.offN[d], s.rowLeft, s.offGain[d], s.offSeed[d]+2<<32)
+				// the off 16th's ratchet fills what is left of the row, up to
+				// the grace of a flam on the next row
+				span := s.rowLeft
+				if _, _, flam := s.flamAhead(d); s.offN[d] > 1 && flam {
+					span = max(1, span-s.flamLead())
+				}
+				s.rat[d].arm(s.offN[d], span, s.offGain[d], s.offSeed[d]+2<<32)
 			}
 		}
 		if rt := &s.rat[d]; rt.left > 0 {

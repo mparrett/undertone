@@ -283,7 +283,10 @@ itself. The package keeps oto's rules in one place:
   (`nativeaudio/latency.go`). On the measuring bench, tap-to-sound dropped
   from a median of about 820 ms to about 130 ms. `Options.Queue` sets the
   read-ahead: the CLI asks for 500 ms, since a bed alone has no one-shots
-  waiting behind it and the slack survives a slow terminal.
+  waiting behind it and the slack survives a slow terminal. For latency
+  experiments without a rebuild, `UNDERTONE_PLAYER_BUFFER` (a duration such
+  as `20ms`) and `UNDERTONE_DEVICE_FRAMES` (a power of two from 64 to 16384)
+  override both buffers; a bad value is an error from `Open`.
 
 ## In the browser
 
@@ -293,7 +296,12 @@ audio thread's refill deadline, and Go's wasm has one thread with no
 preemption, so on a phone the burst overran the deadline and crackled at every
 buffer size tried. `webaudio` decouples the two: an AudioWorklet only copies
 out of a ring, and a goroutine renders 512-frame slices within a 3 ms budget
-until about 300 ms is queued, then yields to the page. Where the page is
+until the queue is full, then yields to the page. The queue is 80 ms by
+default and doubles as latency, since a one-shot is rendered behind whatever
+is already queued; `Options.Queue` sets it and `Player.SetQueue` changes it
+while playing. At 300 ms, the default before 2026-10-26, game sounds landed
+100–300 ms after what caused them; 80 ms played without a heard click on an
+iPhone 13 Pro. Where the page is
 cross-origin isolated the ring is a SharedArrayBuffer; elsewhere slices travel
 as transferred messages. Both played without a dropout on an iPhone, including
 under 120 ms main-thread stalls.
@@ -326,7 +334,10 @@ Builds need no cgo. `CGO_ENABLED=0` works for macOS, for Linux (PulseAudio
 through a pure-Go client, or ALSA loaded through purego), and for
 `GOOS=js GOARCH=wasm`. oto is pinned at v3.5.1 and is used only natively.
 The let-go binding avoids reflection-boxed natives, so it also runs under
-TinyGo.
+TinyGo. A wasm build that runs a let-go VM (a page bridge, for instance) needs
+a larger goroutine stack than TinyGo's default: build it with
+`-stack-size=1MB`. Without it, TinyGo 0.43 reports a stack overflow once the
+program goes idle, or hangs the page with no message at all.
 
 ## History
 

@@ -418,7 +418,7 @@ func (s *Synth) resolveDegree(degree, octave int) int {
 	if len(p.Scale) == 0 {
 		return p.Root + 12*octave
 	}
-	return p.Root + 12*(octave+degree/len(p.Scale)) + p.Scale[degree%len(p.Scale)]
+	return p.Root + 12*octave + scaleTone(p.Scale, degree)
 }
 
 // Trigger stages a one-shot. Unknown names are dropped, not errors: the sfx

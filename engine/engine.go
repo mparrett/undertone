@@ -955,6 +955,13 @@ var scalesForRust = [][]int{
 	{0, 1, 3, 5, 6, 8, 10}, // locrian
 }
 
+// Pentatonic scales, for a mood to name in its scales; no built-in mood
+// uses them yet.
+var (
+	majorPentatonic = []int{0, 2, 4, 7, 9}
+	minorPentatonic = []int{0, 3, 5, 7, 10}
+)
+
 // The meadow stays major longer and turns lydian only high up: its
 // brightness is register and air, not the mode.
 var scalesForMeadow = [][]int{
@@ -1010,7 +1017,9 @@ type trackRow struct {
 func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 	var out [nTracks][rows]trackRow
 	r := rng{p.Seed ^ uint64(pat)*0x9e3779b97f4a7c15 | 1}
-	chord := p.Root + []int{0, 0, p.Scale[5] - 12, p.Scale[3] - 12}[r.n(4)]
+	// VI and iv are the tones two and four degrees below the root, which a
+	// five-note scale also has: in major pentatonic they are V and II.
+	chord := p.Root + []int{0, 0, scaleTone(p.Scale, -2), scaleTone(p.Scale, -4)}[r.n(4)]
 
 	if p.DroneGain > 0.01 { // aurora has none; don't run a silent voice
 		out[0][0] = trackRow{chord - 12, p.DroneGain, rows, p.Palette.Drone}
@@ -1022,16 +1031,23 @@ func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 	}
 	for _, row := range []int{0, 8} {
 		if r.f() < p.PadDensity {
+			// Every other tone: a triad in seven tones. In five it is the
+			// open voicing pentatonic music uses: root, third and sixth in
+			// major pentatonic, a stack of fourths in minor.
 			deg := []int{0, 2, 4}[r.n(3)]
 			out[2][row] = trackRow{chord + p.Scale[deg], 0.7, 6, p.Palette.Pad}
 		}
 	}
-	deg := 7 + r.n(7)
+	// The lead starts an octave above the chord and walks between the
+	// chord's fourth tone and the fourth tone two octaves up, counted in the
+	// scale's own tones.
+	n := len(p.Scale)
+	deg := n + r.n(n)
 	for i := 0; i < rows; i++ {
 		if r.f() < p.BellDensity {
 			deg += r.n(5) - 2
-			deg = max(3, min(deg, 17))
-			out[3][i] = trackRow{chord + 12*(deg/7) + p.Scale[deg%7] + p.BellLift, 0.55 * leadTrim[p.LeadName], p.LeadGate, p.Palette.Bell}
+			deg = max(3, min(deg, 2*n+3))
+			out[3][i] = trackRow{chord + scaleTone(p.Scale, deg) + p.BellLift, 0.55 * leadTrim[p.LeadName], p.LeadGate, p.Palette.Bell}
 		}
 	}
 	if pat%2 == 0 {
@@ -1498,12 +1514,12 @@ func WriteWAV(path string, src io.Reader, seconds float64) error {
 }
 
 // sanitized makes p safe to play. Parameters arrive from lg code and pages,
-// and a bad one used to panic the synth (a scale under 7 notes indexes past
-// its end; a bpm of zero or NaN makes rows infinitely long), which in a
-// browser kills the whole wasm module. Out-of-range values are clamped or
+// and a bad one used to panic the synth (a scale under 5 notes indexes past
+// its end in the pad; a bpm of zero or NaN makes rows infinitely long), which
+// in a browser kills the whole wasm module. Out-of-range values are clamped or
 // replaced, never reported: the write-only contract has no way back.
 func (p Params) sanitized() Params {
-	if len(p.Scale) < 7 {
+	if len(p.Scale) < 5 {
 		p.Scale = scalesByBrightness[0]
 	}
 	if !(p.BPM >= 20) { // also catches NaN

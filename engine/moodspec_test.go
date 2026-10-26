@@ -65,7 +65,7 @@ func TestMoodSpecRejectsWhatTheEngineLacks(t *testing.T) {
 		{"palette", func(s *MoodSpec) { s.Palette = "nope" }},
 		{"lead", func(s *MoodSpec) { s.Leads = []string{"theremin"} }},
 		{"groove", func(s *MoodSpec) { s.Grooves = []string{"polka"} }},
-		{"scale", func(s *MoodSpec) { s.Scales = [][]int{{0, 2, 4, 7, 9}} }},
+		{"scale", func(s *MoodSpec) { s.Scales = [][]int{{0, 2, 4, 7}} }},
 	} {
 		s := base
 		c.edit(&s)

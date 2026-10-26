@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"math"
+	"slices"
 	"testing"
 )
 
@@ -34,8 +35,8 @@ var loudScenes = map[string][]peakCase{
 // across low, mid and high levels and tensions. The seed rotates through the
 // grid so each mood hears three seeds without rendering every combination.
 // Twelve seconds reaches the scenes where the drums, the tension pulse and
-// the drone land on one downbeat. -short keeps only full tension, where the
-// pulse and tension's drums are loudest.
+// the drone land on one downbeat. -short keeps only full tension in the grid,
+// where the pulse and tension's drums are loudest; the loud scenes always run.
 func TestMoodPeaks(t *testing.T) {
 	seeds := []uint64{1, 7, 42}
 	levels := []int{0, 5, 9}
@@ -43,11 +44,19 @@ func TestMoodPeaks(t *testing.T) {
 	if testing.Short() {
 		tensions = []float64{1}
 	}
+	for name := range loudScenes {
+		if !slices.Contains(MoodNames(), name) {
+			t.Errorf("loudScenes names %q, which is not a built-in mood", name)
+		}
+	}
 	for _, name := range MoodNames() {
-		cases := loudScenes[name]
+		cases := slices.Clone(loudScenes[name])
 		for i, level := range levels {
 			for j, tension := range tensions {
-				cases = append(cases, peakCase{seeds[(i+j)%len(seeds)], level, tension})
+				c := peakCase{seeds[(i+j)%len(seeds)], level, tension}
+				if !slices.Contains(cases, c) {
+					cases = append(cases, c)
+				}
 			}
 		}
 		for _, c := range cases {

@@ -100,3 +100,20 @@ func TestPlayThemeRejectsBadGrids(t *testing.T) {
 		t.Errorf("theme-playing? after nil = %v, want false", v)
 	}
 }
+
+// Grid lanes from lg take the whole groove notation a grid plays, flams and
+// polymetric lanes included, as written.
+func TestPlayThemeTakesFlamsAndPolymeters(t *testing.T) {
+	m := NewMusic(engine.DeriveDungeon(1, 0, 0))
+	SetMusic(m)
+	c, err := api.NewLetGo("themeflams")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Run(`(undertone/play-theme {:grids [{:drums ["g...x..g" "x..|"]}]})`); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := m.theme.Grids[0].Drums, [engine.DrumLanes]string{"g...x..g", "x..|"}; got != want {
+		t.Errorf("drums = %q, want %q", got, want)
+	}
+}

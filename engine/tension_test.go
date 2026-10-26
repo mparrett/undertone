@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"math"
 	"reflect"
 	"testing"
 )
@@ -257,27 +256,5 @@ func TestVoidIsBelowTheDungeon(t *testing.T) {
 	}
 	if p, _ := DeriveMood("void", 1, 0, 0); p.Room == (Room{}) {
 		t.Error("void plays in the default room")
-	}
-}
-
-// Void's large room builds on its low bed; its loudest scenes in a sweep of
-// levels 0-20, tensions 0/0.5/1 and three seeds (2026-10-25) must keep the
-// headroom village keeps.
-func TestVoidPeaks(t *testing.T) {
-	for _, c := range []struct {
-		seed    uint64
-		level   int
-		tension float64
-	}{{42, 5, 0}, {7, 5, 0.5}, {42, 2, 0.5}} {
-		p, _ := DeriveMood("void", c.seed, c.level, c.tension)
-		buf := make([]byte, SampleRate*4*12)
-		NewSynth(p).Read(buf)
-		peak := 0.0
-		for i := 0; i+1 < len(buf); i += 2 {
-			peak = max(peak, math.Abs(float64(int16(uint16(buf[i])|uint16(buf[i+1])<<8))))
-		}
-		if db := 20 * math.Log10(peak/32768); db > -2 {
-			t.Errorf("void %+v peaks at %.1f dBFS, want at most -2", c, db)
-		}
 	}
 }

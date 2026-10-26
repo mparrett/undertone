@@ -215,7 +215,7 @@ var moods = []mood{
 		grooves:    []string{"machine"},
 		drums:      lin(0, 0),
 		busy:       lin(0.3, 0.05).atMost(0.6),
-		tenseDrums: 0.75,
+		tenseDrums: 0.6, // with grind's trim, keeps full tension under -2 dBFS (#73)
 	},
 	// Rust's rhythmic sibling, after "Closer": the same saws, hiss and
 	// industrial kit, but the machine groove is the floor rather than the

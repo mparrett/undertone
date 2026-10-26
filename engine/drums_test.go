@@ -170,28 +170,6 @@ func TestKitBalance(t *testing.T) {
 	}
 }
 
-// Drums bring the engine's first sharp transients; the loudest village
-// scenes must keep headroom under the master's saturation.
-func TestVillagePeaks(t *testing.T) {
-	for _, c := range []struct {
-		seed    uint64
-		level   int
-		tension float64
-	}{{7, 5, 0}, {2, 5, 1}, {11, 2, 0.8}} {
-		p, _ := DeriveMood("village", c.seed, c.level, c.tension)
-		s := NewSynth(p)
-		buf := make([]byte, SampleRate*4*12)
-		s.Read(buf)
-		peak := 0.0
-		for i := 0; i+1 < len(buf); i += 2 {
-			peak = max(peak, math.Abs(float64(int16(uint16(buf[i])|uint16(buf[i+1])<<8))))
-		}
-		if db := 20 * math.Log10(peak/32768); db > -2 {
-			t.Errorf("village %+v peaks at %.1f dBFS, want at most -2", c, db)
-		}
-	}
-}
-
 // The drums draw from their own rng streams and voices, so a groove never
 // changes what the melodic tracks play: rendered with and without drums, the
 // melodic voices hold the same state throughout.

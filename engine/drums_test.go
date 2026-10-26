@@ -42,7 +42,7 @@ func TestDrumsOnlyInRhythmicMoods(t *testing.T) {
 					}
 				}
 			}
-			if rhythmic := name == "village" || name == "rust"; rhythmic != (hits > 0) {
+			if rhythmic := name == "village" || name == "rust" || name == "forge"; rhythmic != (hits > 0) {
 				t.Errorf("%s level %d: %d drum hits", name, level, hits)
 			}
 		}
@@ -52,6 +52,41 @@ func TestDrumsOnlyInRhythmicMoods(t *testing.T) {
 		if p.DrumGain != 0 {
 			t.Errorf("rust at tension %v: drums at %v, want none", tension, p.DrumGain)
 		}
+	}
+}
+
+// Forge is rust's kit and groove at rest: the beat plays at tension 0, and
+// tension plays it harder and busier, ratchets included.
+func TestForgeDrivesTheMachineAtRest(t *testing.T) {
+	hits := func(tension float64) (n, ratchets int, gain float64) {
+		p, _ := DeriveMood("forge", 1, 2, tension)
+		if p.Groove != "machine" || !samePatch(NewSynth(p).sound(0).patch, industrialKit[0].patch) {
+			t.Fatalf("forge at tension %v plays groove %q off the industrial kit", tension, p.Groove)
+		}
+		for pat := range 8 {
+			for _, lane := range buildDrums(p, pat) {
+				for _, h := range lane {
+					for _, g := range []float64{h.on, h.off} {
+						if g > 0 {
+							n++
+						}
+					}
+					if h.onN > 1 || h.offN > 1 {
+						ratchets++
+					}
+				}
+			}
+		}
+		return n, ratchets, p.DrumGain
+	}
+	restN, restR, restGain := hits(0)
+	if restN == 0 || restGain == 0 {
+		t.Fatalf("forge at rest: %d hits at gain %v, want a beat", restN, restGain)
+	}
+	tenseN, tenseR, tenseGain := hits(1)
+	if tenseN <= restN || tenseR <= restR || tenseGain <= restGain {
+		t.Errorf("tension did not drive forge: hits %d -> %d, ratchets %d -> %d, gain %v -> %v",
+			restN, tenseN, restR, tenseR, restGain, tenseGain)
 	}
 }
 

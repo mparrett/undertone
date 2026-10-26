@@ -847,6 +847,10 @@ type Params struct {
 	// goes deeper; patches without an svf ignore it.
 	Open float64
 
+	// Room shapes the reverb that the whole mix sends to; the zero Room is
+	// the long, dark room every mood had before rooms were a choice.
+	Room Room
+
 	// Mute silences layers at the mix, for listening to a mood a layer at a
 	// time. A muted layer still plays, unheard, so the patterns and the rng
 	// draws are those of the full mix; zeroing a density or gain instead would
@@ -1213,6 +1217,7 @@ func (s *Synth) apply(p Params) {
 			s.voices[i].open = p.Open
 		}
 	}
+	s.verb.setRoom(p.Room)
 }
 
 // fitDelay keeps the delay three rows long as the tempo changes; set once,
@@ -1509,6 +1514,12 @@ func (p Params) sanitized() Params {
 		p.Open = 0
 	}
 	p.Open = max(-1, min(p.Open, 1))
+	for _, x := range []*float64{&p.Room.Size, &p.Room.Damp} {
+		if math.IsNaN(*x) {
+			*x = 0
+		}
+		*x = max(-1, min(*x, 1))
+	}
 	return p
 }
 

@@ -75,6 +75,8 @@ func checkParams(t *testing.T, name string, got, want engine.Params) {
 		{"pulse-gain", got.PulseGain, want.PulseGain},
 		{"grit", got.Grit, want.Grit},
 		{"open", got.Open, want.Open},
+		{"room-size", got.Room.Size, want.Room.Size},
+		{"room-damp", got.Room.Damp, want.Room.Damp},
 		{"drum-gain", got.DrumGain, want.DrumGain},
 		{"drum-busy", got.DrumBusy, want.DrumBusy},
 		{"swing", got.Swing, want.Swing},

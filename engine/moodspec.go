@@ -125,8 +125,9 @@ func MoodByName(name string) (MoodSpec, bool) {
 
 // Derive maps game state to music for this spec, exactly as DeriveMood does
 // for a built-in mood. It reports an error for a spec that names a palette,
-// lead or groove the engine does not have, or has no scales. A spec with no
-// leads derives with LeadName empty and plays no lead.
+// lead or groove the engine does not have, or has no scales or a scale
+// outside five to seven tones. A spec with no leads derives with LeadName
+// empty and plays no lead.
 func (s MoodSpec) Derive(seed uint64, level int, tension float64) (Params, error) {
 	pal, ok := palettes[s.Palette]
 	if !ok {
@@ -136,8 +137,11 @@ func (s MoodSpec) Derive(seed uint64, level int, tension float64) (Params, error
 		return Params{}, fmt.Errorf("a mood needs scales")
 	}
 	for _, sc := range s.Scales {
-		if len(sc) != 7 {
-			return Params{}, fmt.Errorf("scale %v: the sequencer needs seven degrees", sc)
+		// Five tones is the fewest the pad's chord (tones 1, 3 and 5) can
+		// voice without doubling; past seven, a grid's 8 rows would not
+		// reach the octave.
+		if len(sc) < 5 || len(sc) > 7 {
+			return Params{}, fmt.Errorf("scale %v: the sequencer needs five to seven degrees", sc)
 		}
 	}
 	for _, l := range s.Leads {

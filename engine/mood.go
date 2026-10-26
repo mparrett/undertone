@@ -245,8 +245,6 @@ var moods = []mood{
 		busy:  lin(0.35, 0.05).atMost(0.6),
 		swing: 0.06,
 	},
-	// The table cannot express pentatonic scales yet: the sequencer and grid
-	// assume seven degrees.
 }
 
 // MoodNames lists the moods DeriveMood knows, in table order.

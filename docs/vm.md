@@ -49,6 +49,13 @@ boundary, from a seeded rng. Moods turn level and tension into those params
 (`mood.go`): tension raises the tempo, fades in the pulse, sours the fifth,
 thins the pad and lead, and drives the drums.
 
+A mood's scale has five to seven tones. Every degree, in the generator, in a
+grid or theme, and in a one-shot, is the nth tone of the scale playing,
+wrapping into the next octave, so a grid's 8 rows span an octave and a step in
+a seven-note mood and about 1.6 octaves in a five-note one. The pad stacks
+every other tone, which gives a triad in seven tones and the open pentatonic
+voicings in five.
+
 ## Limits
 
 **Modulation reaches cutoff, pitch and level, not timbre.** An `lfo` or `env`

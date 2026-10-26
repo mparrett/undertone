@@ -211,8 +211,6 @@ var moods = []mood{
 	//   - Past dungeon, darker (Void, Below or Hades): lower and slower
 	//     than depth reaches today, perhaps with a new low patch.
 	//   - Stratosphere, a sibling of aurora: thinner still, with no lead.
-	// The table cannot express pentatonic scales yet: the sequencer and grid
-	// assume seven degrees.
 }
 
 // MoodNames lists the moods DeriveMood knows, in table order.

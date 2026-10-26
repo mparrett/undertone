@@ -5,8 +5,9 @@ import "sync/atomic"
 // Steps is the length of a grid: one pattern, 16 eighth-note rows.
 const Steps = rows
 
-// Degrees is the number of pitch rows per melodic lane: a scale plus its
-// octave.
+// Degrees is the number of pitch rows per melodic lane: a seven-note scale
+// plus its octave. A degree is the nth tone of whatever scale is playing, so
+// in a five-note mood the 8 rows climb about 1.6 octaves instead.
 const Degrees = 8
 
 // DrumLanes is the number of drum lanes: kick, clap, shaker.
@@ -20,6 +21,9 @@ const DrumLanes = nDrums
 // groove notation: 2*Steps sixteenths of X (accent), x (hit), o (ghost) or .
 // (rest); a short lane rests for the remainder. With Bed set, the generator
 // keeps playing drone, pad and air underneath.
+//
+// Degree n is the scale's nth tone, wrapping into the next octave: degree 6
+// is the octave in a five-note scale, and degree 8 in a seven-note one.
 type Grid struct {
 	Lead  [Steps]int
 	Bass  [Steps]int
@@ -48,8 +52,20 @@ func (s *Synth) SetGrid(g *Grid) {
 
 // degreeNote is the note degree d (1-based) lands on above base.
 func degreeNote(p Params, base, d int) int {
-	d--
-	return base + 12*(d/7) + p.Scale[d%7]
+	return base + scaleTone(p.Scale, d-1)
+}
+
+// scaleTone is the semitone offset of tone i (0-based) of scale, wrapping by
+// octave past either end: in a five-note scale tone 5 is the root an octave
+// up, and tone -2 the fourth tone an octave down. Degrees count the scale's
+// own tones (ADR-001), so a five-note mood covers more pitch per degree.
+func scaleTone(scale []int, i int) int {
+	n := len(scale)
+	oct, k := i/n, i%n
+	if k < 0 {
+		oct, k = oct-1, k+n
+	}
+	return 12*oct + scale[k]
 }
 
 // GridBases is the note a grid's row 1 plays in the lead and bass lanes. It

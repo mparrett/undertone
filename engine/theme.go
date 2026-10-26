@@ -3,7 +3,8 @@ package engine
 // Theme is authored music: grids played in order, one per pattern (two bars
 // each), then Then. A theme is written in scale degrees, so it plays in
 // whatever key and tempo the params set; set them with SetParametersNow
-// alongside PlayTheme.
+// alongside PlayTheme. Its degrees count the tones of the scale playing, so
+// the same theme climbs about 1.6 octaves over 8 degrees in a five-note mood.
 type Theme struct {
 	Grids []Grid
 	Then  ThemeEnd

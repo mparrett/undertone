@@ -67,7 +67,8 @@ const (
 	// figure, not a native one.
 	//
 	// 24 ms is the shortest read-ahead the 1024-frame device allows at
-	// 44.1 kHz (one buffer, 23.2 ms), and with it leaves ~47 ms for the
+	// 44.1 kHz (one buffer, 23.2 ms); overrides lengthens the default to a
+	// whole buffer where a buffer is longer. At 44.1 kHz it leaves ~47 ms for the
 	// renderer to stall before an underrun, on a main thread that in the
 	// game is also drawing the terminal. Lower latency needs a smaller
 	// device buffer, and 512 frames crackled. Re-check by ear for clicks
@@ -123,6 +124,13 @@ func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
 			return 0, 0, fmt.Errorf("nativeaudio: UNDERTONE_DEVICE_FRAMES=%q is not a power of two from 64 to 16384", v)
 		}
 		frames = n
+	}
+	// With no read-ahead asked for, take playerBuffer, or one device buffer
+	// where that is longer: at rates under ~42.7 kHz, or with more device
+	// frames, 24 ms no longer covers a buffer, and the default must not be
+	// an error.
+	if queue == 0 {
+		queue = max(playerBuffer, deviceBuffer(rate, frames))
 	}
 	// Shorter than one device buffer can't help (the device drains whole
 	// buffers), and under one frame it rounds to 0 bytes, which oto reads as

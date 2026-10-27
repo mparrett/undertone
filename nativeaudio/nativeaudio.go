@@ -21,7 +21,7 @@ import (
 // Options configures the output. Zero values take the defaults in brackets.
 type Options struct {
 	SampleRate int           // [44100] of the source; the first Open in a process fixes it
-	Queue      time.Duration // [24 ms] read-ahead: shorter hears a trigger sooner, longer survives stalls
+	Queue      time.Duration // [24 ms, or one device buffer if longer] read-ahead: shorter hears a trigger sooner, longer survives stalls
 }
 
 // oto allows one context per process, so it is opened once and shared: a
@@ -45,9 +45,6 @@ type Player struct {
 func Open(src io.Reader, opt Options) (*Player, error) {
 	if opt.SampleRate == 0 {
 		opt.SampleRate = 44100
-	}
-	if opt.Queue == 0 {
-		opt.Queue = playerBuffer
 	}
 	queue, frames, err := overrides(opt.SampleRate, opt.Queue)
 	if err != nil {

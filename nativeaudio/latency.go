@@ -48,24 +48,31 @@ const (
 	// speakers into its own mic, trigger to the blip's onset in the
 	// recording; medians of 15; frames are what the device actually got):
 	//
-	//	40 ms read-ahead, 1024 frames  -> 150-158 ms  (these defaults)
+	//	40 ms read-ahead, 1024 frames  -> 150-158 ms  (the defaults until now)
+	//	24 ms read-ahead, 1024 frames  -> 119-126 ms  (these defaults)
 	//	24 ms read-ahead,  512 frames  -> 117 ms
 	//	12 ms read-ahead,  512 frames  ->  97 ms
 	//	256 frames, at 6 or 12 ms      -> breaks up; no clean onsets
+	//
+	// Onset timing cannot hear an underrun: 512 frames gave clean onsets
+	// above, yet a few minutes of tesserae at 24 ms / 512 crackled the whole
+	// time ("sounds like gravel"; same MacBook Air, same day). On macOS oto
+	// splits the device buffer across four AudioQueue buffers, so 512 frames
+	// is four buffers of 2.9 ms. 24 ms / 1024 and 40 ms / 1024 both played
+	// clean in that test.
 	//
 	// The earlier table here (a 90 ms floor plus 1.4x the read-ahead, and
 	// 821 ms at oto's 500 ms default) was measured 2026-08-24 in headless
 	// Chromium through oto's web backend, timed by Playwright: a browser
 	// figure, not a native one.
 	//
-	// 40 ms is chosen for slack rather than for the last few milliseconds:
-	// with the device buffer it leaves ~63 ms for the renderer to stall
-	// before an underrun, on a main thread that in the game is also drawing
-	// the terminal. Verified dropout-free under continuous play at this
-	// value. Lower it for snappier one-shots, but re-check for clicks — and
-	// note that a rAF-sampled probe cannot see a short underrun, so "no
-	// dropouts measured" is weaker evidence than it sounds.
-	playerBuffer = 40 * time.Millisecond
+	// 24 ms is the shortest read-ahead the 1024-frame device allows at
+	// 44.1 kHz (one buffer, 23.2 ms), and with it leaves ~47 ms for the
+	// renderer to stall before an underrun, on a main thread that in the
+	// game is also drawing the terminal. Lower latency needs a smaller
+	// device buffer, and 512 frames crackled. Re-check by ear for clicks
+	// after any change here; no probe so far can hear them.
+	playerBuffer = 24 * time.Millisecond
 )
 
 // deviceBuffer is deviceFrames expressed as the duration oto wants, rounded

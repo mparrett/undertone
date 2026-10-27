@@ -278,12 +278,12 @@ itself. The package keeps oto's rules in one place:
   `cmd/undertone/playerlifetime_test.go` parses every `NewPlayer` call site in
   the module and fails on one that is neither stored in a field nor kept
   alive.
-- **Short buffers.** It opens oto with a 1024-frame device buffer and a 40 ms
+- **Short buffers.** It opens oto with a 1024-frame device buffer and a 24 ms
   read-ahead in place of oto's streaming-oriented defaults
   (`nativeaudio/latency.go`). Measured 2026-10-26 on a MacBook Air, speaker
-  to mic, trigger-to-sound is a median of 150–158 ms at these defaults, and
-  97 ms with `UNDERTONE_PLAYER_BUFFER=12ms UNDERTONE_DEVICE_FRAMES=512`; 256
-  frames broke up. (The older 820 → 130 ms figures came from headless
+  to mic, trigger-to-sound is a median of 119–126 ms at these defaults
+  (150–158 ms at the earlier 40 ms read-ahead). 512 frames measured faster
+  but crackled under real play. (The older 820 → 130 ms figures came from headless
   Chromium through oto's web backend, 2026-08-24.) `Options.Queue` sets the
   read-ahead: the CLI asks for 500 ms, since a bed alone has no one-shots
   waiting behind it and the slack survives a slow terminal. For latency

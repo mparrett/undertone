@@ -111,7 +111,9 @@ const bytesPerFrame = 2 * 2 // stereo, signed 16-bit
 // replaces the read-ahead (and any Options.Queue); UNDERTONE_DEVICE_FRAMES
 // replaces deviceFrames, and must be a power of two from 64 to 16384, the
 // range createScriptProcessor accepts. The device buffer is fixed when the
-// first player opens the shared context. A bad value is an error from Open,
+// first player opens the shared context. With only the device frames set,
+// a default read-ahead shorter than the new buffer stretches to it, so set
+// both to pin each. A bad value is an error from Open,
 // not a silent fallback, so an experiment never measures the default by
 // mistake.
 func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
@@ -132,9 +134,9 @@ func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
 	}
 	// With no read-ahead asked for, take playerBuffer, stretched to one
 	// device buffer where a buffer is longer (a low rate, or more frames),
-	// so the default is never an error. It is continuous in rate and frames;
-	// the margin over one buffer is what macOS was heard with at 44.1 kHz
-	// (0.8 ms) or less.
+	// so the default is never an error. It is continuous in rate and frames.
+	// At macOS's 1024 frames the margin over one buffer is 0.8 ms at 44.1 kHz
+	// (what was heard), 2.7 ms at 48 kHz, and none once stretched.
 	if queue == 0 {
 		queue = max(playerBuffer, deviceBuffer(rate, frames))
 	}

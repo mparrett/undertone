@@ -291,7 +291,8 @@ itself. The package keeps oto's rules in one place:
   latency experiments without a rebuild, `UNDERTONE_PLAYER_BUFFER` (a
   duration such as `20ms`) and `UNDERTONE_DEVICE_FRAMES` (a power of two
   from 64 to 16384) override both buffers; a bad value, or a read-ahead
-  shorter than the device buffer, is an error from `Open`.
+  set shorter than the device buffer, is an error from `Open`, while the
+  default read-ahead stretches to one device buffer.
 
 ## In the browser
 

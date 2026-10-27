@@ -49,7 +49,7 @@ const (
 	// recording; medians of 15; frames are what the device actually got):
 	//
 	//	40 ms read-ahead, 1024 frames  -> 150-158 ms  (the defaults until now)
-	//	24 ms read-ahead, 1024 frames  -> 119-126 ms  (these defaults)
+	//	24 ms read-ahead, 1024 frames  -> 119-128 ms  (these defaults)
 	//	24 ms read-ahead,  512 frames  -> 117 ms
 	//	12 ms read-ahead,  512 frames  ->  97 ms
 	//	256 frames, at 6 or 12 ms      -> breaks up; no clean onsets

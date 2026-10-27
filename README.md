@@ -281,7 +281,7 @@ itself. The package keeps oto's rules in one place:
 - **Short buffers.** It opens oto with a 1024-frame device buffer and a 24 ms
   read-ahead in place of oto's streaming-oriented defaults
   (`nativeaudio/latency.go`). Measured 2026-10-26 on a MacBook Air, speaker
-  to mic, trigger-to-sound is a median of 119–126 ms at these defaults
+  to mic, trigger-to-sound is a median of 119–128 ms at these defaults
   (150–158 ms at the earlier 40 ms read-ahead). 512 frames measured faster
   but crackled under real play. (The older 820 → 130 ms figures came from headless
   Chromium through oto's web backend, 2026-08-24.) `Options.Queue` sets the

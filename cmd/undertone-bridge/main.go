@@ -23,9 +23,10 @@
 // window.undertoneBridge.stats() reports {received, errors, started} for
 // tests, and once playing {queuedMs, underruns, queueMs} for latency work;
 // nothing in it feeds back to the guest. setQueue(ms) changes how much audio
-// webaudio keeps queued ahead of the speaker (letgo's 80 ms until set), and
-// returns the value in effect, or null before audio starts; ?queue=<ms> on
-// the page's URL applies one when it does.
+// webaudio keeps queued ahead of the speaker (until set, letgo's default:
+// 60 ms on an isolated page), and returns the value in effect, or null
+// before audio starts; ?queue=<ms> on the page's URL applies one when it
+// does.
 //
 //	GOOS=js GOARCH=wasm go build -o undertone-bridge.wasm ./cmd/undertone-bridge
 package main

@@ -76,7 +76,7 @@ func TestOverridesRejectBadValues(t *testing.T) {
 		{"UNDERTONE_PLAYER_BUFFER", "fast"},
 		{"UNDERTONE_PLAYER_BUFFER", "-5ms"},
 		{"UNDERTONE_PLAYER_BUFFER", "10us"}, // 0 bytes: oto would read it as its 500 ms default
-		{"UNDERTONE_PLAYER_BUFFER", "5ms"},  // shorter than the 512-frame device buffer
+		{"UNDERTONE_PLAYER_BUFFER", "5ms"},  // shorter than the device buffer (deviceFrames)
 		{"UNDERTONE_DEVICE_FRAMES", "300"},
 		{"UNDERTONE_DEVICE_FRAMES", "32"},
 		{"UNDERTONE_DEVICE_FRAMES", "32768"},

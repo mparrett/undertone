@@ -16,9 +16,10 @@ import (
 // half second ahead (mux.defaultBufferSize). For a bed that is correct and
 // invisible. For one-shots it is not — a trigger staged now waits for all
 // that already-queued audio to drain, so a footstep lands somewhere in the
-// next half second. Measured on the tuning bench before this: median 821 ms
-// from tap to first sample, ranging 33 ms to over a second depending on where
-// in the buffer cycle the tap fell. The variance is the worse half; a late
+// next half second. Before this, the tuning bench (headless Chromium through
+// oto's web backend, 2026-08-24) measured a median of 821 ms from tap to
+// first sample, ranging 33 ms to over a second depending on where in the
+// buffer cycle the tap fell. The variance is the worse half; a late
 // sound is survivable, a sound whose delay changes every time cannot be
 // played around.
 //

@@ -278,16 +278,19 @@ itself. The package keeps oto's rules in one place:
   `cmd/undertone/playerlifetime_test.go` parses every `NewPlayer` call site in
   the module and fails on one that is neither stored in a field nor kept
   alive.
-- **Short buffers.** It opens oto with a 512-frame device buffer and a 40 ms
+- **Short buffers.** It opens oto with a 1024-frame device buffer and a 40 ms
   read-ahead in place of oto's streaming-oriented defaults
-  (`nativeaudio/latency.go`). On the measuring bench, tap-to-sound dropped
-  from a median of about 820 ms to about 130 ms. `Options.Queue` sets the
+  (`nativeaudio/latency.go`). Measured 2026-10-26 on a MacBook Air, speaker
+  to mic, trigger-to-sound is a median of 150–158 ms at these defaults, and
+  97 ms with `UNDERTONE_PLAYER_BUFFER=12ms UNDERTONE_DEVICE_FRAMES=512`; 256
+  frames broke up. (The older 820 → 130 ms figures came from headless
+  Chromium through oto's web backend, 2026-08-24.) `Options.Queue` sets the
   read-ahead: the CLI asks for 500 ms, since a bed alone has no one-shots
   waiting behind it and the slack survives a slow terminal. For latency
   experiments without a rebuild, `UNDERTONE_PLAYER_BUFFER` (a duration such
   as `20ms`) and `UNDERTONE_DEVICE_FRAMES` (a power of two from 64 to 16384)
   override both buffers; a bad value, or a read-ahead shorter than the device
-buffer, is an error from `Open`.
+  buffer, is an error from `Open`.
 
 ## In the browser
 

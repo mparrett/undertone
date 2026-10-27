@@ -69,8 +69,9 @@ const (
 // figure, not a native one.
 //
 // Stall budget: the renderer can fall behind by about the read-ahead plus
-// one device buffer before the device runs dry. At 44.1 kHz that is
-// ~47 ms at 24 ms (24 + 23.2), down from ~63 ms at 40 ms. In tesserae the
+// one device buffer before the device runs dry. As of 2026-10-26, at
+// 44.1 kHz and 1024 frames, that is ~47 ms at 24 ms (24 + 23.2), down from
+// ~63 ms at 40 ms. In tesserae the
 // renderer shares a main thread with the terminal drawing, so a heavier
 // frame or a slower Mac spends from those 47 ms.
 //
@@ -135,8 +136,9 @@ func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
 	// With no read-ahead asked for, take playerBuffer, stretched to one
 	// device buffer where a buffer is longer (a low rate, or more frames),
 	// so the default is never an error. It is continuous in rate and frames.
-	// At macOS's 1024 frames the margin over one buffer is 0.8 ms at 44.1 kHz
-	// (what was heard), 2.7 ms at 48 kHz, and none once stretched.
+	// As of 2026-10-26 (24 ms, 1024 frames) the macOS margin over one buffer
+	// is 0.8 ms at 44.1 kHz (what was heard), 2.7 ms at 48 kHz, and none once
+	// stretched.
 	if queue == 0 {
 		queue = max(playerBuffer, deviceBuffer(rate, frames))
 	}

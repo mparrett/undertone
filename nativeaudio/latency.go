@@ -70,6 +70,15 @@ func deviceBuffer(rate int, frames int64) time.Duration {
 
 // playerBufferBytes is a read-ahead of d as oto's SetBufferSize wants it:
 // bytes, aligned to a whole frame (2 channels x 2 bytes for signed 16-bit LE).
+// deviceLatency is how long a device buffer of frames takes to play. It is not
+// deviceBuffer: oto sizes the device buffer in 4-byte float32 samples but
+// converts the duration at the 2-byte int16 rate, so deviceBuffer's duration
+// is twice the time the buffer holds (512 frames at 44.1 kHz: 23.2 ms for
+// oto, 11.6 ms of sound).
+func deviceLatency(rate int, frames int64) time.Duration {
+	return time.Duration(frames * int64(time.Second) / int64(rate))
+}
+
 func playerBufferBytes(rate int, d time.Duration) int {
 	n := int(int64(d) * int64(rate) * bytesPerFrame / int64(time.Second))
 	return n / bytesPerFrame * bytesPerFrame
@@ -104,9 +113,9 @@ func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
 	// Shorter than one device buffer can't help (the device drains whole
 	// buffers), and under one frame it rounds to 0 bytes, which oto reads as
 	// "use the half-second default" — the silent fallback this rejects.
-	if queue < deviceBuffer(rate, frames) {
+	if queue < deviceLatency(rate, frames) {
 		return 0, 0, fmt.Errorf("nativeaudio: a read-ahead of %v is shorter than the %d-frame device buffer (%v)",
-			queue, frames, deviceBuffer(rate, frames))
+			queue, frames, deviceLatency(rate, frames))
 	}
 	return queue, frames, nil
 }

@@ -47,9 +47,9 @@ func TestPlayerBufferIsWellFormedAndSmallerThanOtosDefault(t *testing.T) {
 	if got >= otoDefault {
 		t.Errorf("player buffer %d >= oto's default %d — the point is to be smaller", got, otoDefault)
 	}
-	if playerBuffer < deviceBuffer(rate, deviceFrames) {
+	if playerBuffer < deviceLatency(rate, deviceFrames) {
 		t.Errorf("player buffer (%v) below device buffer (%v): the device drains in whole "+
-			"buffers, so read-ahead shorter than one cannot help", playerBuffer, deviceBuffer(rate, deviceFrames))
+			"buffers, so read-ahead shorter than one cannot help", playerBuffer, deviceLatency(rate, deviceFrames))
 	}
 }
 
@@ -96,5 +96,17 @@ func TestOverridesDefaultToTheCaller(t *testing.T) {
 	q, f, err := overrides(44100, 500*time.Millisecond)
 	if err != nil || q != 500*time.Millisecond || f != deviceFrames {
 		t.Fatalf("overrides = %v, %d, %v; want the caller's 500ms and %d", q, f, err, deviceFrames)
+	}
+}
+
+// 512 frames at 44.1 kHz hold 11.6 ms, so 12 ms of read-ahead is legal and
+// 11 ms is not. The check once used deviceBuffer's 23.2 ms and refused 12–23 ms.
+func TestOverridesBoundReadAheadByTheDeviceBuffersPlayTime(t *testing.T) {
+	t.Setenv("UNDERTONE_DEVICE_FRAMES", "")
+	for v, ok := range map[string]bool{"12ms": true, "11ms": false} {
+		t.Setenv("UNDERTONE_PLAYER_BUFFER", v)
+		if _, _, err := overrides(44100, 40*time.Millisecond); (err == nil) != ok {
+			t.Errorf("UNDERTONE_PLAYER_BUFFER=%s with %d frames: err = %v, want ok=%v", v, deviceFrames, err, ok)
+		}
 	}
 }

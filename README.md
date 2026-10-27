@@ -307,8 +307,8 @@ latency, since a one-shot is rendered behind whatever is already queued:
 `Options.Queue` sets it and `Player.SetQueue` changes it while playing.
 `letgo` asks for 60 ms on a cross-origin isolated page, because at 300 a
 game's sounds landed 100–300 ms after what caused them. Over minutes of play
-in tesserae on an iPhone 13 Pro (2026-10-26), 60 ms and up counted no
-underruns, and 40 ms counted 8. Elsewhere it asks for 80 ms, since the
+in tesserae on an iPhone 13 Pro (2026-10-26), 60, 80, 120 and 200 ms counted
+no underruns, and 40 ms counted 8. Elsewhere it asks for 80 ms, since the
 message path below was not measured at 60. The cost is stall tolerance: a
 main-thread stall longer than the queue empties the ring, so letgo games
 trade the 300 ms default's margin for prompt sound. Where the page is

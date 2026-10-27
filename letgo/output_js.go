@@ -29,7 +29,7 @@ import (
 // the 80 ms it had.
 func openOutput(src io.Reader) (output, error) {
 	queue := 60 * time.Millisecond
-	if !webaudio.Shared() {
+	if !webaudio.SharedAvailable() {
 		queue = 80 * time.Millisecond
 	}
 	return webaudio.Open(src, webaudio.Options{SampleRate: engine.SampleRate, Queue: queue})

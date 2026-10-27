@@ -18,7 +18,9 @@ import (
 // counted no underruns over minutes of play at 60, 80, 120 and 200 ms, and 8
 // at 40 ms; 80 had earlier sounded click-free on an iPhone 13 Pro. On desktop
 // Chrome a trigger reached the worklet's output 69 ms after dispatch at 60,
-// against 100 ms at 80.
+// against 100 ms at 80. The price is stall tolerance: a main-thread stall
+// longer than the queue (a GC, a heavy redraw) empties the ring and is heard
+// as a gap, where 300 ms rode out 120 ms stalls.
 func openOutput(src io.Reader) (output, error) {
 	return webaudio.Open(src, webaudio.Options{SampleRate: engine.SampleRate, Queue: 60 * time.Millisecond})
 }

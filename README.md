@@ -307,10 +307,12 @@ latency, since a one-shot is rendered behind whatever is already queued:
 `Options.Queue` sets it and `Player.SetQueue` changes it while playing.
 `letgo` asks for 60 ms, because at 300 a game's sounds landed 100–300 ms after
 what caused them. Over minutes of play in tesserae (2026-10-26), 60 ms and up
-counted no underruns, and 40 ms counted 8. Where the page is
+counted no underruns, and 40 ms counted 8. The cost is stall tolerance: a
+main-thread stall longer than the queue empties the ring, so letgo games
+trade the 300 ms default's margin for prompt sound. Where the page is
 cross-origin isolated the ring is a SharedArrayBuffer; elsewhere slices travel
-as transferred messages. Both played without a dropout on an iPhone, including
-under 120 ms main-thread stalls.
+as transferred messages. Both played without a dropout on an iPhone at the
+300 ms default, including under 120 ms main-thread stalls.
 
 Two things the page has to provide: HTTPS (or `localhost`), because Safari
 offers AudioWorklet only in a secure context; and a tap, because browsers

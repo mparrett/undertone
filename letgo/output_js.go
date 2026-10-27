@@ -4,7 +4,6 @@ package letgo
 
 import (
 	"io"
-	"syscall/js"
 	"time"
 
 	"github.com/mparrett/undertone/engine"
@@ -30,7 +29,7 @@ import (
 // the 80 ms it had.
 func openOutput(src io.Reader) (output, error) {
 	queue := 60 * time.Millisecond
-	if !js.Global().Get("crossOriginIsolated").Truthy() {
+	if !webaudio.Shared() {
 		queue = 80 * time.Millisecond
 	}
 	return webaudio.Open(src, webaudio.Options{SampleRate: engine.SampleRate, Queue: queue})

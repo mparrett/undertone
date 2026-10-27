@@ -120,6 +120,14 @@ class UndertoneShared extends AudioWorkletProcessor {
     return true; } }
 registerProcessor('undertone-shared', UndertoneShared);`
 
+// Shared reports whether a Player opened now plays through the
+// SharedArrayBuffer ring rather than the message path: true on a
+// cross-origin isolated page. A caller tuning its queue per path asks here,
+// so the rule lives in one place.
+func Shared() bool {
+	return js.Global().Get("crossOriginIsolated").Truthy()
+}
+
 // Open creates the AudioContext and starts the pump. It must be called before
 // the user's unlocking gesture, not inside it: iOS Safari only lets a context
 // start from a gesture that arrives after the context exists, so Open listens
@@ -169,7 +177,7 @@ func Open(src io.Reader, opt Options) (*Player, error) {
 	}
 	// ~1 s in whole slices, so a slice never wraps the shared ring
 	p.cap = opt.Slice * int(math.Ceil(float64(opt.SampleRate)/float64(opt.Slice)))
-	if js.Global().Get("crossOriginIsolated").Truthy() {
+	if Shared() {
 		p.shared = true
 		sab := js.Global().Get("SharedArrayBuffer")
 		samples, ctrl := sab.New(p.cap*8), sab.New(12)

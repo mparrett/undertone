@@ -35,18 +35,22 @@ const (
 	// ScriptProcessorNode fallback passes exactly this number to
 	// createScriptProcessor, which throws IndexSizeError for anything else.
 	// Browsers now play through webaudio, but the round trip below still
-	// holds it. oto's own default is 2048; 512 is two steps down.
-	deviceFrames int64 = 512
+	// holds it. On macOS oto splits it across four AudioQueue buffers.
+	//
+	// 1024 is what every build before 2026-10-26 actually got: deviceBuffer
+	// then converted at 4 bytes a frame while oto converts at 8, so the 512
+	// written here opened a 1024-frame device.
+	deviceFrames int64 = 1024
 
 	// playerBuffer is the player's read-ahead, and the knob that actually
 	// moves latency. Native, measured 2026-10-26 on a MacBook Air (built-in
 	// speakers into its own mic, trigger to the blip's onset in the
-	// recording; medians of 15):
+	// recording; medians of 15; frames are what the device actually got):
 	//
-	//	40 ms read-ahead, 512 frames  -> 150-158 ms  (these defaults)
-	//	24 ms read-ahead, 256 frames  -> 117 ms
-	//	12 ms read-ahead, 256 frames  ->  97 ms
-	//	128 frames, at 6 or 12 ms     -> breaks up; no clean onsets
+	//	40 ms read-ahead, 1024 frames  -> 150-158 ms  (these defaults)
+	//	24 ms read-ahead,  512 frames  -> 117 ms
+	//	12 ms read-ahead,  512 frames  ->  97 ms
+	//	256 frames, at 6 or 12 ms      -> breaks up; no clean onsets
 	//
 	// The earlier table here (a 90 ms floor plus 1.4x the read-ahead, and
 	// 821 ms at oto's 500 ms default) was measured 2026-08-24 in headless
@@ -68,24 +72,19 @@ const (
 // exactly-but-short lands a byte low and then aligns down to one frame less —
 // turning 512 into 511 and losing the power of two. Rounding up costs a
 // fraction of a millisecond and makes the round trip exact. (A flat slack
-// term does not work: 1 ms is 22 frames too many.)
+// term does not work: 1 ms is 44 frames too many.)
 func deviceBuffer(rate int, frames int64) time.Duration {
-	deviceBytes := frames * 8
-	perSecond := int64(rate) * bytesPerFrame
+	deviceBytes := frames * otoBytesPerFrame
+	perSecond := int64(rate) * otoBytesPerFrame
 	return time.Duration((deviceBytes*int64(time.Second) + perSecond - 1) / perSecond)
 }
 
+// otoBytesPerFrame is how oto converts NewContextOptions.BufferSize to bytes:
+// its drivers always run in stereo float32, whatever format players use.
+const otoBytesPerFrame = 2 * 4
+
 // playerBufferBytes is a read-ahead of d as oto's SetBufferSize wants it:
 // bytes, aligned to a whole frame (2 channels x 2 bytes for signed 16-bit LE).
-// deviceLatency is how long a device buffer of frames takes to play. It is not
-// deviceBuffer: oto sizes the device buffer in 4-byte float32 samples but
-// converts the duration at the 2-byte int16 rate, so deviceBuffer's duration
-// is twice the time the buffer holds (512 frames at 44.1 kHz: 23.2 ms for
-// oto, 11.6 ms of sound).
-func deviceLatency(rate int, frames int64) time.Duration {
-	return time.Duration(frames * int64(time.Second) / int64(rate))
-}
-
 func playerBufferBytes(rate int, d time.Duration) int {
 	n := int(int64(d) * int64(rate) * bytesPerFrame / int64(time.Second))
 	return n / bytesPerFrame * bytesPerFrame
@@ -120,9 +119,9 @@ func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
 	// Shorter than one device buffer can't help (the device drains whole
 	// buffers), and under one frame it rounds to 0 bytes, which oto reads as
 	// "use the half-second default" — the silent fallback this rejects.
-	if queue < deviceLatency(rate, frames) {
+	if queue < deviceBuffer(rate, frames) {
 		return 0, 0, fmt.Errorf("nativeaudio: a read-ahead of %v is shorter than the %d-frame device buffer (%v)",
-			queue, frames, deviceLatency(rate, frames))
+			queue, frames, deviceBuffer(rate, frames))
 	}
 	return queue, frames, nil
 }

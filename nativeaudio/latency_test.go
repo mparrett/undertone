@@ -20,10 +20,10 @@ func TestDeviceBufferSurvivesOtosRoundTripAsAPowerOfTwo(t *testing.T) {
 
 func deviceRoundTrip(t *testing.T, rate int) {
 	const channelCount = 2
-	bytesPerSecond := rate * bytesPerFrame
+	bytesPerSecond := rate * otoBytesPerFrame
 
 	b := int(int64(deviceBuffer(rate, deviceFrames)) * int64(bytesPerSecond) / int64(time.Second))
-	b = b / bytesPerFrame * bytesPerFrame // oto's alignment step
+	b = b / otoBytesPerFrame * otoBytesPerFrame // oto's alignment step
 	frames := b / 4 / channelCount
 
 	if frames&(frames-1) != 0 || frames == 0 {
@@ -47,9 +47,9 @@ func TestPlayerBufferIsWellFormedAndSmallerThanOtosDefault(t *testing.T) {
 	if got >= otoDefault {
 		t.Errorf("player buffer %d >= oto's default %d — the point is to be smaller", got, otoDefault)
 	}
-	if playerBuffer < deviceLatency(rate, deviceFrames) {
+	if playerBuffer < deviceBuffer(rate, deviceFrames) {
 		t.Errorf("player buffer (%v) below device buffer (%v): the device drains in whole "+
-			"buffers, so read-ahead shorter than one cannot help", playerBuffer, deviceLatency(rate, deviceFrames))
+			"buffers, so read-ahead shorter than one cannot help", playerBuffer, deviceBuffer(rate, deviceFrames))
 	}
 }
 
@@ -63,8 +63,8 @@ func TestOverridesReadTheEnvironment(t *testing.T) {
 	// Every override still survives oto's round trip as a power of two.
 	for n := int64(64); n <= 16384; n *= 2 {
 		for _, rate := range []int{44100, 48000} {
-			b := int(int64(deviceBuffer(rate, n)) * int64(rate*bytesPerFrame) / int64(time.Second))
-			if got := int64(b / bytesPerFrame * bytesPerFrame / 4 / 2); got != n {
+			b := int(int64(deviceBuffer(rate, n)) * int64(rate*otoBytesPerFrame) / int64(time.Second))
+			if got := int64(b / otoBytesPerFrame * otoBytesPerFrame / 4 / 2); got != n {
 				t.Errorf("%d frames at %d Hz round-trips to %d", n, rate, got)
 			}
 		}
@@ -100,13 +100,13 @@ func TestOverridesDefaultToTheCaller(t *testing.T) {
 }
 
 // 512 frames at 44.1 kHz hold 11.6 ms, so 12 ms of read-ahead is legal and
-// 11 ms is not. The check once used deviceBuffer's 23.2 ms and refused 12–23 ms.
+// 11 ms is not.
 func TestOverridesBoundReadAheadByTheDeviceBuffersPlayTime(t *testing.T) {
-	t.Setenv("UNDERTONE_DEVICE_FRAMES", "")
+	t.Setenv("UNDERTONE_DEVICE_FRAMES", "512")
 	for v, ok := range map[string]bool{"12ms": true, "11ms": false} {
 		t.Setenv("UNDERTONE_PLAYER_BUFFER", v)
 		if _, _, err := overrides(44100, 40*time.Millisecond); (err == nil) != ok {
-			t.Errorf("UNDERTONE_PLAYER_BUFFER=%s with %d frames: err = %v, want ok=%v", v, deviceFrames, err, ok)
+			t.Errorf("UNDERTONE_PLAYER_BUFFER=%s with 512 frames: err = %v, want ok=%v", v, err, ok)
 		}
 	}
 }

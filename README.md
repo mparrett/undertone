@@ -305,9 +305,9 @@ out of a ring, and a goroutine renders 512-frame slices within a 3 ms budget
 until about 300 ms is queued, then yields to the page. The queue doubles as
 latency, since a one-shot is rendered behind whatever is already queued:
 `Options.Queue` sets it and `Player.SetQueue` changes it while playing.
-`letgo` asks for 80 ms, because at 300 a game's sounds landed 100–300 ms after
-what caused them; 80 ms played without a heard click on an iPhone 13 Pro
-(2026-10-26). Where the page is
+`letgo` asks for 60 ms, because at 300 a game's sounds landed 100–300 ms after
+what caused them. Over minutes of play in tesserae (2026-10-26), 60 ms and up
+counted no underruns, and 40 ms counted 8. Where the page is
 cross-origin isolated the ring is a SharedArrayBuffer; elsewhere slices travel
 as transferred messages. Both played without a dropout on an iPhone, including
 under 120 ms main-thread stalls.

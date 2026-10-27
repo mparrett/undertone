@@ -112,8 +112,7 @@ func TestOverridesBoundReadAheadByTheDeviceBuffersPlayTime(t *testing.T) {
 }
 
 // The default read-ahead is never an error: where one device buffer outlasts
-// playerBuffer (a low rate, or more frames), it is that buffer plus
-// playerBuffer.
+// playerBuffer (a low rate, or more frames), it stretches to that buffer.
 func TestOverridesDefaultCoversOneDeviceBuffer(t *testing.T) {
 	t.Setenv("UNDERTONE_PLAYER_BUFFER", "")
 	for _, c := range []struct {
@@ -123,8 +122,8 @@ func TestOverridesDefaultCoversOneDeviceBuffer(t *testing.T) {
 	}{
 		{44100, "", playerBuffer},
 		{48000, "", playerBuffer},
-		{8000, "", deviceBuffer(8000, deviceFrames) + playerBuffer},
-		{44100, "4096", deviceBuffer(44100, 4096) + playerBuffer},
+		{8000, "", deviceBuffer(8000, deviceFrames)},
+		{44100, "4096", deviceBuffer(44100, 4096)},
 	} {
 		t.Setenv("UNDERTONE_DEVICE_FRAMES", c.frames)
 		if q, _, err := overrides(c.rate, 0); err != nil || q != c.want {

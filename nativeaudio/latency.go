@@ -68,6 +68,12 @@ const (
 // Chromium through oto's web backend, timed by Playwright: a browser
 // figure, not a native one.
 //
+// Stall budget: the renderer can fall behind by about the read-ahead plus
+// one device buffer before the device runs dry. At 44.1 kHz that is
+// ~47 ms at 24 ms (24 + 23.2), down from ~63 ms at 40 ms. In tesserae the
+// renderer shares a main thread with the terminal drawing, so a heavier
+// frame or a slower Mac spends from those 47 ms.
+//
 // Only macOS has been heard at 24 ms, so only macOS gets it. There oto
 // drains the device a quarter-buffer at a time; a backend that drains the
 // whole buffer per callback (WASAPI may) would leave 24 ms almost nothing
@@ -124,15 +130,13 @@ func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
 		}
 		frames = n
 	}
-	// With no read-ahead asked for, take playerBuffer. Where one device
-	// buffer outlasts it (a low rate, or more frames), that would be an
-	// error; take the buffer plus playerBuffer instead, keeping the margin
-	// rather than the floor.
+	// With no read-ahead asked for, take playerBuffer, stretched to one
+	// device buffer where a buffer is longer (a low rate, or more frames),
+	// so the default is never an error. It is continuous in rate and frames;
+	// the margin over one buffer is what macOS was heard with at 44.1 kHz
+	// (0.8 ms) or less.
 	if queue == 0 {
-		queue = playerBuffer
-		if d := deviceBuffer(rate, frames); queue < d {
-			queue = d + playerBuffer
-		}
+		queue = max(playerBuffer, deviceBuffer(rate, frames))
 	}
 	// Shorter than one device buffer can't help (the device drains whole
 	// buffers), and under one frame it rounds to 0 bytes, which oto reads as

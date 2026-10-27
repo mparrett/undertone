@@ -36,7 +36,7 @@ func inWorker() bool {
 // before the page starts playing.
 func openWorker(src io.Reader, opt Options) (*Player, error) {
 	g := js.Global()
-	if !g.Get("crossOriginIsolated").Truthy() {
+	if !SharedAvailable() {
 		return nil, errors.New("webaudio: playing from a worker needs a cross-origin isolated page (SharedArrayBuffer)")
 	}
 	p := &Player{src: src, opt: opt, shared: true, worker: true, id: int(playerIDs.Add(1))}

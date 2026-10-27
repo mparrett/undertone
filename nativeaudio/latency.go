@@ -16,9 +16,10 @@ import (
 // half second ahead (mux.defaultBufferSize). For a bed that is correct and
 // invisible. For one-shots it is not — a trigger staged now waits for all
 // that already-queued audio to drain, so a footstep lands somewhere in the
-// next half second. Measured on the tuning bench before this: median 821 ms
-// from tap to first sample, ranging 33 ms to over a second depending on where
-// in the buffer cycle the tap fell. The variance is the worse half; a late
+// next half second. Before this, the tuning bench (headless Chromium through
+// oto's web backend, 2026-08-24) measured a median of 821 ms from tap to
+// first sample, ranging 33 ms to over a second depending on where in the
+// buffer cycle the tap fell. The variance is the worse half; a late
 // sound is survivable, a sound whose delay changes every time cannot be
 // played around.
 //
@@ -35,38 +36,67 @@ const (
 	// ScriptProcessorNode fallback passes exactly this number to
 	// createScriptProcessor, which throws IndexSizeError for anything else.
 	// Browsers now play through webaudio, but the round trip below still
-	// holds it. oto's own default is 2048; 512 is two steps down.
-	deviceFrames int64 = 512
-
-	// playerBuffer is the player's read-ahead, and the knob that actually
-	// moves latency. Measured on the bench, tap to first sample tracks it
-	// almost linearly — about a 90 ms fixed floor plus 1.4x this value:
+	// holds it. On macOS oto splits it across four AudioQueue buffers.
 	//
-	//	 20 ms -> 117 ms      60 ms -> 187 ms
-	//	 40 ms -> 129 ms     120 ms -> 256 ms
-	//	500 ms -> 821 ms  (oto's default, before any of this)
-	//
-	// 40 ms is chosen for slack rather than for the last few milliseconds:
-	// with the device buffer it leaves ~63 ms for the renderer to stall
-	// before an underrun, on a main thread that in the game is also drawing
-	// the terminal. Verified dropout-free under continuous play at this
-	// value. Lower it for snappier one-shots, but re-check for clicks — and
-	// note that a rAF-sampled probe cannot see a short underrun, so "no
-	// dropouts measured" is weaker evidence than it sounds.
-	playerBuffer = 40 * time.Millisecond
+	// 1024 is what every build before 2026-10-26 actually got: deviceBuffer
+	// then converted at 4 bytes a frame while oto converts at 8, so the 512
+	// written here opened a 1024-frame device.
+	deviceFrames int64 = 1024
 )
+
+// playerBuffer, set per platform (playerbuffer_*.go), is the player's
+// read-ahead, and the knob that actually moves latency. Native, measured
+// 2026-10-26 on a MacBook Air (built-in speakers into its own mic, trigger
+// to the blip's onset in the recording; medians of 15; frames are what the
+// device actually got):
+//
+//	40 ms read-ahead, 1024 frames  -> 150-158 ms  (the defaults until now)
+//	24 ms read-ahead, 1024 frames  -> 119-128 ms  (the macOS default)
+//	24 ms read-ahead,  512 frames  -> 117 ms
+//	12 ms read-ahead,  512 frames  ->  97 ms
+//	256 frames, at 6 or 12 ms      -> breaks up; no clean onsets
+//
+// Onset timing cannot hear an underrun: 512 frames gave clean onsets
+// above, yet a few minutes of tesserae at 24 ms / 512 crackled the whole
+// time ("sounds like gravel"; same MacBook Air, same day). On macOS oto
+// splits the device buffer across four AudioQueue buffers, so 512 frames
+// is four buffers of 2.9 ms. 24 ms / 1024 and 40 ms / 1024 both played
+// clean in that test.
+//
+// The earlier table here (a 90 ms floor plus 1.4x the read-ahead, and
+// 821 ms at oto's 500 ms default) was measured 2026-08-24 in headless
+// Chromium through oto's web backend, timed by Playwright: a browser
+// figure, not a native one.
+//
+// Stall budget: the renderer can fall behind by about the read-ahead plus
+// one device buffer before the device runs dry. As of 2026-10-26, at
+// 44.1 kHz and 1024 frames, that is ~47 ms at 24 ms (24 + 23.2), down from
+// ~63 ms at 40 ms. In tesserae the
+// renderer shares a main thread with the terminal drawing, so a heavier
+// frame or a slower Mac spends from those 47 ms.
+//
+// Only macOS has been heard at 24 ms, so only macOS gets it. There oto
+// drains the device a quarter-buffer at a time; a backend that drains the
+// whole buffer per callback (WASAPI may) would leave 24 ms almost nothing
+// after each drain, so other platforms keep 40 ms until someone listens.
+// Lower latency needs a smaller device buffer, and 512 frames crackled.
+// Re-check by ear for clicks after any change; no probe so far hears them.
 
 // deviceBuffer is deviceFrames expressed as the duration oto wants, rounded
 // UP. oto converts back by truncating, so a duration that divides
 // exactly-but-short lands a byte low and then aligns down to one frame less —
 // turning 512 into 511 and losing the power of two. Rounding up costs a
 // fraction of a millisecond and makes the round trip exact. (A flat slack
-// term does not work: 1 ms is 22 frames too many.)
+// term does not work: 1 ms is 44 frames too many.)
 func deviceBuffer(rate int, frames int64) time.Duration {
-	deviceBytes := frames * 8
-	perSecond := int64(rate) * bytesPerFrame
+	deviceBytes := frames * otoBytesPerFrame
+	perSecond := int64(rate) * otoBytesPerFrame
 	return time.Duration((deviceBytes*int64(time.Second) + perSecond - 1) / perSecond)
 }
+
+// otoBytesPerFrame is how oto converts NewContextOptions.BufferSize to bytes:
+// its drivers always run in stereo float32, whatever format players use.
+const otoBytesPerFrame = 2 * 4
 
 // playerBufferBytes is a read-ahead of d as oto's SetBufferSize wants it:
 // bytes, aligned to a whole frame (2 channels x 2 bytes for signed 16-bit LE).
@@ -82,7 +112,9 @@ const bytesPerFrame = 2 * 2 // stereo, signed 16-bit
 // replaces the read-ahead (and any Options.Queue); UNDERTONE_DEVICE_FRAMES
 // replaces deviceFrames, and must be a power of two from 64 to 16384, the
 // range createScriptProcessor accepts. The device buffer is fixed when the
-// first player opens the shared context. A bad value is an error from Open,
+// first player opens the shared context. With only the device frames set,
+// a default read-ahead shorter than the new buffer stretches to it, so set
+// both to pin each. A bad value is an error from Open,
 // not a silent fallback, so an experiment never measures the default by
 // mistake.
 func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
@@ -100,6 +132,15 @@ func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
 			return 0, 0, fmt.Errorf("nativeaudio: UNDERTONE_DEVICE_FRAMES=%q is not a power of two from 64 to 16384", v)
 		}
 		frames = n
+	}
+	// With no read-ahead asked for, take playerBuffer, stretched to one
+	// device buffer where a buffer is longer (a low rate, or more frames),
+	// so the default is never an error. It is continuous in rate and frames.
+	// As of 2026-10-26 (24 ms, 1024 frames) the macOS margin over one buffer
+	// is 0.8 ms at 44.1 kHz (what was heard), 2.7 ms at 48 kHz, and none once
+	// stretched.
+	if queue == 0 {
+		queue = max(playerBuffer, deviceBuffer(rate, frames))
 	}
 	// Shorter than one device buffer can't help (the device drains whole
 	// buffers), and under one frame it rounds to 0 bytes, which oto reads as

@@ -278,16 +278,21 @@ itself. The package keeps oto's rules in one place:
   `cmd/undertone/playerlifetime_test.go` parses every `NewPlayer` call site in
   the module and fails on one that is neither stored in a field nor kept
   alive.
-- **Short buffers.** It opens oto with a 512-frame device buffer and a 40 ms
-  read-ahead in place of oto's streaming-oriented defaults
-  (`nativeaudio/latency.go`). On the measuring bench, tap-to-sound dropped
-  from a median of about 820 ms to about 130 ms. `Options.Queue` sets the
-  read-ahead: the CLI asks for 500 ms, since a bed alone has no one-shots
-  waiting behind it and the slack survives a slow terminal. For latency
-  experiments without a rebuild, `UNDERTONE_PLAYER_BUFFER` (a duration such
-  as `20ms`) and `UNDERTONE_DEVICE_FRAMES` (a power of two from 64 to 16384)
-  override both buffers; a bad value, or a read-ahead shorter than the device
-buffer, is an error from `Open`.
+- **Short buffers.** It opens oto with a 1024-frame device buffer and a
+  read-ahead of 24 ms on macOS and 40 ms elsewhere, in place of oto's
+  streaming-oriented defaults (`nativeaudio/latency.go`). Measured
+  2026-10-26 on a MacBook Air, speaker to mic, trigger-to-sound is a median
+  of 119–128 ms at 24 ms and 150–158 ms at 40 ms. Other platforms stay at
+  40 ms until someone listens for clicks there. 512 frames measured faster
+  but crackled under real play. (The older 820 → 130 ms figures came from
+  headless Chromium through oto's web backend, 2026-08-24.) `Options.Queue`
+  sets the read-ahead: the CLI asks for 500 ms, since a bed alone has no
+  one-shots waiting behind it and the slack survives a slow terminal. For
+  latency experiments without a rebuild, `UNDERTONE_PLAYER_BUFFER` (a
+  duration such as `20ms`) and `UNDERTONE_DEVICE_FRAMES` (a power of two
+  from 64 to 16384) override both buffers; a bad value, or a read-ahead
+  set shorter than the device buffer, is an error from `Open`, while the
+  default read-ahead stretches to one device buffer.
 
 ## In the browser
 
@@ -300,12 +305,16 @@ out of a ring, and a goroutine renders 512-frame slices within a 3 ms budget
 until about 300 ms is queued, then yields to the page. The queue doubles as
 latency, since a one-shot is rendered behind whatever is already queued:
 `Options.Queue` sets it and `Player.SetQueue` changes it while playing.
-`letgo` asks for 80 ms, because at 300 a game's sounds landed 100–300 ms after
-what caused them; 80 ms played without a heard click on an iPhone 13 Pro
-(2026-10-26). Where the page is
-cross-origin isolated the ring is a SharedArrayBuffer; elsewhere slices travel
-as transferred messages. Both played without a dropout on an iPhone, including
-under 120 ms main-thread stalls.
+`letgo` asks for 60 ms on a cross-origin isolated page, because at 300 a
+game's sounds landed 100–300 ms after what caused them. Over minutes of play
+in tesserae on an iPhone 13 Pro (2026-10-26), 60, 80, 120 and 200 ms counted
+no underruns, and 40 ms counted 8. Elsewhere it asks for 80 ms, since the
+message path below was not measured at 60. The cost is stall tolerance: a
+main-thread stall longer than the queue empties the ring, so letgo games
+trade the 300 ms default's margin for prompt sound. Where the page is
+cross-origin isolated the ring is a SharedArrayBuffer; elsewhere slices
+travel as transferred messages. Both played without a dropout on an iPhone at
+the 300 ms default, including under 120 ms main-thread stalls.
 
 Two things the page has to provide: HTTPS (or `localhost`), because Safari
 offers AudioWorklet only in a secure context; and a tap, because browsers

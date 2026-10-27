@@ -39,12 +39,19 @@ const (
 	deviceFrames int64 = 512
 
 	// playerBuffer is the player's read-ahead, and the knob that actually
-	// moves latency. Measured on the bench, tap to first sample tracks it
-	// almost linearly — about a 90 ms fixed floor plus 1.4x this value:
+	// moves latency. Native, measured 2026-10-26 on a MacBook Air (built-in
+	// speakers into its own mic, trigger to the blip's onset in the
+	// recording; medians of 15):
 	//
-	//	 20 ms -> 117 ms      60 ms -> 187 ms
-	//	 40 ms -> 129 ms     120 ms -> 256 ms
-	//	500 ms -> 821 ms  (oto's default, before any of this)
+	//	40 ms read-ahead, 512 frames  -> 150-158 ms  (these defaults)
+	//	24 ms read-ahead, 256 frames  -> 117 ms
+	//	12 ms read-ahead, 256 frames  ->  97 ms
+	//	128 frames, at 6 or 12 ms     -> breaks up; no clean onsets
+	//
+	// The earlier table here (a 90 ms floor plus 1.4x the read-ahead, and
+	// 821 ms at oto's 500 ms default) was measured 2026-08-24 in headless
+	// Chromium through oto's web backend, timed by Playwright: a browser
+	// figure, not a native one.
 	//
 	// 40 ms is chosen for slack rather than for the last few milliseconds:
 	// with the device buffer it leaves ~63 ms for the renderer to stall

@@ -42,39 +42,38 @@ const (
 	// then converted at 4 bytes a frame while oto converts at 8, so the 512
 	// written here opened a 1024-frame device.
 	deviceFrames int64 = 1024
-
-	// playerBuffer is the player's read-ahead, and the knob that actually
-	// moves latency. Native, measured 2026-10-26 on a MacBook Air (built-in
-	// speakers into its own mic, trigger to the blip's onset in the
-	// recording; medians of 15; frames are what the device actually got):
-	//
-	//	40 ms read-ahead, 1024 frames  -> 150-158 ms  (the defaults until now)
-	//	24 ms read-ahead, 1024 frames  -> 119-128 ms  (these defaults)
-	//	24 ms read-ahead,  512 frames  -> 117 ms
-	//	12 ms read-ahead,  512 frames  ->  97 ms
-	//	256 frames, at 6 or 12 ms      -> breaks up; no clean onsets
-	//
-	// Onset timing cannot hear an underrun: 512 frames gave clean onsets
-	// above, yet a few minutes of tesserae at 24 ms / 512 crackled the whole
-	// time ("sounds like gravel"; same MacBook Air, same day). On macOS oto
-	// splits the device buffer across four AudioQueue buffers, so 512 frames
-	// is four buffers of 2.9 ms. 24 ms / 1024 and 40 ms / 1024 both played
-	// clean in that test.
-	//
-	// The earlier table here (a 90 ms floor plus 1.4x the read-ahead, and
-	// 821 ms at oto's 500 ms default) was measured 2026-08-24 in headless
-	// Chromium through oto's web backend, timed by Playwright: a browser
-	// figure, not a native one.
-	//
-	// 24 ms is the shortest read-ahead the 1024-frame device allows at
-	// 44.1 kHz (one buffer, 23.2 ms); overrides lengthens the default to a
-	// whole buffer where a buffer is longer. At 44.1 kHz it leaves ~47 ms for the
-	// renderer to stall before an underrun, on a main thread that in the
-	// game is also drawing the terminal. Lower latency needs a smaller
-	// device buffer, and 512 frames crackled. Re-check by ear for clicks
-	// after any change here; no probe so far can hear them.
-	playerBuffer = 24 * time.Millisecond
 )
+
+// playerBuffer, set per platform (playerbuffer_*.go), is the player's
+// read-ahead, and the knob that actually moves latency. Native, measured
+// 2026-10-26 on a MacBook Air (built-in speakers into its own mic, trigger
+// to the blip's onset in the recording; medians of 15; frames are what the
+// device actually got):
+//
+//	40 ms read-ahead, 1024 frames  -> 150-158 ms  (the defaults until now)
+//	24 ms read-ahead, 1024 frames  -> 119-128 ms  (the macOS default)
+//	24 ms read-ahead,  512 frames  -> 117 ms
+//	12 ms read-ahead,  512 frames  ->  97 ms
+//	256 frames, at 6 or 12 ms      -> breaks up; no clean onsets
+//
+// Onset timing cannot hear an underrun: 512 frames gave clean onsets
+// above, yet a few minutes of tesserae at 24 ms / 512 crackled the whole
+// time ("sounds like gravel"; same MacBook Air, same day). On macOS oto
+// splits the device buffer across four AudioQueue buffers, so 512 frames
+// is four buffers of 2.9 ms. 24 ms / 1024 and 40 ms / 1024 both played
+// clean in that test.
+//
+// The earlier table here (a 90 ms floor plus 1.4x the read-ahead, and
+// 821 ms at oto's 500 ms default) was measured 2026-08-24 in headless
+// Chromium through oto's web backend, timed by Playwright: a browser
+// figure, not a native one.
+//
+// Only macOS has been heard at 24 ms, so only macOS gets it. There oto
+// drains the device a quarter-buffer at a time; a backend that drains the
+// whole buffer per callback (WASAPI may) would leave 24 ms almost nothing
+// after each drain, so other platforms keep 40 ms until someone listens.
+// Lower latency needs a smaller device buffer, and 512 frames crackled.
+// Re-check by ear for clicks after any change; no probe so far hears them.
 
 // deviceBuffer is deviceFrames expressed as the duration oto wants, rounded
 // UP. oto converts back by truncating, so a duration that divides
@@ -125,12 +124,15 @@ func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
 		}
 		frames = n
 	}
-	// With no read-ahead asked for, take playerBuffer, or one device buffer
-	// where that is longer: at rates under ~42.7 kHz, or with more device
-	// frames, 24 ms no longer covers a buffer, and the default must not be
-	// an error.
+	// With no read-ahead asked for, take playerBuffer. Where one device
+	// buffer outlasts it (a low rate, or more frames), that would be an
+	// error; take the buffer plus playerBuffer instead, keeping the margin
+	// rather than the floor.
 	if queue == 0 {
-		queue = max(playerBuffer, deviceBuffer(rate, frames))
+		queue = playerBuffer
+		if d := deviceBuffer(rate, frames); queue < d {
+			queue = d + playerBuffer
+		}
 	}
 	// Shorter than one device buffer can't help (the device drains whole
 	// buffers), and under one frame it rounds to 0 bytes, which oto reads as

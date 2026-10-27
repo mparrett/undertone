@@ -19,7 +19,8 @@
 // The queue is also latency: a trigger is rendered behind everything already
 // queued, so at the default a one-shot lands up to 300 ms after what caused
 // it. A caller playing one-shots can ask for less, and SetQueue changes it
-// while playing; letgo asks for 60 ms (see letgo/output_js.go).
+// while playing; letgo asks for 60 ms, or 80 without cross-origin isolation
+// (see letgo/output_js.go).
 //
 // Where the page is cross-origin isolated, the ring is a SharedArrayBuffer
 // the pump writes straight into; elsewhere (most hosting, itch.io embeds

@@ -4,6 +4,7 @@ package letgo
 
 import (
 	"io"
+	"syscall/js"
 	"time"
 
 	"github.com/mparrett/undertone/engine"
@@ -21,6 +22,16 @@ import (
 // price is stall tolerance: a main-thread stall longer than the queue (a GC,
 // a heavy redraw) empties the ring and is heard as a gap, where 300 ms rode
 // out 120 ms stalls.
+//
+// tesserae is served cross-origin isolated, so all of that is the
+// SharedArrayBuffer ring. The message path webaudio falls back to elsewhere
+// counts posted slices as queued before the worklet has them, and on a phone
+// dipped ~30 ms deeper than the ring at 300 ms; unmeasured at 60, it keeps
+// the 80 ms it had.
 func openOutput(src io.Reader) (output, error) {
-	return webaudio.Open(src, webaudio.Options{SampleRate: engine.SampleRate, Queue: 60 * time.Millisecond})
+	queue := 60 * time.Millisecond
+	if !js.Global().Get("crossOriginIsolated").Truthy() {
+		queue = 80 * time.Millisecond
+	}
+	return webaudio.Open(src, webaudio.Options{SampleRate: engine.SampleRate, Queue: queue})
 }

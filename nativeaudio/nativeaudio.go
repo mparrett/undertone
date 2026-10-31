@@ -21,7 +21,7 @@ import (
 // Options configures the output. Zero values take the defaults in brackets.
 type Options struct {
 	SampleRate int // [44100] of the source; the first Open in a process fixes it
-	// [24 ms on macOS, else 40 ms] read-ahead: shorter hears a trigger
+	// [40 ms] read-ahead: shorter hears a trigger
 	// sooner, longer survives stalls. The default stretches to one device
 	// buffer where a buffer is longer; a set value under one is an error.
 	Queue time.Duration

@@ -27,9 +27,22 @@ import (
 // counts posted slices as queued before the worklet has them, and on a phone
 // dipped ~30 ms deeper than the ring at 300 ms; unmeasured at 60, it keeps
 // the 80 ms it had.
+//
+// In worker mode (one VM: the game's own worker renders, page.js plays) the
+// pump shares its thread with the game loop rather than with the page, and
+// 60 ms ran dry. Tesserae on let-go 18ce3194, TinyGo, headless Chromium under
+// a load average of 4-5, 2026-10-31: 60 ms lost 103 quanta in 40 s and kept
+// losing; 90 ms lost 241 in one 90 s run and none in another; 120 ms lost 3
+// in 90 s, never dipping under 64 ms queued. On an iPhone 13 Pro 60, 120 and
+// 160 all played clean by ear, so the margin is for a loaded worker, not the
+// phone. Worker mode needs the ring, so it is never the message path.
+// undertone/set-queue tunes any of these per device without a rebuild.
 func openOutput(src io.Reader) (output, error) {
 	queue := 60 * time.Millisecond
-	if !webaudio.SharedAvailable() {
+	switch {
+	case webaudio.InWorker():
+		queue = 120 * time.Millisecond
+	case !webaudio.SharedAvailable():
 		queue = 80 * time.Millisecond
 	}
 	return webaudio.Open(src, webaudio.Options{SampleRate: engine.SampleRate, Queue: queue})

@@ -10,6 +10,11 @@ import (
 	"syscall/js"
 )
 
+// InWorker reports whether Open would play in worker mode, handing the ring to
+// page.js. Like SharedAvailable, a caller tuning its queue per path asks here
+// before Open.
+func InWorker() bool { return inWorker() }
+
 // inWorker reports whether this is a Web Worker: no document, so no
 // AudioContext, but the page that started it has one.
 func inWorker() bool {

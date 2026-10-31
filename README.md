@@ -284,7 +284,8 @@ itself. The package keeps oto's rules in one place:
   (`nativeaudio/latency.go`). Measured 2026-10-26 on a MacBook Air, speaker
   to mic, trigger-to-sound is a median of 150–158 ms at 40 ms and 119–128 ms
   at 24 ms. 24 ms played clean in tesserae but crackled in xsofy, so it is
-  for a host to ask for through `Options.Queue`, not the default. 512 frames
+  for a host to ask for, not the default: a Go host through
+  `Options.Queue`, an lg host through `UNDERTONE_PLAYER_BUFFER=24ms`. 512 frames
   measured faster but crackled under real play. (The older 820 → 130 ms figures came from
   headless Chromium through oto's web backend, 2026-08-24.) `Options.Queue`
   sets the read-ahead: the CLI asks for 500 ms, since a bed alone has no

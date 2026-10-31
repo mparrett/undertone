@@ -44,8 +44,8 @@ const (
 	deviceFrames int64 = 1024
 )
 
-// playerBuffer, set per platform (playerbuffer_*.go), is the player's
-// read-ahead, and the knob that actually moves latency. Native, measured
+// playerBuffer is the player's read-ahead, and the knob that actually moves
+// latency. Native, measured
 // 2026-10-26 on a MacBook Air (built-in speakers into its own mic, trigger
 // to the blip's onset in the recording; medians of 15; frames are what the
 // device actually got):
@@ -77,13 +77,15 @@ const (
 //
 // macOS ran at 24 ms from 2026-10-26 until xsofy, a heavier lg process than
 // tesserae, crackled there and 40 ms fixed it (2026-10-31). So every
-// platform defaults to 40 ms, and a host that wants the shorter latency
-// asks for it through Options.Queue. Off macOS 24 ms is riskier still: oto
-// drains macOS's device a quarter-buffer at a time, while a backend that
-// drains the whole buffer per callback (WASAPI may) would leave 24 ms almost
-// nothing after each drain.
+// platform defaults to 40 ms. A Go host that wants the shorter latency sets
+// Options.Queue; an lg host (the letgo binding opens with defaults) sets
+// UNDERTONE_PLAYER_BUFFER. Off macOS 24 ms is riskier still: oto drains
+// macOS's device a quarter-buffer at a time, while a backend that drains the
+// whole buffer per callback (WASAPI may) would leave 24 ms almost nothing
+// after each drain.
 // Lower latency needs a smaller device buffer, and 512 frames crackled.
 // Re-check by ear for clicks after any change; no probe so far hears them.
+const playerBuffer = 40 * time.Millisecond
 
 // deviceBuffer is deviceFrames expressed as the duration oto wants, rounded
 // UP. oto converts back by truncating, so a duration that divides
@@ -139,8 +141,8 @@ func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
 	// With no read-ahead asked for, take playerBuffer, stretched to one
 	// device buffer where a buffer is longer (a low rate, or more frames),
 	// so the default is never an error. It is continuous in rate and frames.
-	// At 40 ms and 1024 frames the margin over one buffer is about 17 ms at
-	// 44.1 kHz; a 24 ms queue had 0.8 ms.
+	// As of 2026-10-31 (40 ms, 1024 frames) the margin over one buffer is
+	// about 17 ms at 44.1 kHz; the 24 ms queue before it had 0.8 ms.
 	if queue == 0 {
 		queue = max(playerBuffer, deviceBuffer(rate, frames))
 	}

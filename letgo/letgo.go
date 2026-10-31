@@ -6,8 +6,8 @@
 // runtime that links it needs no generated interop: lg code calls
 // undertone/set-parameters, undertone/set-parameters-now,
 // undertone/music-start, undertone/music-stop,
-// undertone/set-music-gain, undertone/trigger, undertone/register-shot and
-// undertone/render-wav directly. The natives act on a default Music until a
+// undertone/set-music-gain, undertone/set-queue, undertone/trigger,
+// undertone/register-shot and undertone/render-wav directly. The natives act on a default Music until a
 // Go host points them elsewhere with SetMusic.
 //
 // It also registers the embedded lg sources, so (require 'undertone.ambience)
@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/nooga/let-go/pkg/api"
 	"github.com/nooga/let-go/pkg/rt"
@@ -55,6 +56,10 @@ type Music struct {
 	// theme is an undertone/play-theme that came before music-start; it
 	// starts with the music.
 	theme *engine.Theme
+
+	// queue is the last undertone/set-queue, applied to an output that
+	// starts later; zero leaves the output's own default.
+	queue time.Duration
 }
 
 // NewMusic starts from base parameters; the lg script is expected to
@@ -305,7 +310,41 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 		m.synth.PlayTheme(m.theme)
 	}
 	m.theme = nil
+	if m.queue > 0 {
+		m.applyQueue()
+	}
 	return vm.NIL
+}
+
+// queuer is an output whose queue can change while it plays: webaudio's.
+// Natively the queue is fixed when the device opens (nativeaudio.Options,
+// UNDERTONE_PLAYER_BUFFER), so oto's output doesn't implement it.
+type queuer interface {
+	SetQueue(time.Duration) time.Duration
+}
+
+// setQueue sets how far ahead of the speaker the output keeps audio queued,
+// now if playing and from the start otherwise.
+func (m *Music) setQueue(d time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.queue = d
+	if m.out != nil {
+		m.applyQueue()
+	}
+}
+
+// applyQueue runs with m.mu held. The output clamps to what its ring holds.
+// The native stays write-only, so a clamp goes to stderr (the console, in a
+// browser build) rather than back to the game.
+func (m *Music) applyQueue() {
+	q, ok := m.out.(queuer)
+	if !ok {
+		return
+	}
+	if got := q.SetQueue(m.queue); got != m.queue {
+		fmt.Fprintf(os.Stderr, "undertone/set-queue: %v clamped to %v\n", m.queue, got)
+	}
 }
 
 // setMusicGain sets the music bed's level (0..1) under the one-shots, now if
@@ -533,6 +572,30 @@ func installNS() {
 			return vm.NIL, fmt.Errorf("undertone/set-music-gain: gain must be a number, got %s", a[0].Type().Name())
 		}
 		current.Load().setMusicGain(g)
+		return vm.NIL, nil
+	}))
+	// Milliseconds of audio kept queued ahead of the speaker, for tuning a
+	// browser build per device (from a ?queue= page param, say) without a
+	// rebuild. Browser only; natively it does nothing. Write-only like the
+	// rest of the surface: a value the ring can't hold is clamped, and the
+	// clamp is reported on stderr.
+	ns.Def("set-queue", native("set-queue", 1, func(a []vm.Value) (vm.Value, error) {
+		var ms float64
+		switch v := a[0].(type) {
+		case vm.Float:
+			ms = float64(v)
+		case vm.Int:
+			ms = float64(v)
+		default:
+			return vm.NIL, fmt.Errorf("undertone/set-queue: ms must be a number, got %s", a[0].Type().Name())
+		}
+		if !(ms > 0) {
+			return vm.NIL, fmt.Errorf("undertone/set-queue: ms must be positive, got %v", ms)
+		}
+		// The ring holds about a second, so anything past a minute only risks
+		// overflowing the Duration; the output's clamp does the rest.
+		ms = min(ms, 60000)
+		current.Load().setQueue(time.Duration(ms * float64(time.Millisecond)))
 		return vm.NIL, nil
 	}))
 	// A game's own one-shot, in the shape engine.ShotSpec.EDN writes:

@@ -7,8 +7,8 @@
 // undertone/set-parameters, undertone/set-parameters-now,
 // undertone/music-start, undertone/music-stop,
 // undertone/set-music-gain, undertone/set-queue, undertone/trigger,
-// undertone/register-shot and undertone/render-wav directly. The natives act on a default Music until a
-// Go host points them elsewhere with SetMusic.
+// undertone/register-shot and undertone/render-wav directly. The natives act
+// on a default Music until a Go host points them elsewhere with SetMusic.
 //
 // It also registers the embedded lg sources, so (require 'undertone.ambience)
 // resolves in any binary that links the package: a cli.Main host, a custom
@@ -342,9 +342,31 @@ func (m *Music) applyQueue() {
 	if !ok {
 		return
 	}
-	if got := q.SetQueue(m.queue); got != m.queue {
+	// The output also floors to whole frames, which is rounding, not a clamp.
+	const frame = time.Second / engine.SampleRate
+	if got := q.SetQueue(m.queue); got < m.queue-frame || got > m.queue {
 		fmt.Fprintf(os.Stderr, "undertone/set-queue: %v clamped to %v\n", m.queue, got)
 	}
+}
+
+// queueArg reads undertone/set-queue's milliseconds.
+func queueArg(v vm.Value) (time.Duration, error) {
+	var ms float64
+	switch v := v.(type) {
+	case vm.Float:
+		ms = float64(v)
+	case vm.Int:
+		ms = float64(v)
+	default:
+		return 0, fmt.Errorf("undertone/set-queue: ms must be a number, got %s", v.Type().Name())
+	}
+	if !(ms > 0) { // also refuses NaN
+		return 0, fmt.Errorf("undertone/set-queue: ms must be positive, got %v", ms)
+	}
+	// The ring holds about a second, so anything past a minute only risks
+	// overflowing the Duration; the output's clamp does the rest.
+	ms = min(ms, 60000)
+	return time.Duration(ms * float64(time.Millisecond)), nil
 }
 
 // setMusicGain sets the music bed's level (0..1) under the one-shots, now if
@@ -580,22 +602,11 @@ func installNS() {
 	// rest of the surface: a value the ring can't hold is clamped, and the
 	// clamp is reported on stderr.
 	ns.Def("set-queue", native("set-queue", 1, func(a []vm.Value) (vm.Value, error) {
-		var ms float64
-		switch v := a[0].(type) {
-		case vm.Float:
-			ms = float64(v)
-		case vm.Int:
-			ms = float64(v)
-		default:
-			return vm.NIL, fmt.Errorf("undertone/set-queue: ms must be a number, got %s", a[0].Type().Name())
+		d, err := queueArg(a[0])
+		if err != nil {
+			return vm.NIL, err
 		}
-		if !(ms > 0) {
-			return vm.NIL, fmt.Errorf("undertone/set-queue: ms must be positive, got %v", ms)
-		}
-		// The ring holds about a second, so anything past a minute only risks
-		// overflowing the Duration; the output's clamp does the rest.
-		ms = min(ms, 60000)
-		current.Load().setQueue(time.Duration(ms * float64(time.Millisecond)))
+		current.Load().setQueue(d)
 		return vm.NIL, nil
 	}))
 	// A game's own one-shot, in the shape engine.ShotSpec.EDN writes:

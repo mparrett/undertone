@@ -50,8 +50,8 @@ const (
 // to the blip's onset in the recording; medians of 15; frames are what the
 // device actually got):
 //
-//	40 ms read-ahead, 1024 frames  -> 150-158 ms  (the defaults until now)
-//	24 ms read-ahead, 1024 frames  -> 119-128 ms  (the macOS default)
+//	40 ms read-ahead, 1024 frames  -> 150-158 ms  (the default)
+//	24 ms read-ahead, 1024 frames  -> 119-128 ms  (macOS default 2026-10-26 to -31)
 //	24 ms read-ahead,  512 frames  -> 117 ms
 //	12 ms read-ahead,  512 frames  ->  97 ms
 //	256 frames, at 6 or 12 ms      -> breaks up; no clean onsets
@@ -70,15 +70,18 @@ const (
 //
 // Stall budget: the renderer can fall behind by about the read-ahead plus
 // one device buffer before the device runs dry. As of 2026-10-26, at
-// 44.1 kHz and 1024 frames, that is ~47 ms at 24 ms (24 + 23.2), down from
-// ~63 ms at 40 ms. In tesserae the
-// renderer shares a main thread with the terminal drawing, so a heavier
-// frame or a slower Mac spends from those 47 ms.
+// 44.1 kHz and 1024 frames, that is ~63 ms at 40 ms (40 + 23.2), against
+// ~47 ms at 24 ms. In tesserae and xsofy the renderer shares a main thread
+// with the terminal drawing, so a heavier frame or a slower Mac spends from
+// that budget.
 //
-// Only macOS has been heard at 24 ms, so only macOS gets it. There oto
-// drains the device a quarter-buffer at a time; a backend that drains the
-// whole buffer per callback (WASAPI may) would leave 24 ms almost nothing
-// after each drain, so other platforms keep 40 ms until someone listens.
+// macOS ran at 24 ms from 2026-10-26 until xsofy, a heavier lg process than
+// tesserae, crackled there and 40 ms fixed it (2026-10-31). So every
+// platform defaults to 40 ms, and a host that wants the shorter latency
+// asks for it through Options.Queue. Off macOS 24 ms is riskier still: oto
+// drains macOS's device a quarter-buffer at a time, while a backend that
+// drains the whole buffer per callback (WASAPI may) would leave 24 ms almost
+// nothing after each drain.
 // Lower latency needs a smaller device buffer, and 512 frames crackled.
 // Re-check by ear for clicks after any change; no probe so far hears them.
 
@@ -136,9 +139,8 @@ func overrides(rate int, queue time.Duration) (time.Duration, int64, error) {
 	// With no read-ahead asked for, take playerBuffer, stretched to one
 	// device buffer where a buffer is longer (a low rate, or more frames),
 	// so the default is never an error. It is continuous in rate and frames.
-	// As of 2026-10-26 (24 ms, 1024 frames) the macOS margin over one buffer
-	// is 0.8 ms at 44.1 kHz (what was heard), 2.7 ms at 48 kHz, and none once
-	// stretched.
+	// At 40 ms and 1024 frames the margin over one buffer is about 17 ms at
+	// 44.1 kHz; a 24 ms queue had 0.8 ms.
 	if queue == 0 {
 		queue = max(playerBuffer, deviceBuffer(rate, frames))
 	}

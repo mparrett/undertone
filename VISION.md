@@ -19,11 +19,11 @@ data a game can bring and change.
 | undertone | the synth, the sequencer, moods, one-shots, the knobs, the lg binding |
 | the game | turning its world into knobs and events (tension from health and nearby enemies) |
 
-undertone carries its own output today, an oto player and a WebAudio worklet,
-because let-go has no audio seam yet. Three consumers now play through it
-(undertone's own hosts, tesserae, and xsofy's lane), which is enough to design
-that seam from use, and undertone will propose it. When let-go has one, undertone
-plugs into it and drops its own player.
+let-go's seam landed natively in 2026-10 (nooga/let-go#1089, #1107), and an lg
+host built with `-tags audio_oto` plays undertone through it. undertone still
+carries its own output where the seam doesn't reach: an oto player for Go games
+without let-go and untagged hosts, and a WebAudio worklet in the browser, where
+the seam has no backend yet.
 
 ## What it does
 

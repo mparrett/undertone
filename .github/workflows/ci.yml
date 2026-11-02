@@ -17,11 +17,16 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test ./...
+      # -tags audio_oto swaps the letgo binding's native output for let-go's
+      # audio seam, so both builds are checked.
+      - run: go test -tags audio_oto ./letgo
       - run: go vet ./...
+      - run: go vet -tags audio_oto ./...
       - run: GOOS=js GOARCH=wasm go vet ./examples/designer ./webaudio
       # installed natively first: `go run` under GOOS=js would build the checker for js
       - run: GOBIN="$(go env GOPATH)/bin" go install honnef.co/go/tools/cmd/staticcheck@2026.2.2
       - run: '"$(go env GOPATH)/bin/staticcheck" ./...'
+      - run: '"$(go env GOPATH)/bin/staticcheck" -tags audio_oto ./...'
       - run: GOOS=js GOARCH=wasm "$(go env GOPATH)/bin/staticcheck" ./examples/designer ./webaudio
 
   build:
@@ -42,6 +47,12 @@ jobs:
       # rather than narrowing this list.
       - name: build ${{ matrix.goos }}/${{ matrix.goarch }}
         run: go build ./...
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+      - name: build ${{ matrix.goos }}/${{ matrix.goarch }} with -tags audio_oto
+        run: go build -tags audio_oto ./...
         env:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}

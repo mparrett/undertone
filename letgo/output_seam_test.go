@@ -45,6 +45,29 @@ func mix(t *testing.T, m *audio.Mixer) int16 {
 	return int16(binary.LittleEndian.Uint16(buf[len(buf)-2:]))
 }
 
+// smooth mixes a second and checks the left channel ends at want without a
+// click: no step between frames larger than a 1000-level fade over
+// edgeFrames takes.
+func smooth(t *testing.T, what string, m *audio.Mixer, want int16) {
+	t.Helper()
+	buf := make([]byte, 4*rt.AudioRate)
+	if _, err := m.Read(buf); err != nil {
+		t.Fatal(err)
+	}
+	const maxStep = 1000/edgeFrames + 1
+	prev := int16(binary.LittleEndian.Uint16(buf))
+	for i := 4; i+1 < len(buf); i += 4 {
+		s := int16(binary.LittleEndian.Uint16(buf[i:]))
+		if d := s - prev; d > maxStep || d < -maxStep {
+			t.Fatalf("%s: frame %d jumps %d -> %d", what, i/4, prev, s)
+		}
+		prev = s
+	}
+	if prev != want {
+		t.Fatalf("%s: ends at %d, want %d", what, prev, want)
+	}
+}
+
 func TestSeamOutputPausesWithoutReadingAndCloses(t *testing.T) {
 	m := audio.NewMixer()
 	src := &level{v: 1000}
@@ -57,6 +80,7 @@ func TestSeamOutputPausesWithoutReadingAndCloses(t *testing.T) {
 	}
 
 	out.Pause()
+	smooth(t, "pausing", m, 0)
 	before := src.read
 	if got := mix(t, m); got != 0 {
 		t.Fatalf("paused: last sample %d, want silence", got)
@@ -66,9 +90,7 @@ func TestSeamOutputPausesWithoutReadingAndCloses(t *testing.T) {
 	}
 
 	out.Resume()
-	if got := mix(t, m); got != 1000 {
-		t.Fatalf("resumed: last sample %d, want 1000", got)
-	}
+	smooth(t, "resuming", m, 1000)
 
 	out.Close()
 	mix(t, m) // the stop's fade

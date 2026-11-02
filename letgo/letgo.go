@@ -317,8 +317,10 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 }
 
 // queuer is an output whose queue can change while it plays: webaudio's.
-// Natively the queue is fixed when the device opens (nativeaudio.Options,
-// UNDERTONE_PLAYER_BUFFER), so oto's output doesn't implement it.
+// Natively the queue is fixed when the device opens (nativeaudio.Options and
+// UNDERTONE_PLAYER_BUFFER, or under -tags audio_oto let-go's
+// audio.Options and LETGO_AUDIO_QUEUE), so neither native output
+// implements it.
 type queuer interface {
 	SetQueue(time.Duration) time.Duration
 }
@@ -421,8 +423,9 @@ func (m *Music) Stop() vm.Value {
 	return vm.NIL
 }
 
-// output is where a started Music plays: oto natively, webaudio in the
-// browser (output_native.go, output_js.go).
+// output is where a started Music plays: oto natively, through let-go's
+// audio seam when the host is built with -tags audio_oto, and webaudio in the
+// browser (output_native.go, output_native_seam.go, output_js.go).
 type output interface {
 	Close()
 	Pause()

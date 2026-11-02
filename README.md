@@ -262,9 +262,19 @@ stock `lg`, where there is no `undertone` namespace, look the natives up at runt
 
 ## Native playback
 
-Natively, `letgo.Music` and `cmd/undertone` play through the `nativeaudio`
-package, which wraps [oto](https://github.com/ebitengine/oto) and has the same
-`Open`, `Pause`, `Resume` and `Close` as `webaudio`. A Go game can call
+An lg host built with `-tags audio_oto` has let-go's audio seam
+([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)), and
+`letgo.Music` plays as one stream in its mix, beside the guest's own
+`audio/tone` and `audio/sample` sounds (`letgo/output_native_seam.go`). oto
+allows one context per process, so the music can't open a player of its own
+there. Its latency is then the seam's: `audio.Default().Configure` from Go, or
+`LETGO_AUDIO_QUEUE` and `LETGO_AUDIO_DEVICE_FRAMES`; the `nativeaudio` options
+and `UNDERTONE_*` variables below don't apply.
+
+Without the tag, and for a Go game with no let-go, `letgo.Music` and
+`cmd/undertone` play through the `nativeaudio` package, which wraps
+[oto](https://github.com/ebitengine/oto) and has the same `Open`, `Pause`,
+`Resume` and `Close` as `webaudio`. A Go game can call
 `nativeaudio.Open(synth, nativeaudio.Options{SampleRate: engine.SampleRate})`
 itself. The package keeps oto's rules in one place:
 
@@ -285,7 +295,8 @@ itself. The package keeps oto's rules in one place:
   to mic, trigger-to-sound is a median of 150–158 ms at 40 ms and 119–128 ms
   at 24 ms. 24 ms played clean in tesserae but crackled in xsofy, so it is
   for a host to ask for, not the default: a Go host through
-  `Options.Queue`, an lg host through `UNDERTONE_PLAYER_BUFFER=24ms`. 512 frames
+  `Options.Queue`, an untagged lg host through `UNDERTONE_PLAYER_BUFFER=24ms`,
+  and a tagged one through `LETGO_AUDIO_QUEUE=24ms`. 512 frames
   measured faster but crackled under real play. (The older 820 → 130 ms figures came from
   headless Chromium through oto's web backend, 2026-08-24.) `Options.Queue`
   sets the read-ahead: the CLI asks for 500 ms, since a bed alone has no
@@ -337,7 +348,8 @@ Until that is fixed, a prompt that should keep the music playing can poll
 `term/key-pending?` with a short `sleep` between checks, which lets the
 renderer run.
 
-let-go itself may grow a host audio seam; see
+let-go's audio seam has no browser backend yet, so the browser build keeps
+undertone's own worklet; see
 [nooga/let-go#255](https://github.com/nooga/let-go/issues/255).
 
 ## Building

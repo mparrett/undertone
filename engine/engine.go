@@ -1317,8 +1317,10 @@ func (s *Synth) GlideMusicGain(g, seconds float64) {
 	if !(seconds >= 0) {
 		seconds = 0
 	}
-	// past a minute only risks overflowing the frame count
-	frames := int(math.Min(seconds, 60) * SampleRate)
+	// Round up, so a glide shorter than a frame still takes one rather than
+	// becoming the instant step (frames 0) it exists to avoid. Past a minute
+	// only risks overflowing the frame count.
+	frames := int(math.Ceil(math.Min(seconds, 60) * SampleRate))
 	s.musicTo.Store(&musicTarget{gain: math.Min(g, 1), frames: frames})
 }
 

@@ -354,14 +354,9 @@ func (m *Music) applyQueue() {
 
 // queueArg reads undertone/set-queue's milliseconds.
 func queueArg(v vm.Value) (time.Duration, error) {
-	var ms float64
-	switch v := v.(type) {
-	case vm.Float:
-		ms = float64(v)
-	case vm.Int:
-		ms = float64(v)
-	default:
-		return 0, fmt.Errorf("undertone/set-queue: ms must be a number, got %s", v.Type().Name())
+	ms, err := numArg("set-queue", "ms", v)
+	if err != nil {
+		return 0, err
 	}
 	if !(ms > 0) { // also refuses NaN
 		return 0, fmt.Errorf("undertone/set-queue: ms must be positive, got %v", ms)
@@ -671,14 +666,9 @@ func installNS() {
 		if _, ok := a[0].(vm.String); !ok && a[0] != vm.NIL {
 			return vm.NIL, fmt.Errorf("undertone/render-wav: path must be a string or nil, got %s", a[0].Type().Name())
 		}
-		var secs float64
-		switch v := a[1].(type) {
-		case vm.Float:
-			secs = float64(v)
-		case vm.Int:
-			secs = float64(v)
-		default:
-			return vm.NIL, fmt.Errorf("undertone/render-wav: seconds must be a number, got %s", a[1].Type().Name())
+		secs, err := numArg("render-wav", "seconds", a[1])
+		if err != nil {
+			return vm.NIL, err
 		}
 		if !(secs > 0 && secs <= maxRenderSeconds) { // also catches NaN
 			return vm.NIL, fmt.Errorf("undertone/render-wav: seconds must be above 0 and at most %d, got %v", maxRenderSeconds, secs)
@@ -694,10 +684,6 @@ func installNS() {
 	rt.RegisterNS(ns)
 }
 
-// native wraps fn as an lg function without reflection. vm.MustBox would
-// box a typed Go func through reflect.Value.Call, which TinyGo does not
-// implement: under TinyGo every undertone/ call failed, and TinyGo is what gets a
-// browser bundle with let-go in it from 28 MB down to under 6.
 // numArg reads a numeric argument of the native `fn`.
 func numArg(fn, what string, v vm.Value) (float64, error) {
 	switch v := v.(type) {
@@ -709,6 +695,10 @@ func numArg(fn, what string, v vm.Value) (float64, error) {
 	return 0, fmt.Errorf("undertone/%s: %s must be a number, got %s", fn, what, v.Type().Name())
 }
 
+// native wraps fn as an lg function without reflection. vm.MustBox would
+// box a typed Go func through reflect.Value.Call, which TinyGo does not
+// implement: under TinyGo every undertone/ call failed, and TinyGo is what gets a
+// browser bundle with let-go in it from 28 MB down to under 6.
 func native(name string, arity int, fn func([]vm.Value) (vm.Value, error)) vm.Value {
 	v, _ := vm.NativeFnType.Wrap(func(a []vm.Value) (vm.Value, error) {
 		if len(a) != arity {

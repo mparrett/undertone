@@ -6,8 +6,9 @@
 // runtime that links it needs no generated interop: lg code calls
 // undertone/set-parameters, undertone/set-parameters-now,
 // undertone/music-start, undertone/music-stop,
-// undertone/set-music-gain, undertone/set-queue, undertone/trigger,
-// undertone/register-shot and undertone/render-wav directly. The natives act
+// undertone/set-music-gain, undertone/glide-music-gain, undertone/set-queue,
+// undertone/trigger, undertone/register-shot and undertone/render-wav
+// directly. The natives act
 // on a default Music until a Go host points them elsewhere with SetMusic.
 //
 // It also registers the embedded lg sources, so (require 'undertone.ambience)
@@ -373,12 +374,22 @@ func queueArg(v vm.Value) (time.Duration, error) {
 
 // setMusicGain sets the music bed's level (0..1) under the one-shots, now if
 // playing and from the start otherwise.
-func (m *Music) setMusicGain(g float64) {
+func (m *Music) setMusicGain(g float64) { m.glideMusicGain(g, -1) }
+
+// glideMusicGain is setMusicGain over the given seconds while playing; a
+// negative seconds means the engine's default glide. Before playback starts
+// there is nothing to glide from, so the level applies from the start.
+func (m *Music) glideMusicGain(g, seconds float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.musicGain, m.gainSet = g, true
-	if m.synth != nil {
+	if m.synth == nil {
+		return
+	}
+	if seconds < 0 {
 		m.synth.SetMusicGain(g)
+	} else {
+		m.synth.GlideMusicGain(g, seconds)
 	}
 }
 
@@ -587,16 +598,28 @@ func installNS() {
 		return current.Load().Stop(), nil
 	}))
 	ns.Def("set-music-gain", native("set-music-gain", 1, func(a []vm.Value) (vm.Value, error) {
-		var g float64
-		switch v := a[0].(type) {
-		case vm.Float:
-			g = float64(v)
-		case vm.Int:
-			g = float64(v)
-		default:
-			return vm.NIL, fmt.Errorf("undertone/set-music-gain: gain must be a number, got %s", a[0].Type().Name())
+		g, err := numArg("set-music-gain", "gain", a[0])
+		if err != nil {
+			return vm.NIL, err
 		}
 		current.Load().setMusicGain(g)
+		return vm.NIL, nil
+	}))
+	// set-music-gain over a chosen time: a short glide down to duck the bed
+	// under a big one-shot, a longer one to bring it back.
+	ns.Def("glide-music-gain", native("glide-music-gain", 2, func(a []vm.Value) (vm.Value, error) {
+		g, err := numArg("glide-music-gain", "gain", a[0])
+		if err != nil {
+			return vm.NIL, err
+		}
+		secs, err := numArg("glide-music-gain", "seconds", a[1])
+		if err != nil {
+			return vm.NIL, err
+		}
+		if !(secs >= 0) { // also refuses NaN
+			return vm.NIL, fmt.Errorf("undertone/glide-music-gain: seconds must not be negative, got %v", secs)
+		}
+		current.Load().glideMusicGain(g, secs)
 		return vm.NIL, nil
 	}))
 	// Milliseconds of audio kept queued ahead of the speaker, for tuning a
@@ -675,6 +698,17 @@ func installNS() {
 // box a typed Go func through reflect.Value.Call, which TinyGo does not
 // implement: under TinyGo every undertone/ call failed, and TinyGo is what gets a
 // browser bundle with let-go in it from 28 MB down to under 6.
+// numArg reads a numeric argument of the native `fn`.
+func numArg(fn, what string, v vm.Value) (float64, error) {
+	switch v := v.(type) {
+	case vm.Float:
+		return float64(v), nil
+	case vm.Int:
+		return float64(v), nil
+	}
+	return 0, fmt.Errorf("undertone/%s: %s must be a number, got %s", fn, what, v.Type().Name())
+}
+
 func native(name string, arity int, fn func([]vm.Value) (vm.Value, error)) vm.Value {
 	v, _ := vm.NativeFnType.Wrap(func(a []vm.Value) (vm.Value, error) {
 		if len(a) != arity {

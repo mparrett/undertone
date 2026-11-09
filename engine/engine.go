@@ -1222,11 +1222,29 @@ type Synth struct {
 	frames              atomic.Int64           // nframe as of the end of the last Read
 	rowLog              rowLog
 
-	// music bus level as float bits, set from the caller's goroutine. A mixer
-	// control rather than a Param: it never changes what the score derives,
-	// only how loud the bed sits under the one-shots.
-	musicGain atomic.Uint64
+	// musicTo is the music bus level the caller last asked for, and over how
+	// long to get there. A mixer control rather than a Param: it never changes
+	// what the score derives, only how loud the bed sits under the one-shots.
+	musicTo atomic.Pointer[musicTarget]
+	// The bus level itself glides on the synthesis side, so a duck under a
+	// big one-shot and the recovery after it do not click. mseen is the
+	// target being glided to; mlive is false until the first frame, which
+	// takes its level at once so startup renders as if it were always there.
+	mgain, mstep float64
+	mleft        int
+	mseen        *musicTarget
+	mlive        bool
 }
+
+// musicTarget is one SetMusicGain/GlideMusicGain call.
+type musicTarget struct {
+	gain   float64
+	frames int
+}
+
+// musicGlide is SetMusicGain's glide: short enough to sound like a switch,
+// long enough that a large step does not click.
+const musicGlide = 0.05
 
 // band-edge one-pole coefficients (120/350/1200 Hz) and ~400ms decay
 var mcoef = [3]float64{
@@ -1275,19 +1293,55 @@ func NewSynth(p Params) *Synth {
 	// arrive at any pattern boundary, on the audio thread, which must not
 	// allocate them.
 	s := &Synth{voices: make([]Voice, nTracks), verb: newReverb(), leadIn: true}
-	s.musicGain.Store(math.Float64bits(1))
+	s.mseen = &musicTarget{gain: 1}
+	s.mgain = 1
+	s.musicTo.Store(s.mseen)
 	s.apply(p)
 	return s
 }
 
 // SetMusicGain scales the music bed (sequencer voices, drums and their delay
-// sends) by g, clamped to 0..1, leaving one-shots at full level. Safe to call
-// from any goroutine; 1 renders byte-identically to no call at all.
-func (s *Synth) SetMusicGain(g float64) {
+// sends) by g, clamped to 0..1, leaving one-shots at full level. Playback
+// glides to g over musicGlide; a call before the first frame applies at once.
+// Safe to call from any goroutine; 1 renders byte-identically to no call at
+// all.
+func (s *Synth) SetMusicGain(g float64) { s.GlideMusicGain(g, musicGlide) }
+
+// GlideMusicGain is SetMusicGain over the given seconds: a game ducks the
+// bed under a big one-shot with a short glide and brings it back with a
+// longer one. A later call starts from wherever the last glide had reached.
+func (s *Synth) GlideMusicGain(g, seconds float64) {
 	if !(g >= 0) { // also catches NaN
 		g = 0
 	}
-	s.musicGain.Store(math.Float64bits(math.Min(g, 1)))
+	if !(seconds >= 0) {
+		seconds = 0
+	}
+	// past a minute only risks overflowing the frame count
+	frames := int(math.Min(seconds, 60) * SampleRate)
+	s.musicTo.Store(&musicTarget{gain: math.Min(g, 1), frames: frames})
+}
+
+// stepMusicGain advances the music bus level one frame toward the last
+// requested target.
+func (s *Synth) stepMusicGain() float64 {
+	if t := s.musicTo.Load(); t != s.mseen {
+		s.mseen = t
+		if !s.mlive || t.frames == 0 {
+			s.mgain, s.mleft = t.gain, 0
+		} else {
+			s.mstep, s.mleft = (t.gain-s.mgain)/float64(t.frames), t.frames
+		}
+	}
+	s.mlive = true
+	if s.mleft > 0 {
+		s.mleft--
+		s.mgain += s.mstep
+		if s.mleft == 0 {
+			s.mgain = s.mseen.gain // land exactly, so 1 is byte-identical again
+		}
+	}
+	return s.mgain
 }
 
 // SetParameters stages a new parameter map; it takes effect at the next
@@ -1521,7 +1575,7 @@ func (s *Synth) frame() (int16, int16) {
 	} else {
 		s.runDrums(&l, &r)
 	}
-	if g := math.Float64frombits(s.musicGain.Load()); g != 1 {
+	if g := s.stepMusicGain(); g != 1 {
 		l, r = l*g, r*g
 		s.bus.delay, s.bus.verb = s.bus.delay*g, s.bus.verb*g
 	}

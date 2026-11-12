@@ -212,11 +212,10 @@ func (m *Music) trigger(v vm.Value) vm.Value {
 func shots(v vm.Value) []engine.Shot {
 	var out []engine.Shot
 	var maps []*vm.PersistentMap
-	switch t := v.(type) {
-	case *vm.PersistentMap:
-		maps = append(maps, t)
-	case vm.ArrayVector:
-		for _, e := range t {
+	if pm, ok := v.(*vm.PersistentMap); ok {
+		maps = append(maps, pm)
+	} else if vec, ok := asVec(v); ok {
+		for _, e := range vec {
 			if pm, ok := e.(*vm.PersistentMap); ok {
 				maps = append(maps, pm)
 			}
@@ -451,12 +450,12 @@ func shotSpec(v vm.Value) (engine.ShotSpec, error) {
 	if !flt(m, "gate-ms", &s.GateMS) {
 		return s, fmt.Errorf("want :gate-ms as a number")
 	}
-	units, ok := at(m, "patch").(vm.ArrayVector)
+	units, ok := asVec(at(m, "patch"))
 	if !ok {
 		return s, fmt.Errorf("want :patch as a vector of units")
 	}
 	for i, uv := range units {
-		u, ok := uv.(vm.ArrayVector)
+		u, ok := asVec(uv)
 		if !ok || len(u) == 0 {
 			return s, fmt.Errorf("unit %d: want a vector such as [:out 0.5 0.5]", i)
 		}
@@ -526,7 +525,7 @@ func kwStr(m *vm.PersistentMap, k string) (string, bool) {
 }
 
 func ints(m *vm.PersistentMap, k string) ([]int, bool) {
-	vec, ok := at(m, k).(vm.ArrayVector)
+	vec, ok := asVec(at(m, k))
 	if !ok {
 		return nil, false
 	}
@@ -682,6 +681,24 @@ func installNS() {
 	renderWAV.(*vm.NativeFn).SetName("render-wav")
 	ns.Def("render-wav", renderWAV)
 	rt.RegisterNS(ns)
+}
+
+// asVec reads an lg vector. let-go gives back an ArrayVector up to 32
+// elements and a PersistentVector past that (mapv, into, conj), so a type
+// check for ArrayVector alone turned every longer vector away: a trigger
+// list of 33 played nothing, and said nothing.
+func asVec(v vm.Value) (vm.ArrayVector, bool) {
+	switch t := v.(type) {
+	case vm.ArrayVector:
+		return t, true
+	case vm.PersistentVector:
+		out := make(vm.ArrayVector, int(t.Count().(vm.Int)))
+		for i := range out {
+			out[i] = t.Nth(i)
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 // numArg reads a numeric argument of the native `fn`.

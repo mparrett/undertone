@@ -50,7 +50,7 @@ func theme(v vm.Value) (*engine.Theme, error) {
 	}
 	var grids vm.ArrayVector
 	if g := at(opts, "grids"); g != vm.NIL {
-		if grids, ok = g.(vm.ArrayVector); !ok {
+		if grids, ok = asVec(g); !ok {
 			return nil, fmt.Errorf(":grids must be a vector of maps")
 		}
 	}
@@ -106,7 +106,7 @@ func grid(v vm.Value) (engine.Grid, error) {
 		}
 	}
 	if p := at(m, "pulse"); p != vm.NIL {
-		vec, ok := p.(vm.ArrayVector)
+		vec, ok := asVec(p)
 		if !ok || len(vec) > engine.Steps {
 			return g, fmt.Errorf(":pulse must be a vector of at most %d booleans", engine.Steps)
 		}
@@ -115,7 +115,7 @@ func grid(v vm.Value) (engine.Grid, error) {
 		}
 	}
 	if d := at(m, "drums"); d != vm.NIL {
-		vec, ok := d.(vm.ArrayVector)
+		vec, ok := asVec(d)
 		if !ok || len(vec) > engine.DrumLanes {
 			return g, fmt.Errorf(":drums must be a vector of at most %d lanes", engine.DrumLanes)
 		}

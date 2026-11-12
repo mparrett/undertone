@@ -141,11 +141,17 @@ func (s *ustate) noise() float64 {
 }
 
 // level is the voice's loudest envelope times its gain: how much it would
-// be missed if cut.
+// be missed if cut. A voice still in an attack counts at its gain, where the
+// attack is heading: one started this instant has an envelope of 0, so a
+// chord triggered against a full pool stole its own notes, each new note
+// taking the voice the previous one had just been given.
 func (v *Voice) level() float64 {
 	l := 0.0
 	for i := range v.units {
 		if v.patch[i].op == opEnv {
+			if v.units[i].stage == 0 {
+				return v.gain
+			}
 			l = max(l, v.units[i].env)
 		}
 	}

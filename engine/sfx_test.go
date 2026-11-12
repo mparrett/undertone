@@ -286,3 +286,32 @@ func TestLouderRepeatInTheSameFrameWins(t *testing.T) {
 		t.Errorf("%d hits started, want 1", n)
 	}
 }
+
+// A chord triggered against a full pool keeps every note. Each new note
+// steals the quietest voice; a voice started this instant has an envelope of
+// 0, so before an attacking voice counted at its gain the chord's second note
+// took the first one's voice, the third took the second's, and only the last
+// note played.
+func TestChordAgainstFullPoolKeepsEveryNote(t *testing.T) {
+	s := NewSynth(silentParams)
+	for i := 0; i < nShots; i++ {
+		s.Trigger("pluck", 40+i, 0.3, 0.5, 0, uint64(i))
+	}
+	render(s, SampleRate/10) // past their attacks, decaying
+	chord := []int{60, 64, 67}
+	for i, n := range chord {
+		s.Trigger("pluck", n, 1, 0.5, 0, uint64(100+i))
+	}
+	render(s, SampleRate/100)
+	for _, n := range chord {
+		found := false
+		for i := range s.fx.shots {
+			if v := &s.fx.shots[i]; v.active && v.note == n {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("chord note %d lost: another note of the chord stole its voice", n)
+		}
+	}
+}

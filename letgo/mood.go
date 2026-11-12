@@ -188,7 +188,7 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 			return s, err
 		}
 	}
-	scales, ok := at(m, "scales").(vm.ArrayVector)
+	scales, ok := asVec(at(m, "scales"))
 	if !ok {
 		return s, fmt.Errorf(":scales must be a vector of scales")
 	}
@@ -216,7 +216,7 @@ func onlyKeys(m *vm.PersistentMap, known map[string]bool) error {
 // names reads a vector of keywords or strings. An empty one reads as nil,
 // as MoodByName exports a mood without leads.
 func names(m *vm.PersistentMap, k string) ([]string, error) {
-	vec, ok := at(m, k).(vm.ArrayVector)
+	vec, ok := asVec(at(m, k))
 	if !ok {
 		return nil, fmt.Errorf(":%s must be a vector of names", k)
 	}
@@ -238,7 +238,7 @@ func names(m *vm.PersistentMap, k string) ([]string, error) {
 }
 
 func ints1(v vm.Value) ([]int, bool) {
-	vec, ok := v.(vm.ArrayVector)
+	vec, ok := asVec(v)
 	if !ok {
 		return nil, false
 	}

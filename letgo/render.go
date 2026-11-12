@@ -81,14 +81,14 @@ func parseScript(v vm.Value, p engine.Params, seconds float64) ([]step, error) {
 	if v == vm.NIL {
 		return nil, nil
 	}
-	vec, ok := v.(vm.ArrayVector)
+	vec, ok := asVec(v)
 	if !ok {
 		return nil, fmt.Errorf("script must be a vector of [seconds op arg]")
 	}
 	var steps []step
 	last := 0.0
 	for i, e := range vec {
-		call, ok := e.(vm.ArrayVector)
+		call, ok := asVec(e)
 		if !ok || len(call) != 3 {
 			return nil, fmt.Errorf("step %d must be [seconds op arg]", i)
 		}
@@ -151,8 +151,8 @@ func parseScript(v vm.Value, p engine.Params, seconds float64) ([]step, error) {
 // what it cannot play: a hash pinned on a dropped shot would pin silence.
 func checkShots(arg vm.Value, shs []engine.Shot) error {
 	want := 1
-	if vec, ok := arg.(vm.ArrayVector); ok {
-		want = len(vec)
+	if ix, ok := indexed(arg); ok {
+		want = ix.RawCount()
 	}
 	if len(shs) != want || want == 0 {
 		return fmt.Errorf(":trigger takes a map with :shot, or a vector of them")

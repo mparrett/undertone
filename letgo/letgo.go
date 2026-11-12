@@ -212,11 +212,10 @@ func (m *Music) trigger(v vm.Value) vm.Value {
 func shots(v vm.Value) []engine.Shot {
 	var out []engine.Shot
 	var maps []*vm.PersistentMap
-	switch t := v.(type) {
-	case *vm.PersistentMap:
-		maps = append(maps, t)
-	case vm.ArrayVector:
-		for _, e := range t {
+	if pm, ok := v.(*vm.PersistentMap); ok {
+		maps = append(maps, pm)
+	} else if vec, ok := asVec(v); ok {
+		for _, e := range vec {
 			if pm, ok := e.(*vm.PersistentMap); ok {
 				maps = append(maps, pm)
 			}
@@ -451,12 +450,12 @@ func shotSpec(v vm.Value) (engine.ShotSpec, error) {
 	if !flt(m, "gate-ms", &s.GateMS) {
 		return s, fmt.Errorf("want :gate-ms as a number")
 	}
-	units, ok := at(m, "patch").(vm.ArrayVector)
+	units, ok := asVec(at(m, "patch"))
 	if !ok {
 		return s, fmt.Errorf("want :patch as a vector of units")
 	}
 	for i, uv := range units {
-		u, ok := uv.(vm.ArrayVector)
+		u, ok := asVec(uv)
 		if !ok || len(u) == 0 {
 			return s, fmt.Errorf("unit %d: want a vector such as [:out 0.5 0.5]", i)
 		}
@@ -526,7 +525,7 @@ func kwStr(m *vm.PersistentMap, k string) (string, bool) {
 }
 
 func ints(m *vm.PersistentMap, k string) ([]int, bool) {
-	vec, ok := at(m, k).(vm.ArrayVector)
+	vec, ok := asVec(at(m, k))
 	if !ok {
 		return nil, false
 	}
@@ -682,6 +681,47 @@ func installNS() {
 	renderWAV.(*vm.NativeFn).SetName("render-wav")
 	ns.Def("render-wav", renderWAV)
 	rt.RegisterNS(ns)
+}
+
+// indexed reads v as a positional collection: a vector of any
+// representation. let-go gives back an ArrayVector up to 32
+// elements and a PersistentVector past that (mapv, into, conj), so a type
+// check for ArrayVector alone turned every longer vector away: a trigger
+// list of 33 played nothing, and said nothing. vm.Indexed is let-go's
+// marker for positional types, so a new vector representation is read
+// without a change here. Strings are Indexed too but are not vectors, and
+// seqs (lists, ranges, lazy seqs) are refused as before: counting one
+// realizes it, which never returns for (range).
+func indexed(v vm.Value) (vm.Indexed, bool) {
+	switch t := v.(type) {
+	case vm.ArrayVector: // a Seq as well as Indexed, so it must come first
+		return t, true
+	case vm.String, vm.Seq:
+		return nil, false
+	}
+	ix, ok := v.(vm.Indexed)
+	return ix, ok
+}
+
+// asVec reads an lg vector (see indexed) as a slice. A map entry, as from
+// (first m), is a two-element vector in lg but neither Indexed nor apart
+// from Seq on the Go side, so it is read by hand.
+func asVec(v vm.Value) (vm.ArrayVector, bool) {
+	switch t := v.(type) {
+	case vm.ArrayVector:
+		return t, true
+	case vm.MapEntry:
+		return vm.ArrayVector{t.Key, t.Value}, true
+	}
+	ix, ok := indexed(v)
+	if !ok {
+		return nil, false
+	}
+	out := make(vm.ArrayVector, ix.RawCount())
+	for i := range out {
+		out[i] = ix.Nth(i)
+	}
+	return out, true
 }
 
 // numArg reads a numeric argument of the native `fn`.

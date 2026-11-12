@@ -286,3 +286,49 @@ func TestLouderRepeatInTheSameFrameWins(t *testing.T) {
 		t.Errorf("%d hits started, want 1", n)
 	}
 }
+
+// A chord triggered against a full pool keeps every note. Each new note
+// steals the quietest voice; a voice started this instant has an envelope of
+// 0, so before an attacking voice counted at its gain the chord's second note
+// took the first one's voice, the third took the second's, and only the last
+// note played.
+func TestChordAgainstFullPoolKeepsEveryNote(t *testing.T) {
+	s := NewSynth(silentParams)
+	for i := 0; i < nShots; i++ {
+		s.Trigger("pluck", 40+i, 0.3, 0.5, 0, uint64(i))
+	}
+	render(s, SampleRate/10) // past their attacks, decaying
+	chord := []int{60, 64, 67}
+	for i, n := range chord {
+		s.Trigger("pluck", n, 1, 0.5, 0, uint64(100+i))
+	}
+	render(s, SampleRate/100)
+	for _, n := range chord {
+		found := false
+		for i := range s.fx.shots {
+			if v := &s.fx.shots[i]; v.active && v.note == n {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("chord note %d lost: another note of the chord stole its voice", n)
+		}
+	}
+}
+
+// Stealing counts an attacking voice at its gain; retrigger must not. A
+// sequencer voice early in a slow attack is still inaudible, and a new note
+// over it starts at once rather than waiting out a fade of nothing.
+func TestRetriggerOverAnInaudibleAttackStartsAtOnce(t *testing.T) {
+	var v Voice
+	v.trigger(Patch{{opEnv, [4]float64{1.0, 1, 1, 0.5}}, {opOsc, [4]float64{}}, {opMul, [4]float64{}}, {opOut, [4]float64{1, 0.5}}}, 40, 16, 0.5, 1)
+	var l, r float64
+	v.run(&l, &r, &sends{}) // one sample into a 1 s attack
+	if v.level() >= 1e-3 {
+		t.Fatalf("level %v: the attack is not yet inaudible; the test needs a quieter start", v.level())
+	}
+	v.retrigger(trackRow{45, 0.6, 16, drone}, 16, 2)
+	if !samePatch(v.patch, drone) || v.pend.note != 0 {
+		t.Error("a new note over an inaudible attack waited for a fade")
+	}
+}

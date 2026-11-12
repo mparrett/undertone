@@ -683,22 +683,45 @@ func installNS() {
 	rt.RegisterNS(ns)
 }
 
-// asVec reads an lg vector. let-go gives back an ArrayVector up to 32
+// indexed reads v as a positional collection: a vector of any
+// representation. let-go gives back an ArrayVector up to 32
 // elements and a PersistentVector past that (mapv, into, conj), so a type
 // check for ArrayVector alone turned every longer vector away: a trigger
-// list of 33 played nothing, and said nothing.
+// list of 33 played nothing, and said nothing. vm.Indexed is let-go's
+// marker for positional types, so a new vector representation is read
+// without a change here. Strings are Indexed too but are not vectors, and
+// seqs (lists, ranges, lazy seqs) are refused as before: counting one
+// realizes it, which never returns for (range).
+func indexed(v vm.Value) (vm.Indexed, bool) {
+	switch t := v.(type) {
+	case vm.ArrayVector: // a Seq as well as Indexed, so it must come first
+		return t, true
+	case vm.String, vm.Seq:
+		return nil, false
+	}
+	ix, ok := v.(vm.Indexed)
+	return ix, ok
+}
+
+// asVec reads an lg vector (see indexed) as a slice. A map entry, as from
+// (first m), is a two-element vector in lg but neither Indexed nor apart
+// from Seq on the Go side, so it is read by hand.
 func asVec(v vm.Value) (vm.ArrayVector, bool) {
 	switch t := v.(type) {
 	case vm.ArrayVector:
 		return t, true
-	case vm.PersistentVector:
-		out := make(vm.ArrayVector, int(t.Count().(vm.Int)))
-		for i := range out {
-			out[i] = t.Nth(i)
-		}
-		return out, true
+	case vm.MapEntry:
+		return vm.ArrayVector{t.Key, t.Value}, true
 	}
-	return nil, false
+	ix, ok := indexed(v)
+	if !ok {
+		return nil, false
+	}
+	out := make(vm.ArrayVector, ix.RawCount())
+	for i := range out {
+		out[i] = ix.Nth(i)
+	}
+	return out, true
 }
 
 // numArg reads a numeric argument of the native `fn`.

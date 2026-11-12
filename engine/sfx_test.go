@@ -315,3 +315,20 @@ func TestChordAgainstFullPoolKeepsEveryNote(t *testing.T) {
 		}
 	}
 }
+
+// Stealing counts an attacking voice at its gain; retrigger must not. A
+// sequencer voice early in a slow attack is still inaudible, and a new note
+// over it starts at once rather than waiting out a fade of nothing.
+func TestRetriggerOverAnInaudibleAttackStartsAtOnce(t *testing.T) {
+	var v Voice
+	v.trigger(Patch{{opEnv, [4]float64{1.0, 1, 1, 0.5}}, {opOsc, [4]float64{}}, {opMul, [4]float64{}}, {opOut, [4]float64{1, 0.5}}}, 40, 16, 0.5, 1)
+	var l, r float64
+	v.run(&l, &r, &sends{}) // one sample into a 1 s attack
+	if v.level() >= 1e-3 {
+		t.Fatalf("level %v: the attack is not yet inaudible; the test needs a quieter start", v.level())
+	}
+	v.retrigger(trackRow{45, 0.6, 16, drone}, 16, 2)
+	if !samePatch(v.patch, drone) || v.pend.note != 0 {
+		t.Error("a new note over an inaudible attack waited for a fade")
+	}
+}

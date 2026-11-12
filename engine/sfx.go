@@ -539,7 +539,7 @@ func (fx *sfx) voice() int {
 			best = i
 			break
 		}
-		if l := v.level(); l < level {
+		if l := v.stealLevel(); l < level {
 			best, level = i, l
 		}
 	}

@@ -151,8 +151,8 @@ func parseScript(v vm.Value, p engine.Params, seconds float64) ([]step, error) {
 // what it cannot play: a hash pinned on a dropped shot would pin silence.
 func checkShots(arg vm.Value, shs []engine.Shot) error {
 	want := 1
-	if vec, ok := asVec(arg); ok {
-		want = len(vec)
+	if ix, ok := indexed(arg); ok {
+		want = ix.RawCount()
 	}
 	if len(shs) != want || want == 0 {
 		return fmt.Errorf(":trigger takes a map with :shot, or a vector of them")

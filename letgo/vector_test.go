@@ -26,3 +26,21 @@ func TestVectorsPast32ElementsAreRead(t *testing.T) {
 		t.Errorf("a 40-step render script was refused: %v", err)
 	}
 }
+
+// A string is Indexed in let-go but is not a vector, and a seq is refused
+// rather than counted (counting (range) never returns).
+func TestStringsAndSeqsAreNotVectors(t *testing.T) {
+	c := renderLg(t, "notvectors")
+	for _, src := range []string{`"abc"`, `(list 1 2)`, `(range)`, `(map inc [1 2])`} {
+		v, err := c.Run(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := asVec(v); ok {
+			t.Errorf("%s read as a vector", src)
+		}
+	}
+	if v, _ := c.Run(`(first {:out 0.5})`); func() bool { _, ok := asVec(v); return !ok }() {
+		t.Error("a map entry was not read as a vector")
+	}
+}

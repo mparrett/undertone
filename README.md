@@ -167,7 +167,7 @@ audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 | `undertone/music-start`, `undertone/music-stop` | playback |
 | `undertone/set-music-gain` | the music's level under the one-shots, 0..1; glides there over 50 ms |
 | `undertone/glide-music-gain` | the same over a chosen number of seconds, to duck the music under a big one-shot and bring it back |
-| `undertone/set-queue` | browser only: milliseconds of audio queued ahead of the speaker, for tuning per device without a rebuild; clamped to the ring, with the clamp reported on stderr |
+| `undertone/set-queue` | browser only, and not in a `-w-audio` bundle (the seam owns the queue there): milliseconds of audio queued ahead of the speaker, for tuning per device without a rebuild; clamped to the ring, with the clamp reported on stderr |
 | `undertone/play-theme` | `{:grids [{:lead [1 0 3] :bass [1] :pulse [true] :drums ["X..." "" "x.x."] :bed false} ...] :then :generate}`: an authored theme, from its first grid at once; `:then` is `:generate`, `:silence` or `:loop`; nil stops it. Sent before `music-start`, it starts with the music |
 | `undertone/theme-playing?` | whether the last theme has still to finish |
 | `undertone/trigger` | a trigger map (`{:shot :hit :gain 0.8 :pan 0.3}`) or a vector of them; fire-and-forget |
@@ -349,9 +349,14 @@ Until that is fixed, a prompt that should keep the music playing can poll
 `term/key-pending?` with a short `sleep` between checks, which lets the
 renderer run.
 
-let-go's audio seam has no browser backend yet, so the browser build keeps
-undertone's own worklet; see
-[nooga/let-go#255](https://github.com/nooga/let-go/issues/255).
+An `lg -w` bundle built with `-w-audio` carries let-go's own browser audio
+([nooga/let-go#1112](https://github.com/nooga/let-go/pull/1112), this same
+design moved into let-go), and `letgo.Music` then plays into its mix, beside
+the program's `audio/tone` and `audio/sample` sounds. Such a bundle needs no
+`page.js`. Its queue is the seam's: `LETGO_AUDIO_QUEUE`, or
+`audio.Default().Configure` from Go, so `undertone/set-queue` does nothing
+there. Without `-w-audio`, and on undertone's own example pages, the music
+keeps `webaudio`.
 
 ## Building
 

@@ -45,16 +45,22 @@ func mix(t *testing.T, m *audio.Mixer) int16 {
 	return int16(binary.LittleEndian.Uint16(buf[len(buf)-2:]))
 }
 
+// minFade is the shortest pause or resume fade smooth accepts, about 1.5 ms.
+// The seam's own is 220 frames (edgeFrames in let-go's pkg/audio, which is
+// unexported), so this leaves it room to change; a click steps the whole
+// level in one frame and still fails.
+const minFade = 64
+
 // smooth mixes a second and checks the left channel ends at want without a
-// click: no step between frames larger than a 1000-level fade over
-// edgeFrames takes.
+// click: no step between frames larger than a 1000-level fade over minFade
+// takes.
 func smooth(t *testing.T, what string, m *audio.Mixer, want int16) {
 	t.Helper()
 	buf := make([]byte, 4*rt.AudioRate)
 	if _, err := m.Read(buf); err != nil {
 		t.Fatal(err)
 	}
-	const maxStep = 1000/edgeFrames + 1
+	const maxStep = 1000/minFade + 1
 	prev := int16(binary.LittleEndian.Uint16(buf))
 	for i := 4; i+1 < len(buf); i += 4 {
 		s := int16(binary.LittleEndian.Uint16(buf[i:]))

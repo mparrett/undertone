@@ -20,14 +20,18 @@ jobs:
       # -tags audio_oto swaps the letgo binding's native output for let-go's
       # audio seam, so both builds are checked.
       - run: go test -tags audio_oto ./letgo
+      # How the browser build picks let-go's audio seam over webaudio, under
+      # node (the runner has it); the rest of letgo's tests are native-only
+      # in what they check.
+      - run: GOOS=js GOARCH=wasm go test -exec "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" -run SeamDevice ./letgo
       - run: go vet ./...
       - run: go vet -tags audio_oto ./...
-      - run: GOOS=js GOARCH=wasm go vet ./examples/designer ./webaudio
+      - run: GOOS=js GOARCH=wasm go vet ./examples/designer ./webaudio ./letgo
       # installed natively first: `go run` under GOOS=js would build the checker for js
       - run: GOBIN="$(go env GOPATH)/bin" go install honnef.co/go/tools/cmd/staticcheck@2026.2.2
       - run: '"$(go env GOPATH)/bin/staticcheck" ./...'
       - run: '"$(go env GOPATH)/bin/staticcheck" -tags audio_oto ./...'
-      - run: GOOS=js GOARCH=wasm "$(go env GOPATH)/bin/staticcheck" ./examples/designer ./webaudio
+      - run: GOOS=js GOARCH=wasm "$(go env GOPATH)/bin/staticcheck" ./examples/designer ./webaudio ./letgo
 
   build:
     runs-on: ubuntu-latest

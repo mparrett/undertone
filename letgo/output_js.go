@@ -4,7 +4,11 @@ package letgo
 
 import (
 	"io"
+	"syscall/js"
 	"time"
+
+	"github.com/nooga/let-go/pkg/rt"
+	"github.com/nooga/let-go/pkg/vm"
 
 	"github.com/mparrett/undertone/engine"
 	"github.com/mparrett/undertone/webaudio"
@@ -37,7 +41,17 @@ import (
 // 160 all played clean by ear, so the margin is for a loaded worker, not the
 // phone. Worker mode needs the ring, so it is never the message path.
 // undertone/set-queue tunes any of these per device without a rebuild.
+//
+// A bundle built with lg -w -w-audio carries let-go's own browser device
+// (nooga/let-go#1112, this same design moved into let-go), and then the music
+// streams into its mix instead, beside the guest's audio/tone and
+// audio/sample sounds, with no page.js. Its queue is the device's
+// (LETGO_AUDIO_QUEUE, or audio.Default().Configure from Go), so
+// undertone/set-queue does nothing there.
 func openOutput(src io.Reader) (output, error) {
+	if a, ok := seamDevice(); ok {
+		return streamTo(a, src)
+	}
 	queue := 60 * time.Millisecond
 	switch {
 	case webaudio.InWorker():
@@ -46,4 +60,31 @@ func openOutput(src io.Reader) (output, error) {
 		queue = 80 * time.Millisecond
 	}
 	return webaudio.Open(src, webaudio.Options{SampleRate: engine.SampleRate, Queue: queue})
+}
+
+// seamDevice returns let-go's browser device when the bundle has one that
+// opened. Every lg -w bundle's lg-host-core.js defines _lgAudioOpen, and
+// *audio* is always bound, to a no-op until -w-audio links pkg/audio, whose
+// init binds its device; so the test that tells them apart is Enabled, false
+// for the no-op and for a device that failed to open. Enabled opens the
+// device, which the music's Stream would do next anyway. undertone's own
+// example pages have no _lgAudioOpen and keep webaudio, and so does a bundle
+// without -w-audio, or one whose device could not open.
+func seamDevice() (rt.Audio, bool) {
+	if js.Global().Get("_lgAudioOpen").Type() != js.TypeFunction {
+		return nil, false
+	}
+	v := rt.LookupCoreVar("*audio*")
+	if v == nil {
+		return nil, false
+	}
+	b, ok := v.Root().(*vm.Boxed)
+	if !ok {
+		return nil, false
+	}
+	a, ok := b.Unbox().(rt.Audio)
+	if !ok || !a.Enabled() {
+		return nil, false
+	}
+	return a, true
 }

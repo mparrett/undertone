@@ -20,10 +20,11 @@ data a game can bring and change.
 | the game | turning its world into knobs and events (tension from health and nearby enemies) |
 
 let-go's seam landed natively in 2026-10 (nooga/let-go#1089, #1107), and an lg
-host built with `-tags audio_oto` plays undertone through it. undertone still
-carries its own output where the seam doesn't reach: an oto player for Go games
-without let-go and untagged hosts, and a WebAudio worklet in the browser, where
-the seam has no backend yet.
+host built with `-tags audio_oto` plays undertone through it. Its browser
+backend followed (#1112), and an `lg -w -w-audio` bundle plays undertone
+through that. undertone still carries its own output where the seam doesn't
+reach: an oto player for Go games without let-go and untagged hosts, and a
+WebAudio worklet for Go pages and bundles built without `-w-audio`.
 
 ## What it does
 

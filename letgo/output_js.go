@@ -62,11 +62,14 @@ func openOutput(src io.Reader) (output, error) {
 	return webaudio.Open(src, webaudio.Options{SampleRate: engine.SampleRate, Queue: queue})
 }
 
-// seamDevice returns let-go's browser device when the bundle has one. Both
-// halves come from -w-audio: pkg/audio, whose init binds *audio* (unbound
-// otherwise, so nothing here links it), and lg-host-core.js, which defines
-// _lgAudioOpen on the page and in its worker. undertone's own example pages
-// have neither, so they keep webaudio.
+// seamDevice returns let-go's browser device when the bundle has one that
+// opened. Every lg -w bundle's lg-host-core.js defines _lgAudioOpen, and
+// *audio* is always bound, to a no-op until -w-audio links pkg/audio, whose
+// init binds its device; so the test that tells them apart is Enabled, false
+// for the no-op and for a device that failed to open. Enabled opens the
+// device, which the music's Stream would do next anyway. undertone's own
+// example pages have no _lgAudioOpen and keep webaudio, and so does a bundle
+// without -w-audio, or one whose device could not open.
 func seamDevice() (rt.Audio, bool) {
 	if js.Global().Get("_lgAudioOpen").Type() != js.TypeFunction {
 		return nil, false
@@ -80,5 +83,8 @@ func seamDevice() (rt.Audio, bool) {
 		return nil, false
 	}
 	a, ok := b.Unbox().(rt.Audio)
-	return a, ok
+	if !ok || !a.Enabled() {
+		return nil, false
+	}
+	return a, true
 }

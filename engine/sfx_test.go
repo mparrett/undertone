@@ -289,6 +289,19 @@ func TestSfxGainScalesShots(t *testing.T) {
 	}
 }
 
+// An sfx glide that comes back to 1 lands on it exactly, so the shots return
+// to the direct path and render byte-identically to a synth never touched.
+func TestSfxGainGlideLandsBackOnOne(t *testing.T) {
+	s := NewSynth(silentParams)
+	s.GlideSfxGain(0.3, 0.05)
+	render(s, SampleRate/10)
+	s.GlideSfxGain(1, 0.037)
+	render(s, SampleRate/10)
+	if s.sfxLevel.gain != 1 {
+		t.Fatalf("after the glide back gain = %v, want exactly 1", s.sfxLevel.gain)
+	}
+}
+
 // A burst of the same shot at the same note starts once; a different note, or
 // a repeat after shotGapMS, starts again.
 func TestShotRepeatsWithinTheGapAreDropped(t *testing.T) {

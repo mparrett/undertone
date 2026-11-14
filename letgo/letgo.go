@@ -50,13 +50,9 @@ type Music struct {
 	// catch-up applies it at once rather than at the first boundary.
 	nowWaiting bool
 
-	// musicGain is the last undertone/set-music-gain, carried into a synth that
-	// starts later; gainSet keeps the zero value from meaning silence.
-	musicGain float64
-	gainSet   bool
-	// sfxGain is the same for undertone/set-sfx-gain.
-	sfxGain float64
-	sfxSet  bool
+	// gains are the last set-/glide-music-gain and -sfx-gain, carried into a
+	// synth that starts later.
+	gains [nBuses]busGain
 
 	// theme is an undertone/play-theme that came before music-start; it
 	// starts with the music.
@@ -366,55 +362,61 @@ func queueArg(v vm.Value) (time.Duration, error) {
 	return time.Duration(ms * float64(time.Millisecond)), nil
 }
 
-// setMusicGain sets the music bed's level (0..1) under the one-shots, now if
-// playing and from the start otherwise.
-func (m *Music) setMusicGain(g float64) { m.glideMusicGain(g, -1) }
+// bus names one of the synth's two mixer levels.
+type bus int
 
-// glideMusicGain is setMusicGain over the given seconds while playing; a
-// negative seconds means the engine's default glide. Before playback starts
-// there is nothing to glide from, so the level applies from the start.
-func (m *Music) glideMusicGain(g, seconds float64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.musicGain, m.gainSet = g, true
-	if m.synth == nil {
+const (
+	musicBus bus = iota // the bed, under the one-shots
+	sfxBus              // the one-shots, over the bed
+	nBuses
+)
+
+// busGain is the last level a game asked of one bus. set keeps the zero value
+// from meaning silence; secs is the glide asked for, negative for the
+// engine's default.
+type busGain struct {
+	g, secs float64
+	set     bool
+}
+
+// apply hands the level to syn. A synth that has not rendered takes it at
+// once whatever the glide; one that has (output init may render before
+// open returns) glides over the time the game asked for.
+func (bg busGain) apply(b bus, syn *engine.Synth) {
+	if !bg.set {
 		return
 	}
-	if seconds < 0 {
-		m.synth.SetMusicGain(g)
+	set, glide := syn.SetMusicGain, syn.GlideMusicGain
+	if b == sfxBus {
+		set, glide = syn.SetSfxGain, syn.GlideSfxGain
+	}
+	if bg.secs < 0 {
+		set(bg.g)
 	} else {
-		m.synth.GlideMusicGain(g, seconds)
+		glide(bg.g, bg.secs)
 	}
 }
 
-// setSfxGain sets the one-shots' level (0..1) over the music, now if playing
-// and from the start otherwise.
-func (m *Music) setSfxGain(g float64) { m.glideSfxGain(g, -1) }
+// setGain sets a bus's level (0..1), now if playing and from the start
+// otherwise.
+func (m *Music) setGain(b bus, g float64) { m.glideGain(b, g, -1) }
 
-// glideSfxGain is glideMusicGain for the one-shots.
-func (m *Music) glideSfxGain(g, seconds float64) {
+// glideGain is setGain over the given seconds while playing; a negative
+// seconds means the engine's default glide. Before playback starts there is
+// nothing to glide from, so the level applies from the start.
+func (m *Music) glideGain(b bus, g, seconds float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.sfxGain, m.sfxSet = g, true
-	if m.synth == nil {
-		return
-	}
-	if seconds < 0 {
-		m.synth.SetSfxGain(g)
-	} else {
-		m.synth.GlideSfxGain(g, seconds)
+	m.gains[b] = busGain{g, seconds, true}
+	if m.synth != nil {
+		m.gains[b].apply(b, m.synth)
 	}
 }
 
-// applyGains carries the levels set so far into a new synth, at once: a synth
-// that has not rendered takes its first target without a glide. Called with
-// m.mu held.
+// applyGains carries the levels set so far into syn. Called with m.mu held.
 func (m *Music) applyGains(syn *engine.Synth) {
-	if m.gainSet {
-		syn.SetMusicGain(m.musicGain)
-	}
-	if m.sfxSet {
-		syn.SetSfxGain(m.sfxGain)
+	for b, bg := range m.gains {
+		bg.apply(bus(b), syn)
 	}
 }
 
@@ -622,56 +624,36 @@ func installNS() {
 	ns.Def("music-stop", native("music-stop", 0, func([]vm.Value) (vm.Value, error) {
 		return current.Load().Stop(), nil
 	}))
-	ns.Def("set-music-gain", native("set-music-gain", 1, func(a []vm.Value) (vm.Value, error) {
-		g, err := numArg("set-music-gain", "gain", a[0])
-		if err != nil {
-			return vm.NIL, err
-		}
-		current.Load().setMusicGain(g)
-		return vm.NIL, nil
-	}))
-	// set-music-gain over a chosen time: a short glide down to duck the bed
-	// under a big one-shot, a longer one to bring it back.
-	ns.Def("glide-music-gain", native("glide-music-gain", 2, func(a []vm.Value) (vm.Value, error) {
-		g, err := numArg("glide-music-gain", "gain", a[0])
-		if err != nil {
-			return vm.NIL, err
-		}
-		secs, err := numArg("glide-music-gain", "seconds", a[1])
-		if err != nil {
-			return vm.NIL, err
-		}
-		if !(secs >= 0) { // also refuses NaN
-			return vm.NIL, fmt.Errorf("undertone/glide-music-gain: seconds must not be negative, got %v", secs)
-		}
-		current.Load().glideMusicGain(g, secs)
-		return vm.NIL, nil
-	}))
-	// The one-shots' level over the music, as set-music-gain is the music's
-	// under them: a game's effects volume.
-	ns.Def("set-sfx-gain", native("set-sfx-gain", 1, func(a []vm.Value) (vm.Value, error) {
-		g, err := numArg("set-sfx-gain", "gain", a[0])
-		if err != nil {
-			return vm.NIL, err
-		}
-		current.Load().setSfxGain(g)
-		return vm.NIL, nil
-	}))
-	ns.Def("glide-sfx-gain", native("glide-sfx-gain", 2, func(a []vm.Value) (vm.Value, error) {
-		g, err := numArg("glide-sfx-gain", "gain", a[0])
-		if err != nil {
-			return vm.NIL, err
-		}
-		secs, err := numArg("glide-sfx-gain", "seconds", a[1])
-		if err != nil {
-			return vm.NIL, err
-		}
-		if !(secs >= 0) { // also refuses NaN
-			return vm.NIL, fmt.Errorf("undertone/glide-sfx-gain: seconds must not be negative, got %v", secs)
-		}
-		current.Load().glideSfxGain(g, secs)
-		return vm.NIL, nil
-	}))
+	// set-music-gain is the bed's level under the one-shots, set-sfx-gain the
+	// one-shots' over the bed: a game's music and effects volumes. The glide
+	// forms take seconds: a short glide down to duck the bed under a big
+	// one-shot, a longer one to bring it back.
+	for name, b := range map[string]bus{"music": musicBus, "sfx": sfxBus} {
+		set, glide := "set-"+name+"-gain", "glide-"+name+"-gain"
+		ns.Def(set, native(set, 1, func(a []vm.Value) (vm.Value, error) {
+			g, err := numArg(set, "gain", a[0])
+			if err != nil {
+				return vm.NIL, err
+			}
+			current.Load().setGain(b, g)
+			return vm.NIL, nil
+		}))
+		ns.Def(glide, native(glide, 2, func(a []vm.Value) (vm.Value, error) {
+			g, err := numArg(glide, "gain", a[0])
+			if err != nil {
+				return vm.NIL, err
+			}
+			secs, err := numArg(glide, "seconds", a[1])
+			if err != nil {
+				return vm.NIL, err
+			}
+			if !(secs >= 0) { // also refuses NaN
+				return vm.NIL, fmt.Errorf("undertone/%s: seconds must not be negative, got %v", glide, secs)
+			}
+			current.Load().glideGain(b, g, secs)
+			return vm.NIL, nil
+		}))
+	}
 	// Milliseconds of audio kept queued ahead of the speaker, for tuning a
 	// browser build per device (from a ?queue= page param, say) without a
 	// rebuild. Browser only; natively it does nothing. Write-only like the

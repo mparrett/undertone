@@ -142,6 +142,23 @@ func TestRenderWAVHonorsTheSfxGain(t *testing.T) {
 	}
 }
 
+// The glide natives refuse a negative or NaN glide, for either bus.
+func TestGlideGainRejectsNegativeSeconds(t *testing.T) {
+	c := renderLg(t, "glidebad")
+	for _, bad := range []string{
+		`(undertone/glide-music-gain 0.5 -1)`,
+		`(undertone/glide-sfx-gain 0.5 -1)`,
+		`(undertone/glide-sfx-gain 0.5 ##NaN)`,
+	} {
+		if _, err := c.Run(bad); err == nil {
+			t.Errorf("%s: want an error", bad)
+		}
+	}
+	if _, err := c.Run(`(undertone/glide-sfx-gain 0.5 0.2)`); err != nil {
+		t.Errorf("a good glide: %v", err)
+	}
+}
+
 // A bad script is an error, since it is a bug in the test that wrote it.
 func TestRenderWAVRejectsBadScripts(t *testing.T) {
 	c := renderLg(t, "renderbad")

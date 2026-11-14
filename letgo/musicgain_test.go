@@ -25,7 +25,7 @@ func TestMusicGainAtStartup(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			p := engine.DeriveDungeon(7, 3, 0.5)
 			m := NewMusic(p)
-			m.setMusicGain(tc.gain)
+			m.setGain(musicBus, tc.gain)
 			ref := engine.NewSynth(p)
 			ref.SetMusicGain(tc.gain)
 			want, got := make([]byte, 512*4), make([]byte, 512*4)
@@ -39,7 +39,7 @@ func TestMusicGainAtStartup(t *testing.T) {
 				if !bytes.Equal(got, want) {
 					t.Error("initial output ignored the saved music gain")
 				}
-				m.setMusicGain(0.5)
+				m.setGain(musicBus, 0.5)
 				return gainTestOutput{}, nil
 			})
 			defer m.Stop()
@@ -51,5 +51,34 @@ func TestMusicGainAtStartup(t *testing.T) {
 				t.Error("music gain changed during startup was not applied")
 			}
 		})
+	}
+}
+
+// A glide asked for while the output opens (a browser waiting for the unlock
+// gesture) keeps its length: the output may have rendered by then, so the
+// level must glide as asked rather than switch over the default 50 ms.
+func TestGlideDuringStartupKeepsItsLength(t *testing.T) {
+	p := engine.DeriveDungeon(7, 3, 0.5)
+	m := NewMusic(p)
+	ref := engine.NewSynth(p)
+	ref.Trigger("hit", 60, 1, 0.5, 0, 11)
+	want, got := make([]byte, 512*4), make([]byte, 512*4)
+	ref.Read(want)
+	m.start(func(src io.Reader) (output, error) {
+		src.(*engine.Synth).Trigger("hit", 60, 1, 0.5, 0, 11)
+		if _, err := io.ReadFull(src, got); err != nil {
+			t.Fatal(err)
+		}
+		m.glideGain(sfxBus, 0, 1.0)
+		return gainTestOutput{}, nil
+	})
+	defer m.Stop()
+
+	ref.GlideSfxGain(0, 1.0)
+	want, got = make([]byte, engine.SampleRate/4*4), make([]byte, engine.SampleRate/4*4)
+	ref.Read(want)
+	m.synth.Read(got)
+	if !bytes.Equal(got, want) {
+		t.Error("a glide asked for during startup did not keep its length")
 	}
 }

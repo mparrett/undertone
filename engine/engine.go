@@ -107,7 +107,7 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 	// largest of 402). A plucked string is struck afresh either way.
 	legato := v.active && samePatch(v.patch, patch)
 	v.patch = patch
-	v.note = note
+	v.note = clampNote(note)
 	v.gain = gain
 	v.gainTo = gain
 	v.pend = trackRow{}
@@ -184,6 +184,28 @@ func (v *Voice) glideKnobs() {
 	glide(&v.grit, v.gritTo)
 	glide(&v.open, v.openTo)
 }
+
+// A voice's note is held to minNote..maxNote. Notes reach a voice from a
+// game's arithmetic (a trigger's :note, a scale's intervals, a bell lift, a
+// grid's degrees), and nothing in the write-only contract can refuse one, so
+// the voice bounds what it is given. Past the top an oscillator's frequency
+// overflows, and the NaN that makes circulates in the delay and reverb lines
+// for good. The range is wide of anything played: the generator's lowest
+// note is its pulse, a few semitones under note 0, and its highest a lifted
+// lead near 140.
+const (
+	minNote = -48
+	maxNote = 180
+)
+
+func clampNote(n int) int { return max(minNote, min(n, maxNote)) }
+
+// maxPluckLine is the longest Karplus-Strong line, in samples: a string at
+// 8 Hz, just under note 0. The line is a period long and allocated on the
+// audio thread, so without a bound a note far enough down asked for
+// megabytes, and further down for a slice too long to make, which panicked.
+// No built-in plucks below note 12.
+const maxPluckLine = SampleRate / 8
 
 // fadeFrames is how long a gain glide takes: about 5 ms, short enough to
 // sound like a switch and long enough not to click.
@@ -446,10 +468,9 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			// the length of the period, averaged (lowpassed) each pass.
 			if len(s.ks) == 0 { // a new note: strike the string
 				freq := 440 * math.Pow(2, (float64(v.note)+u.p[0]-69)/12)
-				n := int(SampleRate / freq)
-				if n < 2 {
-					n = 2
-				}
+				// bounded as a float: converting a period too long for an
+				// int gives a different answer on each architecture
+				n := int(max(2, min(SampleRate/freq, maxPluckLine)))
 				// reuse the last note's line when it is long enough
 				if cap(s.ks) >= n {
 					s.ks = s.ks[:n]
@@ -1540,7 +1561,7 @@ func (s *Synth) revoice(t, pat, row int) {
 		if left <= 0 {
 			break
 		}
-		if v.active && v.gate && v.note == tr.note && samePatch(v.patch, tr.patch) {
+		if v.active && v.gate && v.note == clampNote(tr.note) && samePatch(v.patch, tr.patch) {
 			v.gateRows = left
 			if v.gainTo != tr.gain {
 				v.glideGain(tr.gain)

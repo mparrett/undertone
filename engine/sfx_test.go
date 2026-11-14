@@ -121,6 +121,32 @@ func TestShotVoicesDie(t *testing.T) {
 	}
 }
 
+// A phrase handed over in one batch plays from its first note. Every note is
+// queued with its delay at once, and a queue shorter than the phrase dropped
+// the oldest, so a long run lost its opening (xsofy's floor change, 42 notes).
+func TestLongBatchKeepsItsFirstNotes(t *testing.T) {
+	s := NewSynth(silentParams)
+	const n = 48
+	for i := 0; i < n; i++ { // 100 ms apart, so each starts before the pool is full
+		s.Trigger("pluck", 40+i%24, 0.5, 0.5, float64(100*i), uint64(i))
+	}
+	at := 0
+	for _, i := range []int{0, 1, 15, n - 1} {
+		due := SampleRate*100*i/1000 + SampleRate/200 // 5 ms after its start
+		render(s, due-at)
+		at = due
+		found := false
+		for j := range s.fx.shots {
+			if v := &s.fx.shots[j]; v.active && v.note == 40+i%24 {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("note %d of %d never started: the queue dropped it", i, n)
+		}
+	}
+}
+
 func TestPoolOverflowStealsInsteadOfGrowing(t *testing.T) {
 	s := NewSynth(silentParams)
 	for i := 0; i < nShots*4; i++ { // distinct notes, so the repeat gap thins none of them

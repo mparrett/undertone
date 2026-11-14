@@ -338,8 +338,13 @@ type recentShot struct {
 
 const nRecent = 32
 
-// maxPending bounds the queue of shots waiting to start.
-const maxPending = 32
+// maxPending bounds the queue of shots waiting to start. A game hands over a
+// whole phrase in one Trigger batch, every note with its delay: xsofy's floor
+// change is a 16-step Shepard run of 42 notes and its arrival. At 32 the
+// queue dropped the run's first notes, its slow opening, before they played.
+// runShots walks the queue once a sample while it holds anything, so the
+// bound is also that walk's worst case.
+const maxPending = 128
 
 // sfx is the Synth's one-shot state, mutex-guarded because Trigger arrives on
 // the lg thread while frame() drains on the audio callback goroutine.

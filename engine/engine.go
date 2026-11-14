@@ -1246,8 +1246,14 @@ type Synth struct {
 // level is a mixer bus's gain. The caller sets a target from any goroutine;
 // the level glides to it on the synthesis side, so a duck under a big
 // one-shot and the recovery after it do not click. seen is the target being
-// glided to; live is false until the first frame, which takes its level at
-// once so startup renders as if it were always there.
+// glided to; live is false until the first frame.
+//
+// Before the first frame a Set is the level playback starts at, taken at
+// once, so startup renders as if it were always there. A Glide asked for
+// then runs from that level (start, 1 if nothing was set): a game that sets
+// 0 and then glides up gets its fade-in even when both calls land before
+// the output has rendered anything, as they do when the title screen asks
+// for the fade a moment after music-start.
 type level struct {
 	to         atomic.Pointer[levelTarget]
 	gain, step float64
@@ -1256,38 +1262,67 @@ type level struct {
 	live       bool
 }
 
-// levelTarget is one Set/Glide call on a level.
+// levelTarget is one Set/Glide call on a level; set marks a Set. start is
+// the level a first frame begins at under this target: the last Set's
+// gain, carried along in each target so the pair is read in one load.
 type levelTarget struct {
-	gain   float64
-	frames int
+	gain, start float64
+	frames      int
+	set         bool
 }
 
 func (b *level) init() {
-	b.seen = &levelTarget{gain: 1}
+	b.seen = &levelTarget{gain: 1, start: 1}
 	b.gain = 1
 	b.to.Store(b.seen)
 }
 
-// glide asks for g, clamped to 0..1, over the given seconds.
+// set is a Set*Gain: g over levelGlide while playing, and the starting
+// level before the first frame.
+func (b *level) set(g float64) {
+	g = clampLevel(g)
+	b.to.Store(&levelTarget{gain: g, start: g, frames: glideFrames(levelGlide), set: true})
+}
+
+// glide asks for g, clamped to 0..1, over the given seconds, keeping the
+// starting level of the target it replaces. The compare-and-swap keeps a
+// concurrent set's start from being lost.
 func (b *level) glide(g, seconds float64) {
-	if !(g >= 0) { // also catches NaN
-		g = 0
+	t := &levelTarget{gain: clampLevel(g), frames: glideFrames(seconds)}
+	for {
+		old := b.to.Load()
+		t.start = old.start
+		if b.to.CompareAndSwap(old, t) {
+			return
+		}
 	}
+}
+
+func clampLevel(g float64) float64 {
+	if !(g >= 0) { // also catches NaN
+		return 0
+	}
+	return math.Min(g, 1)
+}
+
+func glideFrames(seconds float64) int {
 	if !(seconds >= 0) {
 		seconds = 0
 	}
 	// Round up, so a glide shorter than a frame still takes one rather than
 	// becoming the instant step (frames 0) it exists to avoid. Past a minute
 	// only risks overflowing the frame count.
-	frames := int(math.Ceil(math.Min(seconds, 60) * SampleRate))
-	b.to.Store(&levelTarget{gain: math.Min(g, 1), frames: frames})
+	return int(math.Ceil(math.Min(seconds, 60) * SampleRate))
 }
 
 // next advances the level one frame toward the last requested target.
 func (b *level) next() float64 {
 	if t := b.to.Load(); t != b.seen {
 		b.seen = t
-		if !b.live || t.frames == 0 {
+		if !b.live {
+			b.gain = t.start
+		}
+		if t.frames == 0 || (!b.live && t.set) {
 			b.gain, b.left = t.gain, 0
 		} else {
 			b.step, b.left = (t.gain-b.gain)/float64(t.frames), t.frames
@@ -1363,21 +1398,24 @@ func NewSynth(p Params) *Synth {
 
 // SetMusicGain scales the music bed (sequencer voices, drums and their delay
 // sends) by g, clamped to 0..1, leaving one-shots at their own level. Playback
-// glides to g over levelGlide; a call before the first frame applies at once.
+// glides to g over levelGlide; a call before the first frame is the level
+// playback starts at.
 // Safe to call from any goroutine; 1 renders byte-identically to no call at
 // all.
-func (s *Synth) SetMusicGain(g float64) { s.musicLevel.glide(g, levelGlide) }
+func (s *Synth) SetMusicGain(g float64) { s.musicLevel.set(g) }
 
 // GlideMusicGain is SetMusicGain over the given seconds: a game ducks the
 // bed under a big one-shot with a short glide and brings it back with a
-// longer one. A later call starts from wherever the last glide had reached.
+// longer one. A later call starts from wherever the last glide had reached;
+// one before the first frame starts from the last SetMusicGain (or 1), so
+// SetMusicGain(0) then a glide up fades the music in from silence.
 func (s *Synth) GlideMusicGain(g, seconds float64) { s.musicLevel.glide(g, seconds) }
 
 // SetSfxGain scales every one-shot, with its reverb and delay sends, by g,
 // clamped to 0..1, leaving the music alone: the game's effects volume, as
 // SetMusicGain is its music volume. Glides and starts like SetMusicGain;
 // 1 renders byte-identically to no call at all.
-func (s *Synth) SetSfxGain(g float64) { s.sfxLevel.glide(g, levelGlide) }
+func (s *Synth) SetSfxGain(g float64) { s.sfxLevel.set(g) }
 
 // GlideSfxGain is SetSfxGain over the given seconds.
 func (s *Synth) GlideSfxGain(g, seconds float64) { s.sfxLevel.glide(g, seconds) }

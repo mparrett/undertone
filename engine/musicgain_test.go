@@ -64,3 +64,33 @@ func TestMusicGainRetargetsMidGlide(t *testing.T) {
 		t.Fatalf("retarget jumped from %v to %v", mid, s.musicLevel.gain)
 	}
 }
+
+// A set then a glide, both before the first frame, fade in from the set
+// level: the title screen sets 0 at music-start and asks for the fade a
+// moment later, before the output has rendered.
+func TestGlideBeforeFirstFrameStartsFromTheSetLevel(t *testing.T) {
+	s := NewSynth(DeriveDungeon(7, 3, 0.5))
+	s.SetMusicGain(0)
+	const secs = 0.1
+	s.GlideMusicGain(0.5, secs)
+	s.frame()
+	if g := s.musicLevel.gain; g <= 0 || g > 0.5/(secs*SampleRate)+1e-12 {
+		t.Fatalf("first frame gain = %v, want one step up from 0", g)
+	}
+	for range int(secs * SampleRate) {
+		s.frame()
+	}
+	if s.musicLevel.gain != 0.5 {
+		t.Fatalf("after the glide gain = %v, want exactly 0.5", s.musicLevel.gain)
+	}
+}
+
+// A glide with no set before it runs from full level, where playback starts.
+func TestGlideBeforeFirstFrameStartsFromOne(t *testing.T) {
+	s := NewSynth(DeriveDungeon(7, 3, 0.5))
+	s.GlideSfxGain(0.2, 0.1)
+	s.frame()
+	if g := s.sfxLevel.gain; g >= 1 || g < 1-0.8/(0.1*SampleRate)-1e-12 {
+		t.Fatalf("first frame gain = %v, want one step down from 1", g)
+	}
+}

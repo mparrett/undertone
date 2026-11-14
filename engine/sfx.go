@@ -439,11 +439,23 @@ func (s *Synth) Trigger(name string, note int, gain, pan, delayMS float64, seed 
 	if !ok {
 		return false
 	}
-	if pan < 0 {
-		pan = 0
-	} else if pan > 1 {
-		pan = 1
+	// A trigger's numbers are a game's, like its note (see minNote): a NaN
+	// or infinite gain or pan would reach the delay and reverb lines and
+	// stay there. The gain's ceiling is the one Params' gains have.
+	if !(gain >= 0) { // also catches NaN
+		gain = 0
 	}
+	gain = min(gain, 4)
+	if !(pan >= 0) {
+		pan = 0
+	}
+	pan = min(pan, 1)
+	// A delay past a minute is a mistake, and one far enough out would hold
+	// a place in the queue for good.
+	if !(delayMS >= 0) {
+		delayMS = 0
+	}
+	delayMS = min(delayMS, 60000)
 	req := shotReq{
 		key:   shotKey{name, note},
 		patch: humanize(d.patch, seed),

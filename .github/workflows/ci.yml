@@ -24,6 +24,12 @@ jobs:
       # node (the runner has it); the rest of letgo's tests are native-only
       # in what they check.
       - run: GOOS=js GOARCH=wasm go test -exec "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" -run SeamDevice ./letgo
+      # The tests that share a synth between goroutines, under the race
+      # detector. Only those: the detector slows rendering many times over,
+      # and the rest of the suite is single-threaded.
+      - run: go test -race -run Concurrent ./engine ./letgo
+      # One pass of each benchmark, so they keep building and running.
+      - run: go test -run '^$' -bench . -benchtime 1x ./engine
       - run: go vet ./...
       - run: go vet -tags audio_oto ./...
       - run: GOOS=js GOARCH=wasm go vet ./examples/designer ./webaudio ./letgo

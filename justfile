@@ -5,6 +5,21 @@ test:
     go test -tags audio_oto ./letgo
     GOOS=js GOARCH=wasm go test -exec "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" -run SeamDevice ./letgo
 
+# The tests that share a synth between goroutines, under the race detector,
+# as CI runs them. Only those: the detector slows rendering many times over,
+# and the rest of the suite is single-threaded, where it has nothing to find.
+race:
+    go test -race -run Concurrent ./engine ./letgo
+
+# Render speed per mood as a multiple of real time, and allocations per
+# slice. `just bench Shots` runs one benchmark.
+bench pattern=".":
+    go test -run '^$' -bench '{{pattern}}' ./engine
+
+# The same as wasm under node: what a browser runs, several times slower.
+bench-wasm pattern=".":
+    GOOS=js GOARCH=wasm go test -exec "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" -run '^$' -bench '{{pattern}}' ./engine
+
 # vet and staticcheck, native and for the wasm packages, as CI runs them.
 # staticcheck is installed natively first: `go run` under GOOS=js would build
 # the checker for js too.

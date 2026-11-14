@@ -55,6 +55,10 @@ type Unit struct {
 
 type Patch []Unit
 
+// maxUnits is the longest patch a voice runs: the bound on a registered
+// shot's, and well past the longest built-in.
+const maxUnits = 32
+
 // per-voice, per-unit mutable state
 type ustate struct {
 	phase, env, lp, sweep float64
@@ -471,11 +475,14 @@ func (v *Voice) run(l, r *float64, b *sends) {
 				// bounded as a float: converting a period too long for an
 				// int gives a different answer on each architecture
 				n := int(max(2, min(SampleRate/freq, maxPluckLine)))
-				// reuse the last note's line when it is long enough
+				// A voice's first string takes room for the longest line
+				// (43 KB), so no later note allocates on the audio thread:
+				// sized to its own note, a lead allocated again each time
+				// it walked lower than it had been.
 				if cap(s.ks) >= n {
 					s.ks = s.ks[:n]
 				} else {
-					s.ks = make([]float64, n)
+					s.ks = make([]float64, n, maxPluckLine)
 				}
 				for i := range s.ks {
 					s.ks[i] = s.noise()
@@ -1411,6 +1418,18 @@ func NewSynth(p Params) *Synth {
 	// arrive at any pattern boundary, on the audio thread, which must not
 	// allocate them.
 	s := &Synth{voices: make([]Voice, nTracks), verb: newReverb(), leadIn: true}
+	// Every voice's unit states too (about 80 KB), for the same reason: left
+	// to its first note, a voice allocated on the audio thread whenever that
+	// came, a lead with a low density many patterns in.
+	n := len(s.voices) + len(s.dvoices) + len(s.fx.shots)
+	states := make([]ustate, n*maxUnits)
+	i := 0
+	for _, vs := range [][]Voice{s.voices, s.dvoices[:], s.fx.shots[:]} {
+		for j := range vs {
+			vs[j].units = states[i*maxUnits : i*maxUnits : (i+1)*maxUnits]
+			i++
+		}
+	}
 	s.musicLevel.init()
 	s.sfxLevel.init()
 	s.apply(p)

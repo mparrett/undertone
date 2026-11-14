@@ -134,8 +134,8 @@ func (s ShotSpec) patch() (Patch, error) {
 	if !(s.GateMS >= 1 && s.GateMS <= 10000) {
 		return nil, fmt.Errorf("gate %v ms: want 1 to 10000", s.GateMS)
 	}
-	if len(s.Units) == 0 || len(s.Units) > 32 {
-		return nil, fmt.Errorf("%d units: want 1 to 32", len(s.Units))
+	if len(s.Units) == 0 || len(s.Units) > maxUnits {
+		return nil, fmt.Errorf("%d units: want 1 to %d", len(s.Units), maxUnits)
 	}
 	p := make(Patch, len(s.Units))
 	depth, envs, outs := 0, 0, 0

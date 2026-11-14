@@ -107,3 +107,38 @@ func TestFadeInAskedForWhileOpeningStartsFromItsSetLevel(t *testing.T) {
 		t.Error("a fade-in asked for while opening did not start from its set level")
 	}
 }
+
+// A fade asked for before music-start plays when the music starts, and a
+// later music-start resumes at the level it reached rather than fading in
+// again.
+func TestFadeInPlaysOnceAcrossRestarts(t *testing.T) {
+	p := engine.DeriveDungeon(7, 3, 0.5)
+	m := NewMusic(p)
+	m.setGain(musicBus, 0)
+	m.glideGain(musicBus, 0.5, 0.2)
+	open := func(io.Reader) (output, error) { return gainTestOutput{}, nil }
+	frames := func() []byte { return make([]byte, engine.SampleRate/4*4) }
+
+	m.start(open)
+	ref := engine.NewSynth(p)
+	ref.SetMusicGain(0)
+	ref.GlideMusicGain(0.5, 0.2)
+	want, got := frames(), frames()
+	ref.Read(want)
+	m.synth.Read(got)
+	if !bytes.Equal(got, want) {
+		t.Error("a fade asked for before music-start did not play")
+	}
+
+	m.Stop()
+	m.start(open)
+	defer m.Stop()
+	ref = engine.NewSynth(p)
+	ref.SetMusicGain(0.5)
+	want, got = frames(), frames()
+	ref.Read(want)
+	m.synth.Read(got)
+	if !bytes.Equal(got, want) {
+		t.Error("a restart faded in again instead of resuming at 0.5")
+	}
+}

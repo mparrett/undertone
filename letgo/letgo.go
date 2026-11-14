@@ -51,10 +51,12 @@ type Music struct {
 	nowWaiting bool
 
 	// gains are the last set-/glide-music-gain and -sfx-gain, carried into a
-	// synth that starts later. gainGen counts the requests, so start can
-	// tell whether any came while the output was opening.
-	gains   [nBuses]busGain
-	gainGen int
+	// synth that starts later.
+	gains [nBuses]busGain
+	// opening is the synth start built while its output opens (a browser
+	// waiting for the unlock gesture): gain requests go straight to it, in
+	// the order the game made them, as they do to a playing synth.
+	opening *engine.Synth
 
 	// theme is an undertone/play-theme that came before music-start; it
 	// starts with the music.
@@ -271,7 +273,10 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	syn := engine.NewSynth(m.params)
 	// Output initialization may render audio before it returns.
 	m.applyGains(syn)
-	gen := m.gainGen
+	for b := range m.gains {
+		m.gains[b].pending = false
+	}
+	m.opening = syn
 	opening := m.theme
 	if opening != nil {
 		syn.PlayTheme(opening)
@@ -290,17 +295,13 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	defer m.mu.Unlock()
 	waited := m.nowWaiting
 	m.starting, m.nowWaiting = false, false
+	m.opening = nil
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "undertone/music-start:", err)
 		return vm.NIL
 	}
 	m.out = out
 	m.synth = syn
-	// Only what changed while the output opened: re-applying an unchanged
-	// glide to a synth that may have rendered would restart it.
-	if m.gainGen != gen {
-		m.applyGains(syn)
-	}
 	// Parameters may have moved while we waited for the gesture; the synth was
 	// built from a snapshot, so catch it up to whatever is current.
 	if waited {
@@ -380,35 +381,44 @@ const (
 
 // busGain is the last level a game asked of one bus. set keeps the zero value
 // from meaning silence; secs is the glide asked for, negative for the
-// engine's default. start is the last plain set, the level a glide asked for
-// before playback runs from (the engine's rule), kept so a fade-in requested
-// while the output opens still starts from it.
+// engine's default. start is the last plain set. pending marks a request no
+// synth has had yet: a fade asked for before music-start.
 type busGain struct {
 	g, secs float64
 	set     bool
 	start   float64
 	started bool
+	pending bool
 }
 
-// apply hands the level to syn: the starting level first, then the last
-// request, so a synth that has not rendered starts where the game set it
-// and glides from there.
-func (bg busGain) apply(b bus, syn *engine.Synth) {
-	if !bg.set {
-		return
-	}
-	set, glide := syn.SetMusicGain, syn.GlideMusicGain
-	if b == sfxBus {
-		set, glide = syn.SetSfxGain, syn.GlideSfxGain
-	}
+// request hands one set (secs < 0) or glide to syn.
+func request(b bus, syn *engine.Synth, g, secs float64) {
 	switch {
-	case bg.secs < 0:
-		set(bg.g)
-	case bg.started:
-		set(bg.start)
-		glide(bg.g, bg.secs)
+	case b == musicBus && secs < 0:
+		syn.SetMusicGain(g)
+	case b == musicBus:
+		syn.GlideMusicGain(g, secs)
+	case secs < 0:
+		syn.SetSfxGain(g)
 	default:
-		glide(bg.g, bg.secs)
+		syn.GlideSfxGain(g, secs)
+	}
+}
+
+// apply hands the level to a synth that has not rendered. A pending glide
+// still plays, from the last set (the engine's rule for a glide before the
+// first frame); one some earlier synth already played is just where the
+// level ended up, so a restart resumes there instead of fading again.
+func (bg busGain) apply(b bus, syn *engine.Synth) {
+	switch {
+	case !bg.set:
+	case bg.pending && bg.secs >= 0:
+		if bg.started {
+			request(b, syn, bg.start, -1)
+		}
+		request(b, syn, bg.g, bg.secs)
+	default:
+		request(b, syn, bg.g, -1)
 	}
 }
 
@@ -417,8 +427,8 @@ func (bg busGain) apply(b bus, syn *engine.Synth) {
 func (m *Music) setGain(b bus, g float64) { m.glideGain(b, g, -1) }
 
 // glideGain is setGain over the given seconds while playing; a negative
-// seconds means the engine's default glide. Before playback starts there is
-// nothing to glide from, so the level applies from the start.
+// seconds means the engine's default glide. With no synth yet it is kept
+// for the next music-start.
 func (m *Music) glideGain(b bus, g, seconds float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -427,21 +437,13 @@ func (m *Music) glideGain(b bus, g, seconds float64) {
 	if seconds < 0 {
 		bg.start, bg.started = g, true
 	}
-	m.gainGen++
-	if m.synth == nil {
-		return
+	syn := m.synth
+	if syn == nil {
+		syn = m.opening
 	}
-	// A live synth glides from wherever it is; only a fresh one needs the
-	// starting level apply hands it.
-	switch {
-	case b == musicBus && seconds < 0:
-		m.synth.SetMusicGain(g)
-	case b == musicBus:
-		m.synth.GlideMusicGain(g, seconds)
-	case seconds < 0:
-		m.synth.SetSfxGain(g)
-	default:
-		m.synth.GlideSfxGain(g, seconds)
+	bg.pending = syn == nil
+	if syn != nil {
+		request(b, syn, g, seconds)
 	}
 }
 

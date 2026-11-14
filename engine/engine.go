@@ -1256,24 +1256,24 @@ type Synth struct {
 // for the fade a moment after music-start.
 type level struct {
 	to         atomic.Pointer[levelTarget]
-	start      atomic.Uint64 // float64 bits
 	gain, step float64
 	left       int
 	seen       *levelTarget
 	live       bool
 }
 
-// levelTarget is one Set/Glide call on a level; set marks a Set.
+// levelTarget is one Set/Glide call on a level; set marks a Set. start is
+// the level a first frame begins at under this target: the last Set's
+// gain, carried along in each target so the pair is read in one load.
 type levelTarget struct {
-	gain   float64
-	frames int
-	set    bool
+	gain, start float64
+	frames      int
+	set         bool
 }
 
 func (b *level) init() {
-	b.seen = &levelTarget{gain: 1}
+	b.seen = &levelTarget{gain: 1, start: 1}
 	b.gain = 1
-	b.start.Store(math.Float64bits(1))
 	b.to.Store(b.seen)
 }
 
@@ -1281,13 +1281,21 @@ func (b *level) init() {
 // level before the first frame.
 func (b *level) set(g float64) {
 	g = clampLevel(g)
-	b.start.Store(math.Float64bits(g))
-	b.to.Store(&levelTarget{gain: g, frames: glideFrames(levelGlide), set: true})
+	b.to.Store(&levelTarget{gain: g, start: g, frames: glideFrames(levelGlide), set: true})
 }
 
-// glide asks for g, clamped to 0..1, over the given seconds.
+// glide asks for g, clamped to 0..1, over the given seconds, keeping the
+// starting level of the target it replaces. The compare-and-swap keeps a
+// concurrent set's start from being lost.
 func (b *level) glide(g, seconds float64) {
-	b.to.Store(&levelTarget{gain: clampLevel(g), frames: glideFrames(seconds)})
+	t := &levelTarget{gain: clampLevel(g), frames: glideFrames(seconds)}
+	for {
+		old := b.to.Load()
+		t.start = old.start
+		if b.to.CompareAndSwap(old, t) {
+			return
+		}
+	}
 }
 
 func clampLevel(g float64) float64 {
@@ -1312,7 +1320,7 @@ func (b *level) next() float64 {
 	if t := b.to.Load(); t != b.seen {
 		b.seen = t
 		if !b.live {
-			b.gain = math.Float64frombits(b.start.Load())
+			b.gain = t.start
 		}
 		if t.frames == 0 || (!b.live && t.set) {
 			b.gain, b.left = t.gain, 0

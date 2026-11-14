@@ -295,8 +295,9 @@ var shotLib = map[string]shotDef{
 	"fall": {fall, 120},
 }
 
-// shotReq is a staged trigger. delay is in samples, counted down in frame(),
-// so a two-note pickup arpeggio is sample-accurate rather than host-timed.
+// shotReq is a staged trigger. delay is in samples from the first frame that
+// sees it, when it becomes due, an absolute frame, so a two-note pickup
+// arpeggio is sample-accurate rather than host-timed.
 type shotReq struct {
 	key   shotKey
 	patch Patch
@@ -304,6 +305,8 @@ type shotReq struct {
 	gain  float64
 	pan   float64
 	delay int
+	due   int64
+	dated bool // due is set
 	gate  int
 	seed  uint64
 }
@@ -339,11 +342,11 @@ type recentShot struct {
 const nRecent = 32
 
 // maxPending bounds the queue of shots waiting to start. A game hands over a
-// whole phrase in one Trigger batch, every note with its delay: xsofy's floor
-// change is a 16-step Shepard run of 42 notes and its arrival. At 32 the
-// queue dropped the run's first notes, its slow opening, before they played.
-// runShots walks the queue once a sample while it holds anything, so the
-// bound is also that walk's worst case.
+// whole phrase in one Trigger batch, every note with its delay, and past the
+// bound the oldest are dropped: at 32, a Shepard run in xsofy (42 notes as of
+// 2026-11-14) lost its opening before it played. runShots walks the queue
+// only when a shot is due or new, so a long phrase costs nothing between its
+// notes.
 const maxPending = 128
 
 // sfx is the Synth's one-shot state, mutex-guarded because Trigger arrives on
@@ -352,6 +355,8 @@ type sfx struct {
 	mu      sync.Mutex
 	pending []shotReq
 	waiting atomic.Bool // mirror of len(pending) > 0; lets frame() skip the lock
+	fresh   atomic.Bool // a trigger not yet dated by runShots
+	next    int64       // the earliest due frame pending; audio thread only
 	shots   [nShots]Voice
 	pan     [nShots]float64
 	pos     int
@@ -458,6 +463,7 @@ func (s *Synth) Trigger(name string, note int, gain, pan, delayMS float64, seed 
 	}
 	s.fx.pending = append(s.fx.pending, req)
 	s.fx.waiting.Store(true)
+	s.fx.fresh.Store(true)
 	s.fx.mu.Unlock()
 	return true
 }
@@ -481,17 +487,23 @@ func humanize(p Patch, seed uint64) Patch {
 }
 
 // runShots activates due triggers and mixes the live one-shot voices.
-// Called once per frame; the fast path (no shots, nothing pending) is two
-// comparisons and no lock.
+// Called once per frame; the fast path (nothing pending, or nothing new and
+// nothing due yet) is a few comparisons and no lock.
 func (s *Synth) runShots(l, r *float64) {
 	fx := &s.fx
-	if fx.waiting.Load() {
+	if fx.waiting.Load() && (fx.fresh.Load() || s.nframe >= fx.next) {
 		fx.mu.Lock()
+		fx.fresh.Store(false)
+		next := int64(math.MaxInt64)
 		keep := fx.pending[:0]
-		for _, q := range fx.pending {
-			if q.delay > 0 {
-				q.delay--
+		for i := range fx.pending {
+			q := fx.pending[i]
+			if !q.dated {
+				q.due, q.dated = s.nframe+int64(q.delay), true
+			}
+			if q.due > s.nframe {
 				keep = append(keep, q)
+				next = min(next, q.due)
 				continue
 			}
 			i := -1
@@ -510,6 +522,7 @@ func (s *Synth) runShots(l, r *float64) {
 			fx.pan[i] = q.pan
 		}
 		fx.pending = keep
+		fx.next = next
 		fx.waiting.Store(len(keep) > 0)
 		fx.mu.Unlock()
 	}

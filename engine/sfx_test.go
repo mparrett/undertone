@@ -123,7 +123,7 @@ func TestShotVoicesDie(t *testing.T) {
 
 // A phrase handed over in one batch plays from its first note. Every note is
 // queued with its delay at once, and a queue shorter than the phrase dropped
-// the oldest, so a long run lost its opening (xsofy's floor change, 42 notes).
+// the oldest, so a long run lost its opening.
 func TestLongBatchKeepsItsFirstNotes(t *testing.T) {
 	s := NewSynth(silentParams)
 	const n = 48

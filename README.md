@@ -189,6 +189,8 @@ audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 | `undertone/music-start`, `undertone/music-stop` | playback |
 | `undertone/set-music-gain` | the music's level under the one-shots, 0..1; glides there over 50 ms |
 | `undertone/glide-music-gain` | the same over a chosen number of seconds, to duck the music under a big one-shot and bring it back |
+| `undertone/set-sfx-gain` | every one-shot's level over the music, 0..1: the effects volume; glides there over 50 ms |
+| `undertone/glide-sfx-gain` | the same over a chosen number of seconds |
 | `undertone/set-queue` | browser only, and not in a `-w-audio` bundle (the seam owns the queue there): milliseconds of audio queued ahead of the speaker, for tuning per device without a rebuild; clamped to the ring, with the clamp reported on stderr |
 | `undertone/play-theme` | `{:grids [{:lead [1 0 3] :bass [1] :pulse [true] :drums ["X..." "" "x.x."] :bed false} ...] :then :generate}`: an authored theme, from its first grid at once; `:then` is `:generate`, `:silence` or `:loop`; nil stops it. Sent before `music-start`, it starts with the music |
 | `undertone/theme-playing?` | whether the last theme has still to finish |

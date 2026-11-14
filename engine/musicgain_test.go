@@ -18,22 +18,22 @@ func TestMusicGainGlides(t *testing.T) {
 	maxStep := 0.8/float64(frames) + 1e-12
 	for i := range frames {
 		s.frame()
-		if d := prev - s.mgain; d < 0 || d > maxStep {
-			t.Fatalf("frame %d: gain moved %v (from %v to %v), want a step in [0, %v]", i, d, prev, s.mgain, maxStep)
+		if d := prev - s.musicLevel.gain; d < 0 || d > maxStep {
+			t.Fatalf("frame %d: gain moved %v (from %v to %v), want a step in [0, %v]", i, d, prev, s.musicLevel.gain, maxStep)
 		}
-		prev = s.mgain
+		prev = s.musicLevel.gain
 	}
-	if s.mgain != 0.2 {
-		t.Fatalf("after the glide gain = %v, want exactly 0.2", s.mgain)
+	if s.musicLevel.gain != 0.2 {
+		t.Fatalf("after the glide gain = %v, want exactly 0.2", s.musicLevel.gain)
 	}
 
 	// Back to 1 lands exactly, so the bus is skipped (byte-identical) again.
 	s.SetMusicGain(1)
-	for range int(musicGlide*SampleRate) + 1 {
+	for range int(levelGlide*SampleRate) + 1 {
 		s.frame()
 	}
-	if s.mgain != 1 {
-		t.Fatalf("after returning gain = %v, want exactly 1", s.mgain)
+	if s.musicLevel.gain != 1 {
+		t.Fatalf("after returning gain = %v, want exactly 1", s.musicLevel.gain)
 	}
 }
 
@@ -41,8 +41,8 @@ func TestMusicGainBeforeFirstFrameIsImmediate(t *testing.T) {
 	s := NewSynth(DeriveDungeon(7, 3, 0.5))
 	s.SetMusicGain(0.25)
 	s.frame()
-	if s.mgain != 0.25 {
-		t.Fatalf("first frame gain = %v, want 0.25 at once", s.mgain)
+	if s.musicLevel.gain != 0.25 {
+		t.Fatalf("first frame gain = %v, want 0.25 at once", s.musicLevel.gain)
 	}
 }
 
@@ -53,14 +53,14 @@ func TestMusicGainRetargetsMidGlide(t *testing.T) {
 	for range SampleRate / 2 {
 		s.frame()
 	}
-	mid := s.mgain
+	mid := s.musicLevel.gain
 	if math.Abs(mid-0.5) > 0.01 {
 		t.Fatalf("halfway gain = %v, want ~0.5", mid)
 	}
 	// A new call starts from where the glide had reached, not from its target.
 	s.GlideMusicGain(1, 0.1)
 	s.frame()
-	if d := s.mgain - mid; d <= 0 || d > 0.5/(0.1*SampleRate)+1e-12 {
-		t.Fatalf("retarget jumped from %v to %v", mid, s.mgain)
+	if d := s.musicLevel.gain - mid; d <= 0 || d > 0.5/(0.1*SampleRate)+1e-12 {
+		t.Fatalf("retarget jumped from %v to %v", mid, s.musicLevel.gain)
 	}
 }

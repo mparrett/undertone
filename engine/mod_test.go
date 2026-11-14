@@ -86,7 +86,7 @@ func TestChainedScalesCannotOverflowTheBend(t *testing.T) {
 	s.Trigger("overbent", 60, 1, 0.5, 0, 1)
 	for range SampleRate / 10 {
 		var l, r float64
-		s.runShots(&l, &r)
+		s.runShots(&l, &r, &s.bus)
 		if math.IsNaN(l) || math.IsInf(l, 0) {
 			t.Fatalf("rendered %v", l)
 		}

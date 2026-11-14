@@ -198,7 +198,7 @@ func TestAcceptedShotsAreSafe(t *testing.T) {
 		for range 4 {
 			var l, rr float64
 			for f := 0; f < SampleRate/20; f++ {
-				syn.runShots(&l, &rr)
+				syn.runShots(&l, &rr, &syn.bus)
 				// the sends too: a shot's verb must not break the room
 				vl, _ := syn.verb.process(syn.bus.verb)
 				syn.bus = sends{}

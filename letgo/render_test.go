@@ -123,6 +123,25 @@ func TestRenderWAVHonorsTheMusicGain(t *testing.T) {
 	}
 }
 
+// So does the sfx gain: at 0 a shot leaves only the music.
+func TestRenderWAVHonorsTheSfxGain(t *testing.T) {
+	c := renderLg(t, "rendersfxgain")
+	bed, err := c.Run(`(undertone/render-wav nil 2.0 [])`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Run(`(undertone/set-sfx-gain 0.0)`); err != nil {
+		t.Fatal(err)
+	}
+	muted, err := c.Run(`(undertone/render-wav nil 2.0 [[0.5 :trigger {:shot :hit}]])`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if muted != bed {
+		t.Errorf("with the sfx gain at 0 the render is %v, want the bed alone %v", muted, bed)
+	}
+}
+
 // A bad script is an error, since it is a bug in the test that wrote it.
 func TestRenderWAVRejectsBadScripts(t *testing.T) {
 	c := renderLg(t, "renderbad")

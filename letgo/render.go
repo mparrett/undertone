@@ -32,9 +32,7 @@ func (m *Music) renderWAV(path vm.Value, seconds float64, script vm.Value) (vm.V
 		return vm.NIL, fmt.Errorf("undertone/render-wav: %w", err)
 	}
 	src := &scripted{s: engine.NewSynth(m.params), steps: steps}
-	if m.gainSet {
-		src.s.SetMusicGain(m.musicGain)
-	}
+	m.applyGains(src.s)
 	sum := sha256.New()
 	switch p := path.(type) {
 	case vm.String:

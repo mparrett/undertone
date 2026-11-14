@@ -6,7 +6,8 @@
 // runtime that links it needs no generated interop: lg code calls
 // undertone/set-parameters, undertone/set-parameters-now,
 // undertone/music-start, undertone/music-stop,
-// undertone/set-music-gain, undertone/glide-music-gain, undertone/set-queue,
+// undertone/set-music-gain, undertone/glide-music-gain, undertone/set-sfx-gain,
+// undertone/glide-sfx-gain, undertone/set-queue,
 // undertone/trigger, undertone/register-shot and undertone/render-wav
 // directly. The natives act
 // on a default Music until a Go host points them elsewhere with SetMusic.
@@ -53,6 +54,9 @@ type Music struct {
 	// starts later; gainSet keeps the zero value from meaning silence.
 	musicGain float64
 	gainSet   bool
+	// sfxGain is the same for undertone/set-sfx-gain.
+	sfxGain float64
+	sfxSet  bool
 
 	// theme is an undertone/play-theme that came before music-start; it
 	// starts with the music.
@@ -268,9 +272,7 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	m.starting = true
 	syn := engine.NewSynth(m.params)
 	// Output initialization may render audio before it returns.
-	if m.gainSet {
-		syn.SetMusicGain(m.musicGain)
-	}
+	m.applyGains(syn)
 	opening := m.theme
 	if opening != nil {
 		syn.PlayTheme(opening)
@@ -295,9 +297,7 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	}
 	m.out = out
 	m.synth = syn
-	if m.gainSet {
-		m.synth.SetMusicGain(m.musicGain)
-	}
+	m.applyGains(syn)
 	// Parameters may have moved while we waited for the gesture; the synth was
 	// built from a snapshot, so catch it up to whatever is current.
 	if waited {
@@ -384,6 +384,37 @@ func (m *Music) glideMusicGain(g, seconds float64) {
 		m.synth.SetMusicGain(g)
 	} else {
 		m.synth.GlideMusicGain(g, seconds)
+	}
+}
+
+// setSfxGain sets the one-shots' level (0..1) over the music, now if playing
+// and from the start otherwise.
+func (m *Music) setSfxGain(g float64) { m.glideSfxGain(g, -1) }
+
+// glideSfxGain is glideMusicGain for the one-shots.
+func (m *Music) glideSfxGain(g, seconds float64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sfxGain, m.sfxSet = g, true
+	if m.synth == nil {
+		return
+	}
+	if seconds < 0 {
+		m.synth.SetSfxGain(g)
+	} else {
+		m.synth.GlideSfxGain(g, seconds)
+	}
+}
+
+// applyGains carries the levels set so far into a new synth, at once: a synth
+// that has not rendered takes its first target without a glide. Called with
+// m.mu held.
+func (m *Music) applyGains(syn *engine.Synth) {
+	if m.gainSet {
+		syn.SetMusicGain(m.musicGain)
+	}
+	if m.sfxSet {
+		syn.SetSfxGain(m.sfxGain)
 	}
 }
 
@@ -614,6 +645,31 @@ func installNS() {
 			return vm.NIL, fmt.Errorf("undertone/glide-music-gain: seconds must not be negative, got %v", secs)
 		}
 		current.Load().glideMusicGain(g, secs)
+		return vm.NIL, nil
+	}))
+	// The one-shots' level over the music, as set-music-gain is the music's
+	// under them: a game's effects volume.
+	ns.Def("set-sfx-gain", native("set-sfx-gain", 1, func(a []vm.Value) (vm.Value, error) {
+		g, err := numArg("set-sfx-gain", "gain", a[0])
+		if err != nil {
+			return vm.NIL, err
+		}
+		current.Load().setSfxGain(g)
+		return vm.NIL, nil
+	}))
+	ns.Def("glide-sfx-gain", native("glide-sfx-gain", 2, func(a []vm.Value) (vm.Value, error) {
+		g, err := numArg("glide-sfx-gain", "gain", a[0])
+		if err != nil {
+			return vm.NIL, err
+		}
+		secs, err := numArg("glide-sfx-gain", "seconds", a[1])
+		if err != nil {
+			return vm.NIL, err
+		}
+		if !(secs >= 0) { // also refuses NaN
+			return vm.NIL, fmt.Errorf("undertone/glide-sfx-gain: seconds must not be negative, got %v", secs)
+		}
+		current.Load().glideSfxGain(g, secs)
 		return vm.NIL, nil
 	}))
 	// Milliseconds of audio kept queued ahead of the speaker, for tuning a

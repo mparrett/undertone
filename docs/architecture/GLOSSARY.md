@@ -26,6 +26,7 @@ source of truth for anything in code font.
 | **grit** | 0..1. It pushes `drive`, `crush` and `svf` resonance harder. Moods derive it from tension. |
 | **open** | -1..1. It moves every `svf` cutoff up to two octaves. Moods derive it from level. |
 | **music gain** | A master level on the music, applied below the one-shots (`SetMusicGain`). |
+| **sfx gain** | A master level on the one-shots and their sends, leaving the music alone (`SetSfxGain`). |
 
 ## Sequencer
 

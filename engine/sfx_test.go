@@ -2,6 +2,8 @@ package engine
 
 import (
 	"bytes"
+	"encoding/binary"
+	"math"
 	"testing"
 )
 
@@ -245,6 +247,45 @@ func TestMusicGainZeroKeepsShots(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("sample %d: %d, want %d", i, got[i], want[i])
 		}
+	}
+}
+
+// An sfx gain of 0 must leave the music exactly as it was: a full bed with a
+// shot at sfx gain 0 renders the same bytes as the bed with no shot.
+func TestSfxGainZeroKeepsMusic(t *testing.T) {
+	want := render(NewSynth(DeriveDungeon(7, 3, 0.5)), SampleRate/4)
+
+	s := NewSynth(DeriveDungeon(7, 3, 0.5))
+	s.SetSfxGain(0)
+	s.Trigger("hit", 60, 1, 0.5, 0, 11)
+	got := render(s, SampleRate/4)
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("sample %d: %d, want %d", i, got[i], want[i])
+		}
+	}
+}
+
+// An sfx gain scales a shot's level. The shot is quiet, so the output tanh is
+// near linear and half the gain is half the peak.
+func TestSfxGainScalesShots(t *testing.T) {
+	peak := func(g float64) float64 {
+		s := NewSynth(silentParams)
+		s.SetSfxGain(g)
+		s.Trigger("hit", 60, 0.1, 0.5, 0, 11)
+		buf := render(s, SampleRate/4)
+		var m float64
+		for i := 0; i < len(buf); i += 2 {
+			m = math.Max(m, math.Abs(float64(int16(binary.LittleEndian.Uint16(buf[i:])))))
+		}
+		return m
+	}
+	full, half := peak(1), peak(0.5)
+	if full < 100 {
+		t.Fatalf("peak at gain 1 is %v, too quiet to compare", full)
+	}
+	if r := half / full; math.Abs(r-0.5) > 0.02 {
+		t.Fatalf("peak at gain 0.5 is %v of the peak at 1, want 0.5", r)
 	}
 }
 

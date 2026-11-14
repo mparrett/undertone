@@ -489,7 +489,7 @@ func humanize(p Patch, seed uint64) Patch {
 // runShots activates due triggers and mixes the live one-shot voices.
 // Called once per frame; the fast path (nothing pending, or nothing new and
 // nothing due yet) is a few comparisons and no lock.
-func (s *Synth) runShots(l, r *float64) {
+func (s *Synth) runShots(l, r *float64, bus *sends) {
 	fx := &s.fx
 	if fx.waiting.Load() && (fx.fresh.Load() || s.nframe >= fx.next) {
 		fx.mu.Lock()
@@ -538,7 +538,7 @@ func (s *Synth) runShots(l, r *float64) {
 			}
 		}
 		var sl, sr float64
-		v.run(&sl, &sr, &s.bus)
+		v.run(&sl, &sr, bus)
 		mono := sl + sr
 		*l += mono * (1 - fx.pan[i])
 		*r += mono * fx.pan[i]

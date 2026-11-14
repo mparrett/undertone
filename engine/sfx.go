@@ -349,6 +349,9 @@ const nRecent = 32
 // notes.
 const maxPending = 128
 
+// maxDelayMS is the longest a trigger may ask to wait: a minute.
+const maxDelayMS = 60000
+
 // sfx is the Synth's one-shot state, mutex-guarded because Trigger arrives on
 // the lg thread while frame() drains on the audio callback goroutine.
 type sfx struct {
@@ -398,7 +401,7 @@ type Shot struct {
 }
 
 // TriggerShot stages a Shot, resolving a scale degree if that is how pitch
-// was expressed. Returns false if the patch name is unknown.
+// was expressed. It reports whether the shot was staged (see Trigger).
 func (s *Synth) TriggerShot(sh Shot) bool {
 	note := 60
 	switch {
@@ -433,15 +436,21 @@ func (s *Synth) resolveDegree(degree, octave int) int {
 
 // Trigger stages a one-shot. Unknown names are dropped, not errors: the sfx
 // vocabulary lives above this seam, and a stale name must not crash a game.
-// gain scales the patch's own levels; pan is 0..1; delayMS offsets the start.
+// gain scales the patch's own levels; pan is 0..1; delayMS offsets the start,
+// by up to maxDelayMS. It reports whether the shot was staged: false for an
+// unknown name or a delay out of range.
 func (s *Synth) Trigger(name string, note int, gain, pan, delayMS float64, seed uint64) bool {
 	d, ok := lookupShot(name)
 	if !ok {
 		return false
 	}
-	// A trigger's numbers are a game's, like its note (see minNote): a NaN
-	// or infinite gain or pan would reach the delay and reverb lines and
-	// stay there. The gain's ceiling is the one Params' gains have.
+	// A trigger's numbers are a game's, and the write-only contract cannot
+	// refuse one, so they are bounded here. The note is bounded as the voice
+	// will bound it (clampNote), so that two notes that will sound the same
+	// are one shot to the repeat gap. A NaN or infinite gain would reach the
+	// delay line through a send and stay there; its ceiling is the one
+	// Params' gains have.
+	note = clampNote(note)
 	if !(gain >= 0) { // also catches NaN
 		gain = 0
 	}
@@ -450,12 +459,14 @@ func (s *Synth) Trigger(name string, note int, gain, pan, delayMS float64, seed 
 		pan = 0
 	}
 	pan = min(pan, 1)
-	// A delay past a minute is a mistake, and one far enough out would hold
-	// a place in the queue for good.
-	if !(delayMS >= 0) {
-		delayMS = 0
+	// A delay past a minute, or one that is not a number, is a mistake:
+	// dropped like an unknown name, since held to a minute a batch of them
+	// would all sound at once then, and each would keep a place in the
+	// queue until it did.
+	if !(delayMS <= maxDelayMS) { // also catches NaN
+		return false
 	}
-	delayMS = min(delayMS, 60000)
+	delayMS = max(delayMS, 0)
 	req := shotReq{
 		key:   shotKey{name, note},
 		patch: humanize(d.patch, seed),

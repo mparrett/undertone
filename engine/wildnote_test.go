@@ -134,3 +134,54 @@ func TestPluckLineIsBoundedNotRetuned(t *testing.T) {
 		}
 	}
 }
+
+// A held note above the range sounds at the range's top, and a mood change
+// that leaves it alone must see it as the same note: comparing the voice's
+// bounded note with the pattern's unbounded one restarted it every time.
+func TestOutOfRangeHeldNoteIsNotRestarted(t *testing.T) {
+	p, _ := DeriveMood("dungeon", 7, 5, 0.5)
+	p.FifthOffset = 300
+	s := NewSynth(p)
+	playedRMS(s, 1)
+	s.SetParametersNow(p)
+	playedRMS(s, 2*nowBlock/float64(SampleRate))
+	if v := &s.voices[trackFifth]; v.pend.note != 0 || v.gainTo == 0 {
+		t.Errorf("the held fifth is being faded out for a restart (pending note %d, gain to %v)", v.pend.note, v.gainTo)
+	}
+}
+
+// Two notes past the range sound the same, so the repeat gap treats them as
+// one shot rather than stacking a voice for each.
+func TestOutOfRangeNotesShareTheRepeatGap(t *testing.T) {
+	p, _ := DeriveMood("dungeon", 7, 2, 0)
+	s := NewSynth(p)
+	for _, note := range []int{200, 260, 320, 100000} {
+		s.Trigger("pluck", note, 1, 0.5, 0, 1)
+	}
+	playedRMS(s, 0.01)
+	n := 0
+	for i := range s.fx.shots {
+		n += b2i(s.fx.shots[i].active)
+	}
+	if n != 1 {
+		t.Errorf("%d voices sounding, want 1", n)
+	}
+}
+
+// A delay out of range is dropped, not held to the bound, where a batch of
+// them would sound together a minute on.
+func TestTriggerDropsADelayOutOfRange(t *testing.T) {
+	p, _ := DeriveMood("dungeon", 7, 2, 0)
+	s := NewSynth(p)
+	for delay, want := range map[float64]bool{
+		0: true, -5: true, maxDelayMS: true,
+		maxDelayMS + 1: false, 1e300: false, math.Inf(1): false,
+	} {
+		if got := s.Trigger("hit", 60, 1, 0.5, delay, 1); got != want {
+			t.Errorf("delay %v ms: staged %v, want %v", delay, got, want)
+		}
+	}
+	if s.Trigger("hit", 60, 1, 0.5, math.NaN(), 1) {
+		t.Errorf("a NaN delay was staged")
+	}
+}

@@ -107,7 +107,7 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 	// largest of 402). A plucked string is struck afresh either way.
 	legato := v.active && samePatch(v.patch, patch)
 	v.patch = patch
-	v.note = max(minNote, min(note, maxNote))
+	v.note = clampNote(note)
 	v.gain = gain
 	v.gainTo = gain
 	v.pend = trackRow{}
@@ -197,6 +197,8 @@ const (
 	minNote = -48
 	maxNote = 180
 )
+
+func clampNote(n int) int { return max(minNote, min(n, maxNote)) }
 
 // maxPluckLine is the longest Karplus-Strong line, in samples: a string at
 // 8 Hz, just under note 0. The line is a period long and allocated on the
@@ -1559,7 +1561,7 @@ func (s *Synth) revoice(t, pat, row int) {
 		if left <= 0 {
 			break
 		}
-		if v.active && v.gate && v.note == tr.note && samePatch(v.patch, tr.patch) {
+		if v.active && v.gate && v.note == clampNote(tr.note) && samePatch(v.patch, tr.patch) {
 			v.gateRows = left
 			if v.gainTo != tr.gain {
 				v.glideGain(tr.gain)

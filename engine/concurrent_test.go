@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,6 +31,18 @@ func TestConcurrentControlWhileRendering(t *testing.T) {
 		t.Fatal(err)
 	}
 	shots := ShotNames()
+	// The registry is the process's and has no way to unregister, so the
+	// test takes its shots back out by hand: left in, every later test that
+	// ranges over ShotNames would play them too.
+	t.Cleanup(func() {
+		shotsMu.Lock()
+		defer shotsMu.Unlock()
+		for name := range shotReg {
+			if strings.HasPrefix(name, "concurrent-") {
+				delete(shotReg, name)
+			}
+		}
+	})
 
 	controls := []func(i int){
 		func(i int) { s.SetParameters(params[i%len(params)]) },

@@ -101,6 +101,14 @@ type Voice struct {
 	// voices gate in rows via step(); one-shots are off the grid, so their
 	// gate expires in samples instead. Zero for sequencer voices.
 	gateSamples int
+
+	// line is a Karplus-Strong line the voice was given with the synth
+	// (NewSynth), maxPluckLine long, so its strings allocate nothing on the
+	// audio thread. One pluck unit per note plays in it; lineOut says one
+	// has taken it. A voice made without one, or a patch's second string,
+	// allocates its own.
+	line    []float64
+	lineOut bool
 }
 
 func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint64) {
@@ -122,12 +130,20 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 		v.units = make([]ustate, len(patch))
 	}
 	v.units = v.units[:len(patch)]
+	v.lineOut = false
 	for i := range v.units {
 		u := &v.units[i]
+		// A unit keeps a line of its own for its next note, emptied so the
+		// string is struck afresh. The voice's line it hands back: the patch
+		// may have changed, and the string now be another unit.
+		ks := u.ks[:0]
+		if v.line != nil && cap(ks) > 0 && &ks[:1][0] == &v.line[0] {
+			ks = nil
+		}
 		if legato {
-			*u = ustate{phase: u.phase, env: u.env, lp: u.lp, ic2: u.ic2, ks: u.ks[:0]}
+			*u = ustate{phase: u.phase, env: u.env, lp: u.lp, ic2: u.ic2, ks: ks}
 		} else {
-			*u = ustate{ks: u.ks[:0]}
+			*u = ustate{ks: ks}
 		}
 		u.sweep = 1
 		u.rng = seed*2862933555777941757 + uint64(i) + 3037000493
@@ -205,11 +221,10 @@ const (
 func clampNote(n int) int { return max(minNote, min(n, maxNote)) }
 
 // maxPluckLine is the longest Karplus-Strong line, in samples: a string at
-// 8 Hz, just under note 0. The line is a period long and allocated on the
-// audio thread, so without a bound a note far enough down asked for
-// megabytes, and further down for a slice too long to make, which panicked.
-// No built-in plucks below note 12.
-const maxPluckLine = SampleRate / 8
+// 16 Hz, just under note 12. The line is a period long, so without a bound a
+// note far enough down asked for megabytes, and further down for a slice too
+// long to make, which panicked. No built-in plucks below note 12.
+const maxPluckLine = SampleRate / 16
 
 // fadeFrames is how long a gain glide takes: about 5 ms, short enough to
 // sound like a switch and long enough not to click.
@@ -475,13 +490,16 @@ func (v *Voice) run(l, r *float64, b *sends) {
 				// bounded as a float: converting a period too long for an
 				// int gives a different answer on each architecture
 				n := int(max(2, min(SampleRate/freq, maxPluckLine)))
-				// A voice's first string takes room for the longest line
-				// (43 KB), so no later note allocates on the audio thread:
-				// sized to its own note, a lead allocated again each time
-				// it walked lower than it had been.
-				if cap(s.ks) >= n {
+				// The voice's line if it has one free, else the unit's own.
+				// One it has to make takes room for the longest, so no
+				// later note makes another: sized to its own note, a lead
+				// allocated again each time it walked lower than it had.
+				switch {
+				case v.line != nil && !v.lineOut:
+					s.ks, v.lineOut = v.line[:n], true
+				case cap(s.ks) >= n:
 					s.ks = s.ks[:n]
-				} else {
+				default:
 					s.ks = make([]float64, n, maxPluckLine)
 				}
 				for i := range s.ks {
@@ -1420,13 +1438,19 @@ func NewSynth(p Params) *Synth {
 	s := &Synth{voices: make([]Voice, nTracks), verb: newReverb(), leadIn: true}
 	// Every voice's unit states too (about 80 KB), for the same reason: left
 	// to its first note, a voice allocated on the audio thread whenever that
-	// came, a lead with a low density many patterns in.
+	// came, a lead with a low density many patterns in. And a string's line
+	// for each track and one-shot voice (about 300 KB): any of them may be
+	// given a plucked patch. No drum is a string.
 	n := len(s.voices) + len(s.dvoices) + len(s.fx.shots)
 	states := make([]ustate, n*maxUnits)
+	lines := make([]float64, (len(s.voices)+len(s.fx.shots))*maxPluckLine)
 	i := 0
-	for _, vs := range [][]Voice{s.voices, s.dvoices[:], s.fx.shots[:]} {
+	for _, vs := range [][]Voice{s.voices, s.fx.shots[:], s.dvoices[:]} {
 		for j := range vs {
 			vs[j].units = states[i*maxUnits : i*maxUnits : (i+1)*maxUnits]
+			if (i+1)*maxPluckLine <= len(lines) {
+				vs[j].line = lines[i*maxPluckLine : (i+1)*maxPluckLine : (i+1)*maxPluckLine]
+			}
 			i++
 		}
 	}

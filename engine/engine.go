@@ -162,10 +162,15 @@ func noteInc(semis float64) float64 {
 	return 440 * math.Pow(2, (semis-69)/12) / SampleRate
 }
 
+// minLineSweep is the shortest sweep decay, in seconds, whose pitch is
+// stepped in 16-sample lines; a quicker one bends too far within a line and
+// is worked out every sample.
+const minLineSweep = 0.01
+
 // sine is sin(2πx) for a phase x in 0..1, within 1e-9: about 180 dB under
-// the wave. math.Sin was up to a fifth of a mix's cost, with a sine in most
-// patches, and it is accurate to the last bit over the whole number line,
-// which a phase already in one turn does not need. The phase is folded onto
+// the wave. There is a sine in most patches, and math.Sin is accurate to the
+// last bit over the whole number line, which costs more than a phase already
+// in one turn needs. The phase is folded onto
 // the quarter wave either side of zero and the series summed there, where
 // seven terms are enough.
 func sine(x float64) float64 {
@@ -356,14 +361,19 @@ func (v *Voice) run(l, r *float64, b *sends) {
 					s.kset = true
 				}
 				inc = s.k
+			} else if u.p[3] < minLineSweep {
+				// too quick a sweep for the line below to follow: a shot
+				// spec may ask for one that is over within a few samples
+				inc = noteInc(float64(v.note) + u.p[0] + u.p[2]*s.sweep)
+				s.sweep -= s.sweep / (u.p[3]*SampleRate + 1)
 			} else {
 				// A sweep's pitch is worked out every 16th sample and runs
-				// in a straight line between, where a pow every sample was
-				// a quarter of a busy mix's cost (the kick, the pulse and
-				// most one-shots sweep). The line is within a ten-thousandth
-				// of the curve for the kick; s.sweep is the sweep at the end
-				// of the line, and falls by the same factor each sample as
-				// it did when it was stepped each sample.
+				// in a straight line between, sparing a pow every sample
+				// (the kick, the pulse and most one-shots sweep).
+				// TestSweepFollowsItsCurve holds the line to the curve;
+				// s.sweep is the sweep at the end of the line, and falls
+				// by the same factor each sample as it did when it was
+				// stepped each sample.
 				if s.tick == 0 {
 					base := float64(v.note) + u.p[0]
 					if !s.kset {
@@ -405,8 +415,6 @@ func (v *Voice) run(l, r *float64, b *sends) {
 				} else {
 					x = -1
 				}
-			case shpNoise:
-				x = s.noise()
 			}
 			stack[sp] = x
 			sp++
@@ -1472,8 +1480,8 @@ func (s *Synth) meter(l, r float64) {
 }
 
 // publishLevels makes the envelopes readable from other goroutines. Read
-// calls it once per buffer: a meter is drawn a few dozen times a second, and
-// four atomic stores every sample were a few percent of the render.
+// calls it once per buffer, not once per sample: a meter is drawn a few
+// dozen times a second.
 func (s *Synth) publishLevels() {
 	for i := range s.menv {
 		atomic.StoreUint64(&s.mout[i], math.Float64bits(s.menv[i]))

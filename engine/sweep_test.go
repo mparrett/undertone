@@ -61,6 +61,20 @@ func TestSweepFollowsItsCurve(t *testing.T) {
 	}
 }
 
+// A shot spec may ask for any sweep within 48 semitones and any decay from
+// zero up, far quicker than a built-in patch's. The widest sweep stays on
+// its curve at every decay, on both sides of minLineSweep.
+func TestSweepFollowsItsCurveAtAnyDecay(t *testing.T) {
+	for _, decay := range []float64{0, 0.0001, 0.001, minLineSweep - 1e-6, minLineSweep, 0.02, 0.5} {
+		for _, semis := range []float64{48, -48} {
+			cents, turns := sweepError(Unit{opOsc, [4]float64{0, shpSine, semis, decay}}, 45)
+			if cents > 3 || turns > 0.02 {
+				t.Errorf("sweep %v over %v s: strays %.2f cents and %.4f turns from its curve, want within 3 and 0.02", semis, decay, cents, turns)
+			}
+		}
+	}
+}
+
 // sine stands in for math.Sin on a phase in 0..1.
 func TestSineIsAccurate(t *testing.T) {
 	worst := 0.0

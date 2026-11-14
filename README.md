@@ -8,9 +8,7 @@ per-sample VM, a tracker-style sequencer drives them, and the whole track is
 derived from a seed.
 
 **Try it in a browser: [matt.parrett.us/undertone](https://matt.parrett.us/undertone/)**
-(the [grid](https://matt.parrett.us/undertone/grid/), the
-[player](https://matt.parrett.us/undertone/player/), and a
-[let-go-driven descent](https://matt.parrett.us/undertone/descent/)).
+([Pages](#pages) lists every demo, diagram and doc).
 
 [![The grid example: a step sequencer playing over the engine's bed, with lg mutations and a mood change](docs/grid.gif)](https://matt.parrett.us/undertone/grid-lg/)
 
@@ -26,10 +24,34 @@ The module has these parts:
 
 [VISION.md](VISION.md) says what undertone is for and what it won't be.
 
-[docs/vm.md](docs/vm.md) explains how the synth VM makes a sample and where its limits are.
-
 `cmd/lghost` is a minimal lg runner with the binding linked in, for trying the
 namespace without lgx.
+
+## Pages
+
+Everything there is to look at or listen to, in one place.
+
+| Page | What it is |
+|---|---|
+| [index](https://matt.parrett.us/undertone/) | The demos' landing page. |
+| [grid](https://matt.parrett.us/undertone/grid/) | A step sequencer: lead, bass, pulse and drum lanes over the generated bed, in any mood. A link carries the pattern. |
+| [grid-lg](https://matt.parrett.us/undertone/grid-lg/) | The grid with a mutate button whose variations are lg code; the GIF above. |
+| [player](https://matt.parrett.us/undertone/player/) | The engine alone, generative, with a four-band meter and query-string controls. |
+| [designer](https://matt.parrett.us/undertone/designer/) | Shape a mood by ear and export it as EDN. |
+| [descent](https://matt.parrett.us/undertone/descent/) | let-go driving the music and sound effects through a scripted descent and fight. |
+| [layers, current](docs/architecture/current/diagram.png) | The pipeline from game to speaker, as it stood on 2026-10-17: knobs, sequencer, unit VM, buses, output. |
+| [layers, decided](docs/architecture/decided/diagram.png) | The same layers with each issue placed where it lands, as decided on 2026-10-18. |
+| [docs/vm.md](docs/vm.md) | How the synth VM makes a sample, and its limits. |
+| [examples/README.md](examples/README.md) | Building and running each demo locally. |
+| [tesserae: the one-VM audio spike](https://github.com/mparrett/tesserae/blob/main/docs/audio/one-vm-spike.md) | How a let-go game plays undertone in the browser from its own worker, the design let-go's browser audio grew from. |
+| [tesserae: the two-VM bridge](https://github.com/mparrett/tesserae/blob/main/docs/audio/two-vm-bridge.html) | The earlier design it replaced: a second wasm on the page. |
+
+The demos rebuild from `main` on every push (`.github/workflows/pages.yml`).
+The diagrams are drawn with agent-diagrams from the `diagram-state.json`
+beside each. They predate authored themes and `set-parameters-now`, and show
+let-go's audio seam only as planned; it has since landed, natively
+([#82](https://github.com/mparrett/undertone/pull/82)) and in the browser
+([#86](https://github.com/mparrett/undertone/pull/86)).
 
 ## The engine
 

@@ -67,7 +67,9 @@ type ustate struct {
 	rng                   uint64
 	ks                    []float64 // Karplus-Strong delay line, allocated on first sample
 	kpos                  int       // pluck: read position; swept svf and bent osc: control-rate counter
-	k                     float64   // cached per-note coefficient: osc phase increment (no sweep) or lpf c
+	k                     float64   // cached per-note coefficient: osc phase increment or lpf c
+	dk                    float64   // swept osc: k's step per sample
+	tick                  int       // swept osc: control-rate counter (kpos is the bend's)
 	g, g1, g2             float64   // svf, drive, crush: constants derived from grit g; osc: g1 is its bend ratio
 	gset                  bool      // g1 and g2 hold for grit g
 	ko                    float64   // svf: the open its coefficient k was computed at
@@ -152,6 +154,35 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 			u.lp = u.noise()
 		}
 	}
+}
+
+// noteInc is the phase an oscillator advances per sample at a pitch in
+// semitones, 69 being 440 Hz.
+func noteInc(semis float64) float64 {
+	return 440 * math.Pow(2, (semis-69)/12) / SampleRate
+}
+
+// minLineSweep is the shortest sweep decay, in seconds, whose pitch is
+// stepped in 16-sample lines; a quicker one bends too far within a line and
+// is worked out every sample.
+const minLineSweep = 0.01
+
+// sine is sin(2πx) for a phase x in 0..1, within 1e-9: about 180 dB under
+// the wave. There is a sine in most patches, and math.Sin is accurate to the
+// last bit over the whole number line, which costs more than a phase already
+// in one turn needs. The phase is folded onto
+// the quarter wave either side of zero and the series summed there, where
+// seven terms are enough.
+func sine(x float64) float64 {
+	x -= 0.5 // sin(2πx) = -sin(2π(x-0.5)), and x-0.5 is within a half turn of zero
+	if x > 0.25 {
+		x = 0.5 - x
+	} else if x < -0.25 {
+		x = -0.5 - x
+	}
+	z := 2 * math.Pi * x
+	z2 := z * z
+	return -z * (1 + z2*(-1.0/6+z2*(1.0/120+z2*(-1.0/5040+z2*(1.0/362880+z2*(-1.0/39916800+z2*(1.0/6227020800)))))))
 }
 
 // noise steps the unit's LCG and returns a sample in -1..1.
@@ -316,20 +347,50 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			stack[sp] = s.env
 			sp++
 		case opOsc:
+			if int(u.p[1]) == shpNoise {
+				// noise has no pitch to work out
+				stack[sp] = s.noise()
+				sp++
+				break
+			}
 			var inc float64
 			if u.p[2] == 0 {
 				// no sweep: pitch is fixed for the note's life, so pow runs once
 				if !s.kset {
-					semis := float64(v.note) + u.p[0] + u.p[2]*s.sweep
-					s.k = 440 * math.Pow(2, (semis-69)/12) / SampleRate
+					s.k = noteInc(float64(v.note) + u.p[0])
 					s.kset = true
 				}
-				s.sweep -= s.sweep / (u.p[3]*SampleRate + 1)
 				inc = s.k
-			} else {
-				semis := float64(v.note) + u.p[0] + u.p[2]*s.sweep
+			} else if u.p[3] < minLineSweep {
+				// too quick a sweep for the line below to follow: a shot
+				// spec may ask for one that is over within a few samples
+				inc = noteInc(float64(v.note) + u.p[0] + u.p[2]*s.sweep)
 				s.sweep -= s.sweep / (u.p[3]*SampleRate + 1)
-				inc = 440 * math.Pow(2, (semis-69)/12) / SampleRate
+			} else {
+				// A sweep's pitch is worked out every 16th sample and runs
+				// in a straight line between, sparing a pow every sample
+				// (the kick, the pulse and most one-shots sweep).
+				// TestSweepFollowsItsCurve holds the line to the curve;
+				// s.sweep is the sweep at the end of the line, and falls
+				// by the same factor each sample as it did when it was
+				// stepped each sample.
+				if s.tick == 0 {
+					base := float64(v.note) + u.p[0]
+					if !s.kset {
+						s.k = noteInc(base + u.p[2]*s.sweep)
+						s.kset = true
+					}
+					r := 1 - 1/(u.p[3]*SampleRate+1)
+					r *= r
+					r *= r
+					r *= r
+					r *= r // 16 samples on
+					s.sweep *= r
+					s.dk = (noteInc(base+u.p[2]*s.sweep) - s.k) / 16
+				}
+				s.tick = (s.tick + 1) & 15
+				inc = s.k
+				s.k += s.dk
 			}
 			if bend != 0 {
 				// exp2 every 16th sample, as a swept svf does: vibrato
@@ -345,7 +406,7 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			var x float64
 			switch int(u.p[1]) {
 			case shpSine:
-				x = math.Sin(2 * math.Pi * s.phase)
+				x = sine(s.phase)
 			case shpSaw:
 				x = 2*s.phase - 1
 			case shpPulse:
@@ -354,8 +415,6 @@ func (v *Voice) run(l, r *float64, b *sends) {
 				} else {
 					x = -1
 				}
-			case shpNoise:
-				x = s.noise()
 			}
 			stack[sp] = x
 			sp++
@@ -431,7 +490,7 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			var x float64
 			switch int(u.p[1]) {
 			case 0:
-				x = math.Sin(2 * math.Pi * s.phase)
+				x = sine(s.phase)
 			case 1:
 				x = 1 - 4*math.Abs(s.phase-0.5)
 			default:
@@ -1417,11 +1476,20 @@ func (s *Synth) meter(l, r float64) {
 		if b > s.menv[i] {
 			s.menv[i] = b
 		}
+	}
+}
+
+// publishLevels makes the envelopes readable from other goroutines. Read
+// calls it once per buffer, not once per sample: a meter is drawn a few
+// dozen times a second.
+func (s *Synth) publishLevels() {
+	for i := range s.menv {
 		atomic.StoreUint64(&s.mout[i], math.Float64bits(s.menv[i]))
 	}
 }
 
-// Levels returns the current per-band envelopes (sub, low-mid, mid, high).
+// Levels returns the per-band envelopes (sub, low-mid, mid, high) as of the
+// end of the last Read. Safe to call from any goroutine.
 func (s *Synth) Levels() [4]float64 {
 	var v [4]float64
 	for i := range v {
@@ -1752,6 +1820,7 @@ func (s *Synth) Read(p []byte) (int, error) {
 		binary.LittleEndian.PutUint16(p[i+2:], uint16(r))
 	}
 	s.frames.Store(s.nframe)
+	s.publishLevels()
 	return n, nil
 }
 

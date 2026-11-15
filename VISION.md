@@ -92,6 +92,6 @@ As of 2026-10-18:
 It grew out of xsofy's search for an audio seam: a GL spike led back to ebiten, and
 ebiten to oto, a Go audio output that works natively and in wasm. At about the same
 time [Overtone](https://github.com/overtone/overtone) and
-[sointu](https://github.com/vsariola/sointu) came into my awareness. undertone took sointu's shape (a tiny
-per-sample VM of synth units, driven by a tracker) and Overtone's split: lg is the
-control language, and Go makes the samples.
+[Sointu](https://github.com/vsariola/sointu) came into my awareness. undertone took
+Sointu's shape (a tiny per-sample VM of synth units, driven by a tracker) and
+Overtone's split: lg is the control language, and Go makes the samples.

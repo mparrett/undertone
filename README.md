@@ -408,8 +408,8 @@ introduced Sointu to this project and prompted it. To
 [Overtone](https://github.com/overtone/overtone)
 ([overtone.github.io](https://overtone.github.io/)), the Clojure live-coding
 environment built on SuperCollider, which govertone set out to echo on Sointu.
-undertone's name plays on Overtone and govertone, and it keeps Overtone's
-split: a Lisp to steer, an engine to make the samples.
+undertone's name plays on Overtone, and it keeps Overtone's split: a Lisp to
+steer, an engine to make the samples.
 
 ## License
 

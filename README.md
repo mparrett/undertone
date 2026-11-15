@@ -403,8 +403,13 @@ Extracted on 2026-10-09 from a private workspace, where it began as
 To [jasalt](https://github.com/jasalt), whose
 [govertone](https://github.com/jasalt/govertone), an experiment pairing Sointu
 with let-go shared in the Clojurians Slack `#let-go` channel in July 2026,
-introduced Sointu to this project and prompted it. And to
-[vsariola](https://github.com/vsariola) for Sointu itself.
+introduced Sointu to this project and prompted it. To
+[vsariola](https://github.com/vsariola) for Sointu itself. And to
+[Overtone](https://github.com/overtone/overtone)
+([overtone.github.io](https://overtone.github.io/)), the Clojure live-coding
+environment built on SuperCollider, which govertone set out to echo on Sointu.
+undertone's name plays on both, and it keeps Overtone's split: a Lisp to
+steer, an engine to make the samples.
 
 ## License
 

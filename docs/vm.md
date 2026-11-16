@@ -128,8 +128,9 @@ counted in 16ths from where its run began:
   running.
 
 **Patches are code.** Built-in patches are Go tables. A game can add one-shots
-through `ShotSpec` (validated, fuzzed), but a mood's palette can only use
-built-in patches.
+through `ShotSpec` (validated, fuzzed), and palettes and leads through
+`PaletteSpec` and `LeadSpec`, checked as a shot is but with a bed's release
+and gain.
 
 ## What sointu has that we lack
 

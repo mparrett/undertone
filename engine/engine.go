@@ -1077,9 +1077,22 @@ var leadLib = map[string]leadDef{
 // leadTrim scales a lead voice in the generator's mix, so a quiet patch is
 // not lost under the bed. Chosen by ear on the lead-level tuner (2026-10-10):
 // the pluck sat about 23 dB under the bell at equal gain and is raised 10 dB.
-// A voice missing here plays at 0, so every lead needs an entry.
+// Every built-in lead needs an entry: one missing plays at leadGain's 1.
 var leadTrim = map[string]float64{
 	"bell": 1, "chime": 1, "clang": 1, "kalimba": 1, "reed": 1, "pluck": 3.162,
+}
+
+// leadGain is a lead's trim. No lead plays at 0, and a registered one at 1,
+// unmeasured, its patch's out gain standing in for a trim. It reads no
+// registry: it runs on the audio thread, which takes no locks.
+func leadGain(name string) float64 {
+	if t, ok := leadTrim[name]; ok {
+		return t
+	}
+	if name == "" {
+		return 0
+	}
+	return 1
 }
 
 // mood-weighted audition lists; the seed picks (kaiju trick applied to
@@ -1104,7 +1117,7 @@ func pickLead(p *Params, names []string) {
 }
 
 func ApplyLead(p *Params, name string) {
-	if d, ok := leadLib[name]; ok {
+	if d, ok := lookupLead(name); ok {
 		p.LeadName, p.LeadGate, p.Palette.Bell = d.name, d.gate, d.patch
 	}
 }
@@ -1247,7 +1260,7 @@ func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 		if r.f() < p.BellDensity {
 			deg += r.n(5) - 2
 			deg = max(3, min(deg, 2*n+3))
-			out[3][i] = trackRow{chord + scaleTone(p.Scale, deg) + p.BellLift, 0.55 * leadTrim[p.LeadName], p.LeadGate, p.Palette.Bell}
+			out[3][i] = trackRow{chord + scaleTone(p.Scale, deg) + p.BellLift, 0.55 * leadGain(p.LeadName), p.LeadGate, p.Palette.Bell}
 		}
 	}
 	// Without a lead the walk is still drawn, so the pulse below draws the

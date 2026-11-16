@@ -151,8 +151,35 @@ From lg, a mood is a map in the shape of `ambience/moods`, with a `:palette`:
 
 The [designer](examples/designer) shapes one by ear and exports it as that
 map (`MoodSpec.EDN`). `engine.PaletteNames`, `LeadNames` and `GrooveNames` list
-what a mood can name. Patches themselves stay built-in; a game's own one-shot
-sounds go through `undertone/register-shot` (`engine.RegisterShot` from Go).
+what a mood can name, built-in and registered.
+
+### Your own palettes and leads
+
+A mood's patches can be a game's own too. `engine.RegisterPalette` (or
+`undertone/register-palette`) makes a `PaletteSpec`, the patch each track plays
+and the drum kit's lanes, a palette a mood names like a built-in one, and
+`engine.RegisterLead` (`undertone/register-lead`) does the same for a lead.
+`PaletteSpecByName` and `LeadSpecByName` give any built-in in that form to
+start from:
+
+```clojure
+(undertone/register-palette
+  {:name :ember
+   :drone {:name :ember-drone :patch [[:env 4.0 2.0 1.0 8.0] [:osc 0.0 :saw 0.0 1.0]
+                                      [:mul] [:lpf 220.0] [:out 0.4 0.5]]}
+   :fifth :smear :pad :smear :air :hiss :pulse :grind
+   :kit [{:note 33 :patch :slam} :default :default]})
+(undertone/register-lead {:name :glass :gate 1 :patch [[:env 0.001 1.2 0 0.6] [:osc 0 :sine 0 1]
+                                                         [:mul] [:send 0.5] [:out 0.5 0.5]]})
+(undertone/set-parameters {:palette :ember :lead :glass})
+```
+
+A track names a built-in patch by keyword or gives its units. A palette's
+patches are checked as a shot's are, but may release over up to 10 s and
+out at up to 4, as the built-in beds do. A palette's `:bell` may be left out:
+a mood with leads replaces it with its lead. A registered lead plays at the
+level its patch sets, without the measured trim a built-in lead has.
+`PaletteSpec.EDN` and `LeadSpec.EDN` write the maps these take.
 
 ### Determinism
 
@@ -196,6 +223,7 @@ audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 | `undertone/theme-playing?` | whether the last theme has still to finish |
 | `undertone/trigger` | a trigger map (`{:shot :hit :gain 0.8 :pan 0.3}`) or a vector of them; fire-and-forget |
 | `undertone/register-shot` | a game's own one-shot (`{:name :ping :gate-ms 20 :patch [[:env 0.001 0.2 0 0.1] [:osc 0 :sine 0 1] [:mul] [:out 0.5 0.5]]}`); a patch the synth could not run safely is an error |
+| `undertone/register-palette`, `undertone/register-lead` | a game's own palette or lead, for a mood's `:palette`, `:leads` or a `:lead` (`PaletteSpec.EDN`, `LeadSpec.EDN`); an error as for a shot |
 | `undertone/render-wav` | `(undertone/render-wav "out.wav" 20.0)`: offline render of the current parameters and music gain (set it to 0 to render shots dry), for checking determinism without a sound card. It returns the PCM's SHA-256 as hex, and a nil path skips the file. An optional script plays calls at given seconds, so a test can pin a theme or an outro by hash: `[[0.0 :play-theme {...}] [4.5 :trigger {:shot :hit}] [8.0 :set-parameters-now {:mood :rust}]]`, with `:set-parameters`, `:set-parameters-now`, `:play-theme` and `:trigger` taking what the natives take. A script is stricter than live calls: a trigger it cannot play is an error, not dropped. Renders run up to 600 s |
 | `undertone/derive-spec`, `undertone/moods-edn` | the mood derivation behind `undertone.ambience`: a mood entry, seed, level and tension to a parameter map, and the built-in mood table as EDN. Pure functions; call them through `ambience/derive-spec`, `ambience/derive-mood` and `ambience/moods` |
 

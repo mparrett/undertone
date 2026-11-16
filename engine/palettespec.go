@@ -17,9 +17,8 @@ type DrumSpec struct {
 }
 
 // PaletteSpec is a palette as data: the patch each track plays and the drum
-// kit's lanes (kick, clap, shaker). It reads a built-in palette; nothing
-// registers one yet. Letting a mood bring its own (#36) would start from
-// this form, as RegisterShot starts from ShotSpec.
+// kit's lanes (kick, clap, shaker). PaletteSpecByName reads one, and
+// RegisterPalette makes one a mood can name, as RegisterShot does a shot.
 //
 // Bell is the exception to "plays": it is the bell track's patch before the
 // lead is picked. A mood with leads replaces it with the seed's pick
@@ -78,13 +77,16 @@ func unitSpecs(p Patch) []UnitSpec {
 
 func patchSpec(p Patch) PatchSpec { return PatchSpec{patchName(p), unitSpecs(p)} }
 
-// PaletteSpecByName returns a built-in palette as data. A lane the palette's
-// kit leaves empty plays the default kit's (Params.sound); its spec holds
-// that lane, marked Default.
+// PaletteSpecByName returns a built-in or registered palette as data. A lane
+// the palette's kit leaves empty plays the default kit's (Params.sound); its
+// spec holds that lane, marked Default.
 func PaletteSpecByName(name string) (PaletteSpec, bool) {
-	pl, ok := PaletteByName(name)
+	pl, ok := palettes[name]
 	if !ok {
-		return PaletteSpec{}, false
+		regMu.RLock()
+		defer regMu.RUnlock()
+		r, ok := paletteReg[name]
+		return r.spec.clone(), ok
 	}
 	s := PaletteSpec{
 		Name:  name,
@@ -103,9 +105,11 @@ func PaletteSpecByName(name string) (PaletteSpec, bool) {
 
 // LeadSpecByName returns a lead, one of LeadNames, as data.
 func LeadSpecByName(name string) (LeadSpec, bool) {
-	d, ok := leadLib[name]
-	if !ok {
-		return LeadSpec{}, false
+	if d, ok := leadLib[name]; ok {
+		return LeadSpec{patchSpec(d.patch), d.gate}, true
 	}
-	return LeadSpec{patchSpec(d.patch), d.gate}, true
+	regMu.RLock()
+	defer regMu.RUnlock()
+	r, ok := leadReg[name]
+	return LeadSpec{r.spec.clone(), r.spec.Gate}, ok
 }

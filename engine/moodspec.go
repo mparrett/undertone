@@ -15,7 +15,7 @@ type Line struct{ Base, Step, Lo, Hi float64 }
 
 // MoodSpec is a mood row as data: the form a designer edits and exports. A
 // built-in mood converts to one and back without changing what it derives.
-// Patches stay in code; Palette names a built-in bank.
+// Palette names a built-in bank or a registered one (RegisterPalette).
 type MoodSpec struct {
 	Name               string
 	Scales             [][]int
@@ -53,9 +53,10 @@ func GrooveNames() []string {
 	return names
 }
 
-// LeadNames lists the leads a MoodSpec can name, sorted.
+// LeadNames lists the leads a MoodSpec can name, built-in and registered,
+// sorted.
 func LeadNames() []string {
-	names := make([]string, 0, len(leadLib))
+	names := registeredNames(leadReg)
 	for n := range leadLib {
 		names = append(names, n)
 	}
@@ -63,16 +64,15 @@ func LeadNames() []string {
 	return names
 }
 
-// PaletteNames lists the patch banks a MoodSpec can name.
+// PaletteNames lists the patch banks a MoodSpec can name: the built-in ones,
+// then the registered ones, sorted.
 func PaletteNames() []string {
-	return []string{"dungeon", "overworld", "aurora", "rust", "void", "stratosphere"}
+	return append([]string{"dungeon", "overworld", "aurora", "rust", "void", "stratosphere"}, registeredNames(paletteReg)...)
 }
 
-// PaletteByName returns a patch bank by the name a MoodSpec uses for it.
-func PaletteByName(name string) (Palette, bool) {
-	p, ok := palettes[name]
-	return p, ok
-}
+// PaletteByName returns a built-in or registered patch bank by the name a
+// MoodSpec uses for it.
+func PaletteByName(name string) (Palette, bool) { return lookupPalette(name) }
 
 func (l Line) internal() line { return line{l.Base, l.Step, l.Lo, l.Hi} }
 
@@ -129,7 +129,7 @@ func MoodByName(name string) (MoodSpec, bool) {
 // outside five to seven tones. A spec with no leads derives with LeadName
 // empty and plays no lead.
 func (s MoodSpec) Derive(seed uint64, level int, tension float64) (Params, error) {
-	pal, ok := palettes[s.Palette]
+	pal, ok := lookupPalette(s.Palette)
 	if !ok {
 		return Params{}, fmt.Errorf("unknown palette %q", s.Palette)
 	}
@@ -145,7 +145,7 @@ func (s MoodSpec) Derive(seed uint64, level int, tension float64) (Params, error
 		}
 	}
 	for _, l := range s.Leads {
-		if _, ok := leadLib[l]; !ok {
+		if _, ok := lookupLead(l); !ok {
 			return Params{}, fmt.Errorf("unknown lead %q", l)
 		}
 	}

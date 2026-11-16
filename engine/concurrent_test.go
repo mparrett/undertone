@@ -43,6 +43,7 @@ func TestConcurrentControlWhileRendering(t *testing.T) {
 			}
 		}
 	})
+	forgetRegistered(t, "concurrent-")
 
 	controls := []func(i int){
 		func(i int) { s.SetParameters(params[i%len(params)]) },
@@ -89,6 +90,22 @@ func TestConcurrentControlWhileRendering(t *testing.T) {
 			}})
 			ShotNames()
 			HasShot("concurrent-ping")
+		},
+		// so are the palette and lead registries, which a game writes while
+		// it derives moods that read them
+		func(i int) {
+			pal, _ := PaletteSpecByName(PaletteNames()[i%6])
+			pal.Name = fmt.Sprintf("concurrent-%d", i%3)
+			RegisterPalette(pal)
+			lead, _ := LeadSpecByName("chime")
+			lead.Name = pal.Name
+			RegisterLead(lead)
+			m, _ := MoodByName(moods[i%len(moods)])
+			m.Palette, m.Leads = pal.Name, []string{pal.Name}
+			if p, err := m.Derive(uint64(i), i%5, 0); err == nil {
+				s.SetParameters(p)
+			}
+			LeadNames()
 		},
 	}
 

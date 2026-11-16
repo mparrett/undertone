@@ -8,7 +8,8 @@
 // undertone/music-start, undertone/music-stop,
 // undertone/set-music-gain, undertone/glide-music-gain, undertone/set-sfx-gain,
 // undertone/glide-sfx-gain, undertone/set-queue,
-// undertone/trigger, undertone/register-shot and undertone/render-wav
+// undertone/trigger, undertone/register-shot, undertone/register-palette,
+// undertone/register-lead and undertone/render-wav
 // directly. The natives act
 // on a default Music until a Go host points them elsewhere with SetMusic.
 //
@@ -517,14 +518,22 @@ func shotSpec(v vm.Value) (engine.ShotSpec, error) {
 	if !flt(m, "gate-ms", &s.GateMS) {
 		return s, fmt.Errorf("want :gate-ms as a number")
 	}
-	units, ok := asVec(at(m, "patch"))
+	var err error
+	s.Units, err = unitSpecs(at(m, "patch"))
+	return s, err
+}
+
+// unitSpecs reads an lg patch vector, [[:env ...] [:osc ...] ...], into units.
+func unitSpecs(v vm.Value) ([]engine.UnitSpec, error) {
+	units, ok := asVec(v)
 	if !ok {
-		return s, fmt.Errorf("want :patch as a vector of units")
+		return nil, fmt.Errorf("want :patch as a vector of units")
 	}
+	var out []engine.UnitSpec
 	for i, uv := range units {
 		u, ok := asVec(uv)
 		if !ok || len(u) == 0 {
-			return s, fmt.Errorf("unit %d: want a vector such as [:out 0.5 0.5]", i)
+			return nil, fmt.Errorf("unit %d: want a vector such as [:out 0.5 0.5]", i)
 		}
 		var us engine.UnitSpec
 		if k, ok := u[0].(vm.Keyword); ok {
@@ -539,16 +548,16 @@ func shotSpec(v vm.Value) (engine.ShotSpec, error) {
 			case vm.Keyword:
 				// an osc names its shape second: [:osc transpose :sine sweep decay]
 				if us.Op != "osc" || j != 1 {
-					return s, fmt.Errorf("unit %d: %s at %d; only an osc names a shape, second", i, x, j+1)
+					return nil, fmt.Errorf("unit %d: %s at %d; only an osc names a shape, second", i, x, j+1)
 				}
 				us.Shape = string(x)
 			default:
-				return s, fmt.Errorf("unit %d: %s is not a number or a shape", i, x.Type().Name())
+				return nil, fmt.Errorf("unit %d: %s is not a number or a shape", i, x.Type().Name())
 			}
 		}
-		s.Units = append(s.Units, us)
+		out = append(out, us)
 	}
-	return s, nil
+	return out, nil
 }
 
 // lg map readers.
@@ -711,6 +720,32 @@ func installNS() {
 		}
 		if err != nil {
 			return vm.NIL, fmt.Errorf("undertone/register-shot: %w", err)
+		}
+		return vm.NIL, nil
+	}))
+	// A game's own palette, for a mood's :palette, in the shape
+	// engine.PaletteSpec.EDN writes: {:name :ember :drone [units] :fifth :pad
+	// ... :kit [:default {:note 35 :patch :slam} :default]}. A track is a
+	// built-in patch by keyword, a units vector, or {:name :x :patch [units]}.
+	ns.Def("register-palette", native("register-palette", 1, func(a []vm.Value) (vm.Value, error) {
+		s, err := paletteSpec(a[0])
+		if err == nil {
+			err = engine.RegisterPalette(s)
+		}
+		if err != nil {
+			return vm.NIL, fmt.Errorf("undertone/register-palette: %w", err)
+		}
+		return vm.NIL, nil
+	}))
+	// A game's own lead, for a mood's :leads or a :lead, in the shape
+	// engine.LeadSpec.EDN writes: {:name :glass :gate 1 :patch [units]}.
+	ns.Def("register-lead", native("register-lead", 1, func(a []vm.Value) (vm.Value, error) {
+		s, err := leadSpec(a[0])
+		if err == nil {
+			err = engine.RegisterLead(s)
+		}
+		if err != nil {
+			return vm.NIL, fmt.Errorf("undertone/register-lead: %w", err)
 		}
 		return vm.NIL, nil
 	}))

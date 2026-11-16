@@ -125,17 +125,36 @@ func (s ShotSpec) patch() (Patch, error) {
 	if !(s.GateMS >= 1 && s.GateMS <= 10000) {
 		return nil, fmt.Errorf("gate %v ms: want 1 to 10000", s.GateMS)
 	}
-	if len(s.Units) == 0 || len(s.Units) > maxUnits {
-		return nil, fmt.Errorf("%d units: want 1 to %d", len(s.Units), maxUnits)
+	return buildPatch(s.Units, shotBounds)
+}
+
+// bounds are the limits that differ between a one-shot and a music patch:
+// the longest release (see UnitSpec.unit) and the loudest out.
+type bounds struct{ release, gain float64 }
+
+var (
+	shotBounds = bounds{release: 2, gain: 2}
+	// The music's patches pass these, and the round trips in
+	// palettespec_test.go hold them to it: the beds release over 2.5 to 6 s,
+	// and void's rumble, a sub-bass the ear hears little of, outs at 2.5.
+	musicBounds = bounds{release: 10, gain: 4}
+)
+
+// buildPatch checks units as a patch the synth can run safely within b, and
+// builds it. Its other checks hold for any patch, since every patch runs on
+// the audio thread, where a bad one takes the music down too.
+func buildPatch(units []UnitSpec, b bounds) (Patch, error) {
+	if len(units) == 0 || len(units) > maxUnits {
+		return nil, fmt.Errorf("%d units: want 1 to %d", len(units), maxUnits)
 	}
-	p := make(Patch, len(s.Units))
+	p := make(Patch, len(units))
 	depth, envs, outs := 0, 0, 0
 	// whether each stack slot carries signal (from an osc or pluck) or a
 	// control value (an env or lfo): an offset is DC on a signal, which the
 	// envelope does not shape and which clicks when the voice ends
 	var signal [9]bool
-	for i, us := range s.Units {
-		u, err := us.unit()
+	for i, us := range units {
+		u, err := us.unit(b)
 		if err != nil {
 			return nil, fmt.Errorf("unit %d (%s): %w", i, us.Op, err)
 		}
@@ -203,7 +222,7 @@ func b2i(b bool) int {
 }
 
 // unit checks one unit's op and arguments and builds it.
-func (us UnitSpec) unit() (Unit, error) {
+func (us UnitSpec) unit(b bounds) (Unit, error) {
 	op := indexOf(opNames, us.Op)
 	if op < 0 {
 		return Unit{}, fmt.Errorf("unknown op %q", us.Op)
@@ -227,9 +246,12 @@ func (us UnitSpec) unit() (Unit, error) {
 		// Attack is offset by a sample, so any length is stable. A voice
 		// lives until its gate closes and then until the release has fallen
 		// to 1e-4, about 9.2 releases, so the gate's 10 s and a 2 s release
-		// keep a shot from holding a voice past about half a minute.
-		ok = a[0] >= 0 && a[0] <= 10 && a[1] >= 0.001 && a[1] <= 10 && a[2] >= 0 && a[2] <= 1 && a[3] >= 0.001 && a[3] <= 2
-		rule = "attack 0..10 s, decay 0.001..10 s, release 0.001..2 s, sustain 0..1"
+		// keep a shot from holding a voice past about half a minute. A music
+		// patch's voice is its track's alone, and a retrigger fades it out
+		// whatever its envelope, so its release may run longer: the beds
+		// release over 2.5 to 6 s.
+		ok = a[0] >= 0 && a[0] <= 10 && a[1] >= 0.001 && a[1] <= 10 && a[2] >= 0 && a[2] <= 1 && a[3] >= 0.001 && a[3] <= b.release
+		rule = fmt.Sprintf("attack 0..10 s, decay 0.001..10 s, release 0.001..%g s, sustain 0..1", b.release)
 	case opOsc:
 		sh := indexOf(shapeNames, us.Shape)
 		if sh < 0 {
@@ -270,8 +292,8 @@ func (us UnitSpec) unit() (Unit, error) {
 		ok = a[0] >= 0 && a[0] <= 1
 		rule = "an amount 0..1"
 	case opOut:
-		ok = a[0] >= 0 && a[0] <= 2 && a[1] >= 0 && a[1] <= 1
-		rule = "gain 0..2, pan 0..1"
+		ok = a[0] >= 0 && a[0] <= b.gain && a[1] >= 0 && a[1] <= 1
+		rule = fmt.Sprintf("gain 0..%g, pan 0..1", b.gain)
 	}
 	if !ok {
 		return Unit{}, fmt.Errorf("%v: want %s", us.Args, rule)
@@ -295,28 +317,36 @@ func indexOf(names []string, n string) int {
 
 // EDN writes the spec as an lg map, the form undertone/register-shot takes.
 func (s ShotSpec) EDN() string {
-	num := func(f float64) string {
-		t := fmt.Sprintf("%g", f)
-		if !strings.ContainsAny(t, ".e") {
-			t += ".0"
-		}
-		return t
+	return fmt.Sprintf("{:name :%s :gate-ms %s\n :patch %s}", s.Name, ednNum(s.GateMS), unitsEDN(s.Units, "         "))
+}
+
+// ednNum writes a float as lg reads one back: with a point, so 1 stays a float.
+func ednNum(f float64) string {
+	t := fmt.Sprintf("%g", f)
+	if !strings.ContainsAny(t, ".e") {
+		t += ".0"
 	}
+	return t
+}
+
+// unitsEDN writes units as an lg patch vector, a unit to a line after the
+// first, each indented by indent.
+func unitsEDN(units []UnitSpec, indent string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "{:name :%s :gate-ms %s\n :patch [", s.Name, num(s.GateMS))
-	for i, u := range s.Units {
+	b.WriteString("[")
+	for i, u := range units {
 		if i > 0 {
-			b.WriteString("\n         ")
+			b.WriteString("\n" + indent)
 		}
 		b.WriteString("[:" + u.Op)
 		for j, a := range u.Args {
 			if u.Op == "osc" && j == 1 {
 				b.WriteString(" :" + u.Shape)
 			}
-			b.WriteString(" " + num(a))
+			b.WriteString(" " + ednNum(a))
 		}
 		b.WriteString("]")
 	}
-	b.WriteString("]}")
+	b.WriteString("]")
 	return b.String()
 }

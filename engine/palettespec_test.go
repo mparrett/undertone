@@ -6,23 +6,14 @@ import (
 	"testing"
 )
 
-// unitsBuild decodes units back to a patch with no checks. UnitSpec.unit
-// holds a unit to a one-shot's bounds, and the music's patches go past them
-// (the dungeon drone releases over 4 s; a shot may take 2), so it cannot be
-// the round trip's other half.
+// unitsBuild builds units as a registered music patch is built, so the round
+// trips below also hold every built-in patch to the bounds a game's are held
+// to: a bound none of them passes would refuse a copy of the music itself.
 func unitsBuild(t *testing.T, what string, us []UnitSpec) Patch {
 	t.Helper()
-	p := make(Patch, len(us))
-	for i, u := range us {
-		op := indexOf(opNames, u.Op)
-		if op < 0 || len(u.Args) != opArgs[op] {
-			t.Fatalf("%s unit %d: op %q with %d args", what, i, u.Op, len(u.Args))
-		}
-		p[i].op = op
-		copy(p[i].p[:], u.Args)
-		if op == opOsc { // the shape sits between transpose and the sweep
-			p[i].p = [4]float64{u.Args[0], float64(indexOf(shapeNames, u.Shape)), u.Args[1], u.Args[2]}
-		}
+	p, err := buildPatch(us, musicBounds)
+	if err != nil {
+		t.Fatalf("%s: %v", what, err)
 	}
 	return p
 }
@@ -30,8 +21,7 @@ func unitsBuild(t *testing.T, what string, us []UnitSpec) Patch {
 // Every built-in palette read as data names each patch and rebuilds it
 // exactly, drum lanes included, so the spec is the palette and not a sketch.
 func TestPaletteSpecRoundTrip(t *testing.T) {
-	for _, name := range PaletteNames() {
-		pl, _ := PaletteByName(name)
+	for name, pl := range palettes {
 		s, ok := PaletteSpecByName(name)
 		if !ok || s.Name != name {
 			t.Fatalf("%s: no spec", name)
@@ -74,8 +64,7 @@ func TestPaletteSpecRoundTrip(t *testing.T) {
 
 // Every lead read as data rebuilds its patch and keeps its gate.
 func TestLeadSpecRoundTrip(t *testing.T) {
-	for _, name := range LeadNames() {
-		d := leadLib[name]
+	for name, d := range leadLib {
 		s, ok := LeadSpecByName(name)
 		if !ok || s.Name != name || s.Gate != d.gate {
 			t.Fatalf("%s: spec %+v", name, s)

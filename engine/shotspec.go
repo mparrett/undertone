@@ -94,16 +94,7 @@ func ShotByName(name string) (ShotSpec, bool) {
 	if !ok {
 		return ShotSpec{}, false
 	}
-	s := ShotSpec{Name: name, GateMS: d.gateMS, Units: make([]UnitSpec, len(d.patch))}
-	for i, u := range d.patch {
-		us := UnitSpec{Op: opNames[u.op], Args: append([]float64(nil), u.p[:opArgs[u.op]]...)}
-		if u.op == opOsc {
-			us.Shape = shapeNames[int(u.p[1])]
-			us.Args = []float64{u.p[0], u.p[2], u.p[3]}
-		}
-		s.Units[i] = us
-	}
-	return s, true
+	return ShotSpec{Name: name, GateMS: d.gateMS, Units: unitSpecs(d.patch)}, true
 }
 
 // RegisterShot makes a spec triggerable by its name, replacing an earlier

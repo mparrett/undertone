@@ -180,6 +180,12 @@ func TestRegisterRefusesUnsafe(t *testing.T) {
 		{"a kick out of range", func(s *PaletteSpec) {
 			s.Kit[0] = DrumSpec{PatchSpec: PatchSpec{Name: "kick"}, Note: 500}
 		}, "note"},
+		{"a bell of its own", func(s *PaletteSpec) { s.Bell = drone(1) }, "built-in bell"},
+		{"a lane with a note and no patch", func(s *PaletteSpec) { s.Kit[0] = DrumSpec{Note: 40} }, "kit kick"},
+		{"a Default lane with another sound", func(s *PaletteSpec) {
+			s.Kit[1] = DrumSpec{PatchSpec: PatchSpec{Name: "slam"}, Note: 53, Default: true}
+		}, "clear Default"},
+		{"a Default lane at another note", func(s *PaletteSpec) { s.Kit[2].Default, s.Kit[2].Note = true, 60 }, "clear Default"},
 	} {
 		s := base.clone()
 		c.edit(&s)
@@ -199,6 +205,7 @@ func TestRegisterRefusesUnsafe(t *testing.T) {
 		says string
 	}{
 		{"a built-in's name", bell, "built-in lead"},
+		{"lg's no-lead name", LeadSpec{PatchSpec{"none", bell.Units}, 1}, "no lead"},
 		{"no gate", LeadSpec{PatchSpec{"reg-x", bell.Units}, 0}, "gate"},
 		{"a gate past the pattern", LeadSpec{PatchSpec{"reg-x", bell.Units}, rows + 1}, "gate"},
 		{"no units", LeadSpec{PatchSpec{Name: "reg-x"}, 1}, "units"},

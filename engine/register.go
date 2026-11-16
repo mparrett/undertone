@@ -83,9 +83,10 @@ func (pl *Palette) tracks() []*Patch {
 // ("pad", "kick"; PaletteSpecByName gives every built-in's names). A patch
 // with both must build that built-in exactly, so a spec read from a built-in
 // palette registers as it reads; one whose units were edited needs a new
-// name, or none. Bell may be left zero for the built-in bell, which a mood
-// with leads replaces with its lead, and a kit lane left zero, or marked
-// Default, plays the default kit's.
+// name, or none. Bell is the built-in bell, and may be left zero; a mood
+// with leads replaces it with its lead, and a game's own sound for the slot
+// is a lead (RegisterLead). A kit lane left zero, or marked Default, plays
+// the default kit's; a Default lane naming any other sound is refused.
 //
 // A music patch is held to a one-shot's bounds but two: its release may run
 // to 10 s and its out gain to 4 (musicBounds), as the built-in beds need.
@@ -123,9 +124,24 @@ func (s PaletteSpec) build() (Palette, PaletteSpec, error) {
 		*dst[i] = p
 		*read[i] = PatchSpec{ps.Name, unitSpecs(p)}
 	}
+	// Every bank's bell is the built-in one: a partial :lead :none in lg
+	// puts it back without knowing which bank is playing (mergeParams). A
+	// sound of a game's own for that slot is a lead (RegisterLead).
+	if !reflect.DeepEqual(pl.Bell, bell) {
+		return pl, out, fmt.Errorf("bell: a palette's bell is the built-in bell; register a lead for a sound of your own")
+	}
+	pl.Bell, out.Bell = bell, patchSpec(bell)
 	for i, d := range s.Kit {
-		if d.Default || d.zero() {
-			k := drumKit[i]
+		k := drumKit[i]
+		if d.Default || d.zero() && d.Note == 0 {
+			// as read back, a default lane names the default kit's sound;
+			// any other sound on it is a mistake, not a lane to drop
+			if !d.zero() || d.Note != 0 {
+				p, err := d.PatchSpec.build()
+				if err != nil || !samePatch(p, k.patch) || d.Note != k.note {
+					return pl, out, fmt.Errorf("kit %s: a Default lane plays the default kit's %s at %d; clear Default to play another", laneNames[i], laneNames[i], k.note)
+				}
+			}
 			out.Kit[i] = DrumSpec{patchSpec(k.patch), k.note, true}
 			continue
 		}
@@ -162,6 +178,9 @@ func RegisterLead(s LeadSpec) error {
 func (s LeadSpec) build() (leadDef, error) {
 	if !validName(s.Name) {
 		return leadDef{}, fmt.Errorf("a lead needs a name of letters, digits and dashes, as a keyword")
+	}
+	if s.Name == "none" { // lg's :lead :none, the absence of a lead
+		return leadDef{}, fmt.Errorf("none means no lead")
 	}
 	if _, ok := leadLib[s.Name]; ok {
 		return leadDef{}, fmt.Errorf("a built-in lead has that name")

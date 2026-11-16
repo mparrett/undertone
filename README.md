@@ -176,8 +176,8 @@ start from:
 
 A track names a built-in patch by keyword or gives its units. A palette's
 patches are checked as a shot's are, but may release over up to 10 s and
-out at up to 4, as the built-in beds do. A palette's `:bell` may be left out:
-a mood with leads replaces it with its lead. A registered lead plays at the
+out at up to 4, as the built-in beds do. A palette's `:bell` is the built-in
+bell and may be left out; a sound of a game's own for that slot is a lead. A registered lead plays at the
 level its patch sets, without the measured trim a built-in lead has.
 `PaletteSpec.EDN` and `LeadSpec.EDN` write the maps these take.
 

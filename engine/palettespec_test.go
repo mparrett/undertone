@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -48,9 +49,12 @@ func TestPaletteSpecRoundTrip(t *testing.T) {
 		params := Params{Palette: pl}
 		for i := range nDrums {
 			d := params.sound(i)
-			tracks = append(tracks, track{"kit lane", s.Kit[i].PatchSpec, d.patch})
+			tracks = append(tracks, track{fmt.Sprintf("kit lane %d", i), s.Kit[i].PatchSpec, d.patch})
 			if s.Kit[i].Note != d.note {
 				t.Errorf("%s kit lane %d: note %d, want %d", name, i, s.Kit[i].Note, d.note)
+			}
+			if def := pl.Kit[i].patch == nil; s.Kit[i].Default != def {
+				t.Errorf("%s kit lane %d: Default %v, want %v", name, i, s.Kit[i].Default, def)
 			}
 		}
 		for _, tr := range tracks {

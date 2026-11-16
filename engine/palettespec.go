@@ -8,15 +8,23 @@ type PatchSpec struct {
 }
 
 // DrumSpec is one lane of a drum kit: its patch and the note it plays.
+// Default marks a lane the palette leaves to the default kit, which is what
+// plays there (Params.sound) and what a change to the default kit reaches.
 type DrumSpec struct {
 	PatchSpec
-	Note int
+	Note    int
+	Default bool
 }
 
 // PaletteSpec is a palette as data: the patch each track plays and the drum
 // kit's lanes (kick, clap, shaker). It reads a built-in palette; nothing
 // registers one yet. Letting a mood bring its own (#36) would start from
 // this form, as RegisterShot starts from ShotSpec.
+//
+// Bell is the exception to "plays": it is the bell track's patch before the
+// lead is picked. A mood with leads replaces it with the seed's pick
+// (ApplyLead; LeadSpecByName reads that patch), and a mood without leads
+// plays the track at zero gain (leadTrim), so as built in, it is never heard.
 type PaletteSpec struct {
 	Name                                string
 	Drone, Fifth, Pad, Bell, Air, Pulse PatchSpec
@@ -71,7 +79,8 @@ func unitSpecs(p Patch) []UnitSpec {
 func patchSpec(p Patch) PatchSpec { return PatchSpec{patchName(p), unitSpecs(p)} }
 
 // PaletteSpecByName returns a built-in palette as data. A lane the palette's
-// kit leaves empty plays the default kit's (Params.sound), and its spec says so.
+// kit leaves empty plays the default kit's (Params.sound); its spec holds
+// that lane, marked Default.
 func PaletteSpecByName(name string) (PaletteSpec, bool) {
 	pl, ok := PaletteByName(name)
 	if !ok {
@@ -83,10 +92,11 @@ func PaletteSpecByName(name string) (PaletteSpec, bool) {
 		Bell: patchSpec(pl.Bell), Air: patchSpec(pl.Air), Pulse: patchSpec(pl.Pulse),
 	}
 	for i, d := range pl.Kit {
-		if d.patch == nil {
+		def := d.patch == nil
+		if def {
 			d = drumKit[i]
 		}
-		s.Kit[i] = DrumSpec{patchSpec(d.patch), d.note}
+		s.Kit[i] = DrumSpec{patchSpec(d.patch), d.note, def}
 	}
 	return s, true
 }

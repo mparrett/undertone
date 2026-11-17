@@ -15,15 +15,24 @@
 //	register(kind, json)     validate and register; "" or the error
 //	edn(kind, json)          the spec as the map its register-* takes
 //	bed(json)                play a mood under the sound: {mood, seed, level, tension,
-//	                         palette, lead, muted}; "" or the error
+//	                         palette, lead, muted, musicGain}; "" or the error. musicGain 0
+//	                         silences the bed while shots still feed its delay and room
 //	shot(name, degree, gain) trigger a shot on a degree of the bed's scale
+//	trigger(json)            a take: one shot map or a vector of them, as undertone/trigger
+//	                         reads them: {shot, note | degree (+ octave), gain, pan,
+//	                         delay-ms, seed}; returns which were staged, as JSON
+//	render(json, secs)       the same take rendered offline over the bed's params and music
+//	                         gain, from a fresh synth: interleaved stereo Float32Array,
+//	                         at most 60 s
 //	levels()                 each layer's level, as JSON in LayerNames order
 //	play() / stop()          call from the tap handler: iOS resumes audio only inside one
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"io"
+	"math"
 	"sync/atomic"
 	"syscall/js"
 
@@ -70,12 +79,63 @@ type bedReq struct {
 	Palette string   `json:"palette"` // "" keeps the mood's
 	Lead    string   `json:"lead"`    // "" keeps the mood's picks
 	Muted   []string `json:"muted"`
+	// MusicGain scales the bed, 1 when left out; 0 leaves only the shots and
+	// the delay and room they send to.
+	MusicGain *float64 `json:"musicGain"`
+}
+
+// shotJSON is one shot of a take, in undertone/trigger's keys. A pointer
+// field is one the take may leave out.
+type shotJSON struct {
+	Shot    string   `json:"shot"`
+	Note    *int     `json:"note"`
+	Degree  *int     `json:"degree"`
+	Octave  int      `json:"octave"`
+	Gain    *float64 `json:"gain"`
+	Pan     *float64 `json:"pan"`
+	DelayMS float64  `json:"delay-ms"`
+	Seed    uint64   `json:"seed"`
+}
+
+func (j shotJSON) shot() engine.Shot {
+	sh := engine.Shot{Name: j.Shot, Gain: 1, Pan: 0.5, DelayMS: j.DelayMS, Seed: j.Seed, Octave: j.Octave}
+	if j.Gain != nil {
+		sh.Gain = *j.Gain
+	}
+	if j.Pan != nil {
+		sh.Pan = *j.Pan
+	}
+	switch {
+	case j.Note != nil:
+		sh.Note, sh.HasNote = *j.Note, true
+	case j.Degree != nil:
+		sh.Degree, sh.HasDegree = *j.Degree, true
+	}
+	return sh
+}
+
+// take reads one shot map or a vector of them.
+func take(data string) ([]engine.Shot, error) {
+	var many []shotJSON
+	if err := json.Unmarshal([]byte(data), &many); err != nil {
+		var one shotJSON
+		if err := json.Unmarshal([]byte(data), &one); err != nil {
+			return nil, err
+		}
+		many = []shotJSON{one}
+	}
+	out := make([]engine.Shot, len(many))
+	for i, j := range many {
+		out[i] = j.shot()
+	}
+	return out, nil
 }
 
 func main() {
 	start, _ := engine.MoodByName("village")
 	p0, _ := start.Derive(1, 0, 0)
 	syn := engine.NewSynth(p0)
+	cur, gain := p0, 1.0 // what the bed plays, for render's fresh synth
 	src := &gate{src: syn}
 
 	var player atomic.Pointer[webaudio.Player]
@@ -190,11 +250,52 @@ func main() {
 				p.Mute |= layers[l]
 			}
 			syn.SetParametersNow(p)
+			gain = 1
+			if r.MusicGain != nil {
+				gain = *r.MusicGain
+			}
+			syn.SetMusicGain(gain)
+			cur = p
 			return ""
 		}),
 		"shot": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			return syn.TriggerShot(engine.Shot{Name: a[0].String(), Degree: a[1].Int(), HasDegree: true,
 				Gain: a[2].Float(), Pan: 0.5})
+		}),
+		"trigger": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			shots, err := take(a[0].String())
+			if err != nil {
+				return marshal(map[string]string{"error": err.Error()})
+			}
+			staged := make([]bool, len(shots))
+			for i, sh := range shots {
+				staged[i] = syn.TriggerShot(sh)
+			}
+			return marshal(staged)
+		}),
+		"render": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			shots, err := take(a[0].String())
+			if err != nil {
+				return nil
+			}
+			secs := min(max(a[1].Float(), 0), 60)
+			// A fresh synth, so a render never disturbs what is playing and
+			// starts from silence: the bed's params and gain, then the take.
+			r := engine.NewSynth(cur)
+			r.SetMusicGain(gain)
+			for _, sh := range shots {
+				r.TriggerShot(sh)
+			}
+			pcm := make([]byte, int(secs*engine.SampleRate)*4)
+			_, _ = r.Read(pcm)
+			f := make([]byte, len(pcm)*2)
+			for i := 0; i < len(pcm); i += 2 {
+				v := float32(int16(binary.LittleEndian.Uint16(pcm[i:]))) / 32768
+				binary.LittleEndian.PutUint32(f[i*2:], math.Float32bits(v))
+			}
+			u8 := js.Global().Get("Uint8Array").New(len(f))
+			js.CopyBytesToJS(u8, f)
+			return js.Global().Get("Float32Array").New(u8.Get("buffer"))
 		}),
 		"levels": js.FuncOf(func(js.Value, []js.Value) any { return marshal(syn.LayerLevels()) }),
 		"play": js.FuncOf(func(js.Value, []js.Value) any {

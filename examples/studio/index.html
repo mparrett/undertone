@@ -147,7 +147,7 @@
     <ul>
       <li>Every edit <b>registers</b> the sound. If the engine refuses it, the status says why and outlines the unit; the last good version keeps playing.</li>
       <li>A lead or palette you edit replaces the bed's own, so you hear it in the music. <b>solo</b> mutes the rest.</li>
-      <li><b>none</b> silences the bed, for a shot on its own; the mood still sets the key its degrees land in.</li>
+      <li><b>none</b> silences the bed (music gain 0) for a shot on its own; the room and delay still ring, and the mood still sets the key its degrees land in.</li>
       <li>Change <b>mood, level, tension, seed</b> to hear it in other keys, tempos and densities. The meters show each layer (not shots).</li>
       <li>A built-in opens as a copy (<code>name-2</code>): built-in names can't be replaced. Sounds you registered are in <i>italic</i>.</li>
     </ul>
@@ -186,6 +186,7 @@
 
   <div class="lab" id="audlab">AUDITION</div>
   <div class="bar" id="pads"></div>
+  <div class="bar" id="takebox" hidden><button id="playtake"></button><span class="hint" id="takehint"></span></div>
   <label class="sl" id="gainbox">gain <input type="range" id="sgain" min="0" max="2" step="0.05" value="1"><output></output></label>
   <p class="hint" id="audhint"></p>
 
@@ -443,11 +444,13 @@ function edited(fromSlider) {
 
 function applyBed() {
   const layer = kind === "lead" ? "lead" : LANES.includes(track) ? "drums" : track;
-  const muted = mutedNow = !bedOn ? LAYERS : solo && kind !== "shot" ? LAYERS.filter((l) => l !== layer) : [];
+  // none is music gain 0, not a mute: the bed goes silent but its delay and
+  // room still carry the shots, as a game with its music off hears them
+  const muted = mutedNow = solo && kind !== "shot" ? LAYERS.filter((l) => l !== layer) : [];
   const err = U().bed(JSON.stringify({
     mood: $("mood").value, seed: +$("seed").value, level: +$("level").value, tension: +$("tension").value,
     palette: kind === "palette" && registered.palette.has(spec.Name) ? spec.Name : "",
-    lead: kind === "lead" && registered.lead.has(spec.Name) ? spec.Name : "", muted }));
+    lead: kind === "lead" && registered.lead.has(spec.Name) ? spec.Name : "", muted, musicGain: bedOn ? 1 : 0 }));
   if (err) say(err, true);
 }
 
@@ -537,7 +540,7 @@ addEventListener("keydown", (e) => {
 for (const l of LAYERS) { $("meters").append(el("div")); $("meters").lastChild.append(el("i")); $("meterlbl").append(el("span", null, l)); }
 function meters() {
   // The engine meters a layer before the mix mutes it, so the page drops muted ones itself.
-  if (U() && playing) JSON.parse(U().levels()).forEach((v, i) => { $("meters").children[i].firstChild.style.height = `${mutedNow.includes(LAYERS[i]) ? 0 : Math.min(100, Math.sqrt(v) * 140)}%`; });
+  if (U() && playing) JSON.parse(U().levels()).forEach((v, i) => { $("meters").children[i].firstChild.style.height = `${!bedOn || mutedNow.includes(LAYERS[i]) ? 0 : Math.min(100, Math.sqrt(v) * 140)}%`; });
   requestAnimationFrame(meters);
 }
 
@@ -551,12 +554,28 @@ try { $("guide").open = localStorage.getItem("studio-guide") !== "closed"; } cat
 $("guidechip").classList.toggle("on", $("guide").open);
 $("guidechip").onclick = () => { $("guide").open = !$("guide").open; if ($("guide").open) $("guide").scrollIntoView({ behavior: "smooth" }); };
 $("guide").addEventListener("toggle", () => { $("guidechip").classList.toggle("on", $("guide").open); try { localStorage.setItem("studio-guide", $("guide").open ? "open" : "closed"); } catch {} });
+// Open with a link: #shot=<EDN>, #lead=<EDN> or #palette=<EDN> imports a sound,
+// and &take=<JSON> (a vector of undertone/trigger maps) adds a button that
+// plays it. Other pages (an sfx board) link a card here this way.
+let take = null;
+function openFromHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  for (const k of ["shot", "lead", "palette"]) if (h.get(k)) { $("edn").value = h.get(k); importEDN(); }
+  if (h.get("take")) {
+    try { take = JSON.parse(h.get("take")); } catch { return say("take: not JSON", true); }
+    const n = Array.isArray(take) ? take.length : 1;
+    $("takebox").hidden = false; $("playtake").textContent = `▶ play take (${n} shot${n === 1 ? "" : "s"})`;
+    $("takehint").textContent = "from the link: each shot with its own note or degree, gain, pan, delay and seed";
+  }
+}
+$("playtake").onclick = () => { if (!playing) setPlaying(true); U().trigger(JSON.stringify(take)); };
 window.undertoneStudioReady = () => {
   for (const m of JSON.parse(U().names("mood"))) { const o = el("option", null, m); o.selected = m === "dungeon"; $("mood").append(o); }
   buildKinds(); openFirst();
   $("play").disabled = false; setPlaying(false);
   document.querySelector("main").classList.remove("loading");
   requestAnimationFrame(meters);
+  if (location.hash.length > 1) openFromHash();
 };
 const go = new Go();
 WebAssembly.instantiateStreaming(fetch("main.wasm", { cache: "no-cache" }), go.importObject)

@@ -136,7 +136,7 @@
 
     <h3>A FIRST SOUND IN A MINUTE</h3>
     <ol>
-      <li>Press <b>play</b> to start the bed (dungeon is a good quiet one).</li>
+      <li>Press <b>play</b> (or <kbd>space</kbd>) to start the bed (dungeon is a good quiet one).</li>
       <li>Pick <b>shot</b>, open <b>tink</b>, and press <kbd>1</kbd>–<kbd>8</kbd>: the shot plays on that degree of the bed's scale.</li>
       <li>Drag the <b>env</b> unit's decay: every edit fires the shot, so you hear it change as you drag. <b>Shift-click</b> a pad to repeat it while you work; shift-click again (or click any pad) to stop.</li>
       <li><b>+ add a unit… → svf</b>, then move it with ↑ to just before <code>out</code>: a resonant filter. Turn up <i>res</i>.</li>
@@ -581,6 +581,9 @@ $("copy").onclick = async () => { try { await navigator.clipboard.writeText($("e
 $("save").onclick = () => { const a = el("a"); a.href = URL.createObjectURL(new Blob([$("edn").value + "\n"], { type: "application/edn" })); a.download = `${spec.Name}.edn`; a.click(); };
 $("import").onclick = importEDN;
 addEventListener("keydown", (e) => {
+  const typing = /textarea|select/i.test(document.activeElement.tagName) || (document.activeElement.tagName === "INPUT" && !/range|checkbox/.test(document.activeElement.type));
+  // space plays or stops the bed (and ends a repeat) rather than scrolling the page
+  if (e.key === " " && !typing) { e.preventDefault(); if (playing) { stopLoop(); setPlaying(false); } else setPlaying(true); return; }
   if (kind !== "shot" || /input|textarea|select/i.test(document.activeElement.tagName)) return;
   const d = +e.key; if (d >= 1 && d <= 8) fire(d - 1);
 });

@@ -17,21 +17,21 @@ type Line struct{ Base, Step, Lo, Hi float64 }
 // built-in mood converts to one and back without changing what it derives.
 // Palette names a built-in bank or a registered one (RegisterPalette).
 type MoodSpec struct {
-	Name               string
-	Scales             [][]int
-	BPM                Line
-	RootBase, RootStep int
-	Drone, Fifth       Line
-	Pad, LeadDensity, Air     Line
-	Calm, LeadLift     int
-	Palette            string
-	Leads              []string // empty for a mood with no lead
-	Grooves            []string
-	Drums, Busy        Line
-	Swing              float64
-	TenseDrums         float64 // drum gain at full tension for drums the level leaves silent
-	Open               Line    // how far level opens (+) or closes (-) the svf filters, clamped to -1..1
-	Room               Room    // the reverb room; it does not move with level
+	Name                  string
+	Scales                [][]int
+	BPM                   Line
+	RootBase, RootStep    int
+	Drone, Fifth          Line
+	Pad, LeadDensity, Air Line
+	Calm, LeadLift        int
+	Palette               string
+	Leads                 []string // empty for a mood with no lead
+	Grooves               []string
+	Drums, Busy           Line
+	Swing                 float64
+	TenseDrums            float64 // drum gain at full tension for drums the level leaves silent
+	Open                  Line    // how far level opens (+) or closes (-) the svf filters, clamped to -1..1
+	Room                  Room    // the reverb room; it does not move with level
 }
 
 var palettes = map[string]Palette{

@@ -56,6 +56,13 @@
   #pads button { min-width: 2.6em; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
   .hint { color: var(--mut); font-size: 12px; }
+  #guide { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px 16px; margin: 0 0 16px; font-size: 13px; }
+  #guide summary { cursor: pointer; color: var(--src); padding: 8px 0; font-weight: 600; letter-spacing: .05em; }
+  #guide h3 { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 14px 0 4px; }
+  #guide p, #guide li { color: var(--fg); margin: 4px 0; }
+  #guide ol, #guide ul { padding-left: 1.3em; margin: 4px 0; }
+  #guide code, #guide pre { color: var(--src); }
+  #guide pre { background: var(--bg); padding: 8px 10px; border-radius: 6px; overflow-x: auto; margin: 6px 0; }
   kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 11px; }
 </style>
 </head>
@@ -72,7 +79,8 @@
   <div class="lab">BED</div>
   <div class="bar"><button id="play" disabled>loading…</button>
     <select id="mood"></select>
-    <span class="chip" id="solo" title="hear only the layer being edited">solo</span></div>
+    <span class="chip" id="solo" title="hear only the layer being edited">solo</span>
+    <span class="chip" id="silent" title="mute the whole bed: a shot alone, still pitched in the mood's scale">none</span></div>
   <label class="sl">level <input type="range" id="level" min="0" max="10" step="1" value="1"><output></output></label>
   <label class="sl">tension <input type="range" id="tension" min="0" max="1" step="0.0625" value="0"><output></output></label>
   <label class="sl">seed <input type="range" id="seed" min="1" max="64" step="1" value="1"><output></output></label>
@@ -82,6 +90,68 @@
 </aside>
 
 <section>
+  <details id="guide">
+    <summary>HOW TO USE THE STUDIO</summary>
+    <p>Every sound undertone plays is a <b>patch</b>: a short list of units run once per sample, left to right, on a
+    small stack (up to 8 values). Sources push a value, processors change the top one, and <code>out</code> pops one
+    into the mix. The studio edits that list and plays the result as you go.</p>
+
+    <h3>WHAT YOU CAN EDIT</h3>
+    <ul>
+      <li><b>shot</b>: a one-shot (a hit, a pickup, a footstep). Its gate is in milliseconds. Fire it on a degree of the music's scale.</li>
+      <li><b>lead</b>: the melody voice the generator picks. Its gate is in rows (a row is an eighth note).</li>
+      <li><b>palette</b>: the patches a mood's bed is made of: drone, fifth, pad, air, pulse, and a drum kit (kick, clap, shaker).
+        A palette has no melody track; a melody sound is a lead.</li>
+    </ul>
+
+    <h3>A FIRST SOUND IN A MINUTE</h3>
+    <ol>
+      <li>Press <b>play</b> to start the bed (dungeon is a good quiet one).</li>
+      <li>Pick <b>shot</b>, open <b>tink</b>, and press <kbd>1</kbd>–<kbd>8</kbd>: the shot plays on that degree of the bed's scale.</li>
+      <li>Drag the <b>env</b> unit's decay: every edit refires the shot, so you hear it change as you drag.</li>
+      <li><b>+ add a unit… → svf</b>, then move it with ↑ to just before <code>out</code>: a resonant filter. Turn up <i>res</i>.</li>
+      <li>Rename it, then <b>download</b> the EDN.</li>
+    </ol>
+
+    <h3>READING A PATCH</h3>
+    <p>The usual voice is <code>env → osc → mul → out</code>: an envelope and an oscillator are pushed, <code>mul</code> multiplies them
+    (the envelope shapes the tone), <code>out</code> mixes it. Two such chains in one patch are two layers. The coloured bars after a unit
+    are the stack after it runs: <b style="color:var(--src)">signal</b> (from an osc or pluck) or <b style="color:var(--mod)">control</b>
+    (from an env or lfo). A <b>!</b> means the stack runs dry or overflows there.</p>
+    <ul>
+      <li><b>modulate</b>: push an <code>lfo</code> or <code>env</code>, then an <code>svf</code> with a nonzero <i>depth</i> pops it to sweep the cutoff;
+        <code>pitch</code> pops it to bend the oscillators after it; <code>scale</code> turns it into a range for a tremolo with <code>mul</code>.</li>
+      <li><b>grit</b>: <code>drive</code> overdrives, <code>crush</code> lowers the sample rate and bit depth.</li>
+      <li><b>space</b>: <code>send</code> feeds the tempo delay, <code>verb</code> the room. Both read the top without popping it.</li>
+    </ul>
+
+    <h3>HEARING IT</h3>
+    <ul>
+      <li>Every edit <b>registers</b> the sound. If the engine refuses it, the status says why and outlines the unit; the last good version keeps playing.</li>
+      <li>A lead or palette you edit replaces the bed's own, so you hear it in the music. <b>solo</b> mutes the rest.</li>
+      <li><b>none</b> silences the bed, for a shot on its own; the mood still sets the key its degrees land in.</li>
+      <li>Change <b>mood, level, tension, seed</b> to hear it in other keys, tempos and densities. The meters show each layer (not shots).</li>
+      <li>A built-in opens as a copy (<code>name-2</code>): built-in names can't be replaced. Sounds you registered are in <i>italic</i>.</li>
+    </ul>
+
+    <h3>TAKING IT TO A GAME</h3>
+    <p>The EDN box is exactly what the lg binding takes. Load it at boot, then use the name:</p>
+<pre>(undertone/register-shot   (read-string (slurp "sfx/zap.edn")))
+(undertone/trigger {:shot :zap :degree 2})
+
+(undertone/register-lead    (read-string (slurp "music/glass.edn")))
+(undertone/register-palette (read-string (slurp "music/cavern.edn")))
+;; a mood names them with :lead and :palette, or set-parameters does</pre>
+    <p><b>import pasted EDN</b> takes one back: paste a shot, lead or palette map into the box and press it.</p>
+
+    <h3>LIMITS</h3>
+    <ul>
+      <li>At most 8 values on the stack. A patch needs an <code>env</code> (it ends the sound) and an <code>out</code>.</li>
+      <li>Shots: release up to 2 s, out gain up to 2. Leads and palette patches: release up to 10 s, gain up to 4.</li>
+      <li>Shots aren't part of the music: they don't show on the meters, and they ignore mute and solo.</li>
+      <li>This is a spike: nothing is saved in the page. Download what you want to keep.</li>
+    </ul>
+  </details>
   <div class="head">
     <label>name <input type="text" id="name" spellcheck="false"></label>
     <label id="gatebox"><span id="gatelbl">gate</span> <input type="number" id="gate"></label>
@@ -419,6 +489,9 @@ $("addop").onchange = () => {
 for (const o of Object.keys(OPS)) $("addop").append(el("option", null, o));
 $("play").onclick = () => { setPlaying(!playing); if (playing) applyBed(); };
 $("solo").onclick = () => { solo = !solo; $("solo").classList.toggle("on", solo); applyBed(); };
+// No bed: every layer muted. The engine keeps running, so a shot's degree is
+// still read in the mood's scale; shots sit above the mute.
+$("silent").onclick = () => { bedOn = !bedOn; $("silent").classList.toggle("on", !bedOn); applyBed(); };
 for (const id of ["level", "tension", "seed", "sgain"]) {
   const r = $(id), o = r.nextElementSibling; o.value = r.value;
   r.oninput = () => { o.value = r.value; if (id !== "sgain") applyBed(); };
@@ -440,6 +513,9 @@ function meters() {
 }
 
 window.undertoneStudioFailed = (msg) => say("audio failed: " + msg, true);
+// The guide opens on a first visit and remembers being closed.
+try { $("guide").open = localStorage.getItem("studio-guide") !== "closed"; } catch { $("guide").open = true; }
+$("guide").addEventListener("toggle", () => { try { localStorage.setItem("studio-guide", $("guide").open ? "open" : "closed"); } catch {} });
 window.undertoneStudioReady = () => {
   for (const m of JSON.parse(U().names("mood"))) { const o = el("option", null, m); o.selected = m === "dungeon"; $("mood").append(o); }
   buildKinds(); openFirst();

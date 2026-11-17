@@ -68,7 +68,9 @@
   #units.compact .unit .args input[type=range] { height: 12px; }
   #units.compact .unit .ops button { padding: 0 5px; font-size: 11px; }
   #units.compact .unit .stack b { height: 9px; width: 5px; }
-  #pads button { min-width: 2.6em; }
+  #pads button { min-width: 2.6em; transition: background .25s, color .25s; }
+  #pads button.hit, #meterlbl span.hit { background: var(--src); color: var(--bg); transition: none; }
+  #meterlbl span { transition: background .3s, color .3s; border-radius: 3px; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
   .hint { color: var(--mut); font-size: 12px; }
   #guide { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px 16px; margin: 0 0 16px; font-size: 13px; }
@@ -419,10 +421,13 @@ function renderAudition() {
   }
 }
 let lastDeg = 0;
+// flash lights a pad or a layer's label for a moment, as it sounds.
+function flash(e) { if (!e) return; e.classList.add("hit"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("hit"), 120); }
 function fire(d) {
   lastDeg = d;
   if (!playing) setPlaying(true);
   U().shot(spec.Name, d, +$("sgain").value);
+  flash($("pads").children[d]);
 }
 
 // Register what is on screen, then retune the bed to it. Every edit runs this.
@@ -445,7 +450,7 @@ function commit(refire) {
   if (fresh) buildNames();  // a new copy joins the list, lit
   say(`${kind} ${spec.Name} registered`);
   applyBed();
-  if (refire && kind === "shot" && playing) U().shot(spec.Name, lastDeg, +$("sgain").value);
+  if (refire && kind === "shot") fire(lastDeg);  // auto-audition: hear each edit
 }
 let refireTimer = 0;
 function edited(fromSlider) {
@@ -555,6 +560,7 @@ addEventListener("keydown", (e) => {
 for (const l of LAYERS) { $("meters").append(el("div")); $("meters").lastChild.append(el("i")); $("meterlbl").append(el("span", null, l)); }
 function meters() {
   // The engine meters a layer before the mix mutes it, so the page drops muted ones itself.
+  if (U() && playing) for (const l of U().notes()) if (bedOn && !mutedNow.includes(LAYERS[l])) flash($("meterlbl").children[l]);
   if (U() && playing) JSON.parse(U().levels()).forEach((v, i) => { $("meters").children[i].firstChild.style.height = `${!bedOn || mutedNow.includes(LAYERS[i]) ? 0 : Math.min(100, Math.sqrt(v) * 140)}%`; });
   requestAnimationFrame(meters);
 }

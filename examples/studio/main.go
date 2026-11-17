@@ -29,6 +29,7 @@
 //	                         maxLufs, length}, as JSON
 //	hash(json, secs)         the take's hash alone (engine.Take.Hash), without rendering,
 //	                         for a page that caches renders
+//	notes()                  the layers (LayerNames indices) of the bed's notes since the last call
 //	levels()                 each layer's level, as JSON in LayerNames order
 //	play() / stop()          call from the tap handler: iOS resumes audio only inside one
 package main
@@ -167,6 +168,8 @@ func main() {
 	start, _ := engine.MoodByName("village")
 	p0, _ := start.Derive(1, 0, 0)
 	syn := engine.NewSynth(p0)
+	var noteCursor uint64
+	noteBuf := make([]engine.NoteEvent, 0, 256)
 	cur, gain := p0, 1.0 // what the bed plays, for a take's fresh synth
 
 	// newTake reads (take json, seconds) as an engine.Take over the bed, so a
@@ -303,6 +306,17 @@ func main() {
 		"shot": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			return syn.TriggerShot(engine.Shot{Name: a[0].String(), Degree: a[1].Int(), HasDegree: true,
 				Gain: a[2].Float(), Pan: 0.5})
+		}),
+		// notes drains the bed's note events since the last call, as the layer
+		// index of each, for a page that lights a layer as it plays.
+		"notes": js.FuncOf(func(_ js.Value, _ []js.Value) any {
+			var evs []engine.NoteEvent
+			evs, noteCursor, _ = syn.NoteEvents(noteCursor, noteBuf[:0])
+			out := make([]any, len(evs))
+			for i, e := range evs {
+				out[i] = e.Layer
+			}
+			return js.ValueOf(out)
 		}),
 		"trigger": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			shots, err := take(a[0].String())

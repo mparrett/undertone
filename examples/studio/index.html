@@ -53,6 +53,21 @@
   .unit .args input[type=number] { padding: 2px 4px; width: 100%; text-align: right; font-size: 12px; }
   .unit .ops button { padding: 2px 7px; font-size: 12px; }
   .unit .doc { grid-column: 2 / -1; color: var(--mut); font-size: 11px; margin-top: -2px; }
+  /* compact: a unit to a line, for long patches and palettes */
+  #units.compact { gap: 3px; }
+  #units.compact .unit { padding: 2px 6px; gap: 6px; grid-template-columns: 2ch 5em 3.5em 1fr auto; border-radius: 6px; }
+  #units.compact .unit .doc { display: none; }
+  #units.compact .unit select { padding: 1px 4px; font-size: 12px; }
+  #units.compact .unit .args { display: flex; flex-wrap: wrap; gap: 0 12px; }
+  #units.compact .unit .args label.sl { display: flex; gap: 4px; font-size: 11px; align-items: center; }
+  #units.compact .unit .args label.sl > span { white-space: nowrap; }
+  #units.compact .unit .args input[type=range] { width: 56px; }
+  #units.compact .unit .args input[type=number] { padding: 0 3px; font-size: 11px; width: 8ch; }
+  #units.compact .unit .args select { width: auto; }
+  #units.compact .unit .args output { display: none; }
+  #units.compact .unit .args input[type=range] { height: 12px; }
+  #units.compact .unit .ops button { padding: 0 5px; font-size: 11px; }
+  #units.compact .unit .stack b { height: 9px; width: 5px; }
   #pads button { min-width: 2.6em; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
   .hint { color: var(--mut); font-size: 12px; }
@@ -164,6 +179,7 @@
 
   <div id="units"></div>
   <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select>
+    <span class="chip" id="compact" title="a unit to a line">compact</span>
     <span class="hint">the bars after each unit are its stack: <b style="color:var(--src)">signal</b>, <b style="color:var(--mod)">control</b></span></div>
 
   <div class="lab" id="audlab">AUDITION</div>
@@ -208,6 +224,10 @@ const OPS = {
 };
 const DEFAULT_ARGS = { env: [.005, .3, 0, .2], osc: [0, 0, 0], pluck: [0, .99], lfo: [2, 0], mul: [], lpf: [2000], hpf: [80],
   svf: [1200, .3, 0, 0], drive: [2, 0], crush: [8000, 8], scale: [.5, .5], pitch: [.3], send: [.2], verb: [.2], out: [.5, .5] };
+// compact rows label arguments short; the full name is the hover title
+const SHORT = { attack: "atk", decay: "dec", sustain: "sus", release: "rel", transpose: "tr", sweep: "sw", "sweep dec": "sw.d",
+  feedback: "fb", cutoff: "cut", depth: "dep", amount: "amt", offset: "off" };
+const compact = () => $("units").classList.contains("compact");
 const SHAPES = ["sine", "saw", "pulse", "noise"];
 const TRACKS = ["drone", "fifth", "pad", "air", "pulse"];  // a palette has no melody track: a melody sound is a registered lead
 const LANES = ["kick", "clap", "shaker"];
@@ -329,7 +349,7 @@ function renderUnits() {
       const sh = el("select");
       for (const s of SHAPES) { const o = el("option", null, s); o.selected = s === u.Shape; sh.append(o); }
       sh.onchange = () => { u.Shape = sh.value; edited(); };
-      const l = el("label", "sl"); l.append("shape", sh, el("output")); args.append(l);
+      const l = el("label", "sl"); l.append(el("span", null, "shape"), sh, el("output")); args.append(l);
     }
     (op ? op.args : []).forEach(([label, lo, hi, mode, unit], j) => argControl(args, u, j, label, lo, limit(hi), mode, unit));
     row.append(args);
@@ -357,7 +377,8 @@ function argControl(box, u, j, label, lo, hi, mode, unit) {
   const show = () => { r.value = toPos(u.Args[j]); n.value = u.Args[j]; n.title = Array.isArray(unit) ? unit[u.Args[j]] : unit || ""; };
   r.oninput = () => { u.Args[j] = round(isLog && lo === 0 && +r.value === 0 ? 0 : fromPos(+r.value)); n.value = u.Args[j]; edited(true); };
   n.onchange = () => { u.Args[j] = +n.value; show(); edited(true); };
-  l.append(Array.isArray(unit) ? `${label}` : label, r, n);
+  const name = el("span", null, compact() ? SHORT[label] || label : label); name.title = label;
+  l.append(name, r, n);
   if (Array.isArray(unit)) l.title = unit.map((s, i) => `${i} ${s}`).join(", ");
   box.append(l); show();
 }
@@ -513,6 +534,10 @@ function meters() {
 }
 
 window.undertoneStudioFailed = (msg) => say("audio failed: " + msg, true);
+// Compact rows are a viewer's preference, kept across visits.
+const setCompact = (on) => { $("units").classList.toggle("compact", on); if (spec) renderUnits(); $("compact").classList.toggle("on", on); try { localStorage.setItem("studio-compact", on ? "1" : ""); } catch {} };
+try { setCompact(localStorage.getItem("studio-compact") === "1"); } catch {}
+$("compact").onclick = () => setCompact(!$("units").classList.contains("compact"));
 // The guide opens on a first visit and remembers being closed.
 try { $("guide").open = localStorage.getItem("studio-guide") !== "closed"; } catch { $("guide").open = true; }
 $("guide").addEventListener("toggle", () => { try { localStorage.setItem("studio-guide", $("guide").open ? "open" : "closed"); } catch {} });

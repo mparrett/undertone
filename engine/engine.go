@@ -1357,6 +1357,10 @@ type Synth struct {
 	nframe              int64                  // frames rendered, synthesis-side
 	frames              atomic.Int64           // nframe as of the end of the last Read
 	rowLog              rowLog
+	notes               noteRing // notes started, for a host to draw (notes.go)
+	// the row stepped last, which the drum countdowns fire within: not
+	// s.row-1 after a theme cuts the pattern short
+	stepRow, stepPat int
 
 	// The music and one-shot bus levels. Mixer controls rather than Params:
 	// they never change what the score derives, only how loud the bed and
@@ -1522,6 +1526,7 @@ func NewSynth(p Params) *Synth {
 	// arrive at any pattern boundary, on the audio thread, which must not
 	// allocate them.
 	s := &Synth{voices: make([]Voice, nTracks), verb: newReverb(), leadIn: true}
+	s.notes.epoch = newEpoch()
 	// Every voice's unit states too (about 80 KB), for the same reason: left
 	// to its first note, a voice allocated on the audio thread whenever that
 	// came, a lead with a low density many patterns in. And a string's line
@@ -1698,6 +1703,7 @@ func (s *Synth) revoice(t, pat, row int) {
 			}
 		} else {
 			v.retrigger(tr, left, s.params.Seed+uint64(pat*rows+r))
+			s.noteAt(t, NoteRevoice, tr.note, tr.gain, r, pat)
 		}
 		return
 	}
@@ -1718,6 +1724,7 @@ func (s *Synth) step() {
 		s.applyGrid(g, s.row)
 	}
 	s.rowLog.add(s.nframe, s.row, s.pat)
+	s.stepRow, s.stepPat = s.row, s.pat
 	s.stepDrums()
 	for t := 0; t < nTracks; t++ {
 		v := &s.voices[t]
@@ -1728,8 +1735,10 @@ func (s *Synth) step() {
 			// mid-fade, a trigger would step the gain; on a new patch it
 			// would cut the old one off
 			v.retrigger(tr, tr.gateRows, seed)
+			s.noteAt(t, NoteRetrigger, tr.note, tr.gain, s.row, s.pat)
 		case tr.note != 0:
 			v.trigger(tr.patch, tr.note, tr.gateRows, tr.gain, seed)
+			s.noteAt(t, NoteOn, tr.note, tr.gain, s.row, s.pat)
 		default:
 			if v.pend.note != 0 {
 				v.pendRows--

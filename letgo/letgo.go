@@ -782,6 +782,9 @@ func installNS() {
 	ns.Def("levels", native("levels", 0, func([]vm.Value) (vm.Value, error) {
 		return current.Load().levels(), nil
 	}))
+	ns.Def("note-events", native("note-events", 1, func(a []vm.Value) (vm.Value, error) {
+		return current.Load().noteEvents(a[0])
+	}))
 	ns.Def("trigger", native("trigger", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().trigger(a[0]), nil
 	}))

@@ -40,3 +40,21 @@ func TestLevelsFromLg(t *testing.T) {
 		t.Error("Music.LayerLevels differs from the synth's")
 	}
 }
+
+// A paused output reads nothing, so the meters hold their last values; the
+// level accessors report silence until it resumes.
+func TestLevelsSilentWhilePaused(t *testing.T) {
+	p := engine.DeriveDungeon(1, 2, 0)
+	m := NewMusic(p)
+	startRendering(t, m, gainTestOutput{}, engine.SampleRate)
+	m.Pause()
+	l, ok := m.LayerLevels()
+	b, bok := m.Levels()
+	if !ok || !bok || l != [engine.NumLayers]float64{} || b != [4]float64{} {
+		t.Errorf("paused: layers %v ok %v, bands %v ok %v; want silence, ok", l, ok, b, bok)
+	}
+	m.Resume()
+	if l, _ := m.LayerLevels(); l[0] == 0 {
+		t.Error("resumed: the drone reads silent")
+	}
+}

@@ -18,13 +18,23 @@ func LayerNames() [NumLayers]string {
 }
 
 // layerMeter is a peak meter per layer. The frame loop takes each layer's
-// loudest dry sample over a Read; the decay runs once per Read, not per
-// sample, which a meter drawn a few dozen times a second cannot tell apart.
+// loudest dry sample, and every layerFold frames the envelopes decay over
+// the block and take its peaks: decaying per sample, as the mix meter does,
+// costs a multiply per layer per frame, and folding only once per Read
+// would publish a peak from the start of a long Read (a native buffer, a
+// WAV render) as if it had just happened.
 type layerMeter struct {
 	peak [NumLayers]float64
 	env  [NumLayers]float64
 	out  [NumLayers]atomic.Uint64 // env as float bits, for other goroutines
 }
+
+// layerFold bounds how late a peak is decayed: by 256 frames, a peak reads
+// at most 7% above where a per-sample envelope would be. The frame loop folds
+// on its own frame count; a power of two makes that a mask.
+const layerFold = 256
+
+var layerFoldDecay = math.Pow(mdecay, layerFold)
 
 // see notes layer i's dry output this frame: what its voices added to the
 // mono sum. Before the music gain and whether or not the layer is muted, so
@@ -33,14 +43,22 @@ func (m *layerMeter) see(i int, added float64) {
 	m.peak[i] = max(m.peak[i], math.Abs(added)/2)
 }
 
-// publish decays the envelopes over frames, takes this Read's peaks and
-// makes them readable from other goroutines.
-func (m *layerMeter) publish(frames int) {
-	d := math.Pow(mdecay, float64(frames))
+// fold decays the envelopes by d, the decay over the frames since the last
+// fold, and takes those frames' peaks.
+func (m *layerMeter) fold(d float64) {
 	for i := range m.env {
 		m.env[i] = max(m.peak[i], flush(m.env[i]*d))
 		m.peak[i] = 0
-		m.out[i].Store(math.Float64bits(m.env[i]))
+	}
+}
+
+// publish makes the envelopes readable from other goroutines, as they
+// stand since frames into the current block. It leaves env alone: the
+// block's own fold decays it over the whole block.
+func (m *layerMeter) publish(since int) {
+	d := math.Pow(mdecay, float64(since))
+	for i := range m.env {
+		m.out[i].Store(math.Float64bits(max(m.peak[i], flush(m.env[i]*d))))
 	}
 }
 

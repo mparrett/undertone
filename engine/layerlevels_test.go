@@ -58,19 +58,55 @@ func TestLayerLevelsSeeTheDrums(t *testing.T) {
 	}
 }
 
+// meterFrames runs n silent frames through m from frame f, folding as the
+// synth's frame loop does, and returns the frame reached.
+func meterFrames(m *layerMeter, f, n int) int {
+	for range n {
+		if f++; f%layerFold == 0 {
+			m.fold(layerFoldDecay)
+		}
+	}
+	return f
+}
+
+func published(m *layerMeter, i int) float64 { return math.Float64frombits(m.out[i].Load()) }
+
 // The envelope takes a peak at once and lets go over about 400 ms.
 func TestLayerMeterDecays(t *testing.T) {
 	var m layerMeter
 	m.see(2, -0.8)
-	m.publish(512)
-	if got := math.Float64frombits(m.out[2].Load()); got != 0.4 {
+	f := meterFrames(&m, 0, 1)
+	m.publish(f % layerFold)
+	if got := published(&m, 2); got != 0.4 {
 		t.Fatalf("after a peak of 0.8 summed: %g, want 0.4 at once", got)
 	}
-	m.publish(SampleRate / 10)
-	mid := math.Float64frombits(m.out[2].Load())
-	m.publish(SampleRate)
-	end := math.Float64frombits(m.out[2].Load())
+	f = meterFrames(&m, f, SampleRate/10)
+	m.publish(f % layerFold)
+	mid := published(&m, 2)
+	f = meterFrames(&m, f, SampleRate)
+	m.publish(f % layerFold)
+	end := published(&m, 2)
 	if !(mid < 0.4 && mid > 0.05 && end < 1e-4) {
 		t.Errorf("decay: %g after 100 ms, %g after 1.1 s; want falling to near 0", mid, end)
+	}
+}
+
+// A peak at the start of a long Read has decayed by its end, within one
+// fold of where a per-sample envelope would be; publishing partway through
+// a block does not decay it twice.
+func TestLayerMeterDecaysWithinALongRead(t *testing.T) {
+	for _, reads := range [][]int{{4096}, {100, 1000, 2996}} {
+		var m layerMeter
+		m.see(0, 1)
+		f := 0
+		for _, n := range reads {
+			f = meterFrames(&m, f, n)
+			m.publish(f % layerFold)
+		}
+		got := published(&m, 0)
+		exact := 0.5 * math.Pow(mdecay, 4096)
+		if got < exact*(1-1e-12) || got > exact/layerFoldDecay*(1+1e-12) {
+			t.Errorf("reads %v: a peak 4096 frames back reads %g, want %g to %g", reads, got, exact, exact/layerFoldDecay)
+		}
 	}
 }

@@ -6,32 +6,35 @@ import (
 	"github.com/mparrett/undertone/engine"
 )
 
-// playing is the synth an output is reading, or nil while stopped.
-func (m *Music) playing() *engine.Synth {
+// playing is the synth an output is reading, or nil while stopped, and
+// whether the output is paused.
+func (m *Music) playing() (syn *engine.Synth, paused bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.out == nil {
-		return nil
+		return nil, false
 	}
-	return m.synth
+	return m.synth, m.paused
 }
 
 // LayerLevels is each layer's level, in engine.LayerNames order (see
-// engine.Synth.LayerLevels); ok is false while stopped.
-func (m *Music) LayerLevels() ([engine.NumLayers]float64, bool) {
-	if syn := m.playing(); syn != nil {
-		return syn.LayerLevels(), true
+// engine.Synth.LayerLevels): silent while paused, ok false while stopped.
+func (m *Music) LayerLevels() (v [engine.NumLayers]float64, ok bool) {
+	syn, paused := m.playing()
+	if syn != nil && !paused {
+		v = syn.LayerLevels()
 	}
-	return [engine.NumLayers]float64{}, false
+	return v, syn != nil
 }
 
 // Levels is the mix's band levels: sub, low-mid, mid and high (see
-// engine.Synth.Levels); ok is false while stopped.
-func (m *Music) Levels() ([4]float64, bool) {
-	if syn := m.playing(); syn != nil {
-		return syn.Levels(), true
+// engine.Synth.Levels): silent while paused, ok false while stopped.
+func (m *Music) Levels() (v [4]float64, ok bool) {
+	syn, paused := m.playing()
+	if syn != nil && !paused {
+		v = syn.Levels()
 	}
-	return [4]float64{}, false
+	return v, syn != nil
 }
 
 // levelMap is the map for undertone/layer-levels and undertone/levels, or

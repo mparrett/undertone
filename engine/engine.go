@@ -1809,6 +1809,9 @@ func (s *Synth) frame() (int16, int16) {
 		s.runDrums(&l, &r)
 		s.layers.see(layerDrums, l+r-before)
 	}
+	if s.nframe%layerFold == 0 {
+		s.layers.fold(layerFoldDecay)
+	}
 	if g := s.musicLevel.next(); g != 1 {
 		l, r = l*g, r*g
 		s.bus.delay, s.bus.verb = s.bus.delay*g, s.bus.verb*g
@@ -1851,7 +1854,7 @@ func (s *Synth) Read(p []byte) (int, error) {
 	}
 	s.frames.Store(s.nframe)
 	s.publishLevels()
-	s.layers.publish(n / 4)
+	s.layers.publish(int(s.nframe % layerFold))
 	s.clock.record(t0, n/4)
 	return n, nil
 }

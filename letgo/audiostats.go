@@ -43,13 +43,10 @@ func (m *Music) queued() (time.Duration, bool) {
 
 // RenderStats is the synth's render timings; ok is false while stopped.
 func (m *Music) RenderStats() (engine.RenderStats, bool) {
-	m.mu.Lock()
-	syn, out := m.synth, m.out
-	m.mu.Unlock()
-	if out == nil {
-		return engine.RenderStats{}, false
+	if syn, _ := m.playing(); syn != nil {
+		return syn.RenderStats(), true
 	}
-	return syn.RenderStats(), true
+	return engine.RenderStats{}, false
 }
 
 // audioStats is undertone/audio-stats: the render timings, and the output's

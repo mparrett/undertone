@@ -573,7 +573,7 @@ $("silent").onclick = () => { bedOn = !bedOn; if (!bedOn) solo = false; bedChips
 for (const id of ["level", "tension", "seed", "sgain"]) {
   const r = $(id), o = r.nextElementSibling; o.value = r.value;
   r.oninput = () => { o.value = r.value; if (id !== "sgain") applyBed(); };
-  if (id !== "sgain") r.onchange = () => bedMark(id, `${id[0]} ${r.value}`);  // on release, not every step of a drag
+  if (id === "seed") r.onchange = () => bedMark("seed", `seed ${r.value}`);  // level and tension are traced instead
 }
 $("mood").onchange = () => { applyBed(); bedMark("mood", $("mood").value); lastDrone = -1; };
 const NOTE = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
@@ -607,8 +607,9 @@ function meters() {
 // level leaves a faint trace and each note a bright dot placed by its pitch
 // within the row; marks fade by exp(-age/FADE), so what the cursor last
 // passed is still dimly there a sweep later. Faint ticks mark the beats and a
-// brighter one each pattern. The top lane is the bed: a coloured line where
-// the mood, level, tension or seed changed, or the chord moved. The bottom
+// brighter one each pattern. The top lane is the bed: its level (blue) and
+// tension (purple) traced like sparklines, and a line where the mood or seed
+// changed or the chord moved. The bottom
 // lane is fired shots: a dot, over the shot's own loudness in amber.
 let FADE = 3;  // seconds; the fade slider sets it
 const SWEEP = 8, ROWS = ["bed", ...LAYERS, "shots"], SHOTS = ROWS.length - 1;
@@ -634,14 +635,17 @@ function shotShape(name, d, gain) {
   }
   marks.push({ t: now(), kind: "shape", env: m.env, hop: m.hop, a: 1 });
 }
-let lastLevelAt = 0, lastPos = "", lastDrone = -1;
+let lastSparkAt = 0, lastLevelAt = 0, lastPos = "", lastDrone = -1;
 function scope() {
   const c = $("scope"), dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
   if (c.width !== w * dpr || c.height !== h * dpr) { c.width = w * dpr; c.height = h * dpr; }
   const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   // the thin strip drops the labels and packs the lanes close
   const thin = c.classList.contains("thin"), pad = thin ? 2 : 4;
-  const t = now(), L = thin ? 4 : 46, rw = w - L - 4, rh = (h - 2 * pad) / ROWS.length;
+  // the bed lane is taller than a layer's, for its level and tension traces
+  const BW = thin ? 2 : 2.4, rh = (h - 2 * pad) / (ROWS.length - 1 + BW), bh = BW * rh;
+  const top = (i) => i === 0 ? pad : pad + bh + (i - 1) * rh;
+  const t = now(), L = thin ? 4 : 46, rw = w - L - 4;
   const X = (tt) => L + sweepX(tt) * rw, colW = (dt) => rw / SWEEP * dt + 0.6;
   if (U() && playing) {
     // a level sample per layer about 30 times a second
@@ -651,6 +655,8 @@ function scope() {
         if (v > 0.001) marks.push({ t, kind: "level", row: i + 1, a: Math.min(1, Math.sqrt(v) * 1.6), muted: !bedOn || mutedNow.includes(LAYERS[i]) });
       });
     }
+    // the bed's level (0..10) and tension (0..1), traced like sparklines
+    if (t - lastSparkAt > 1 / 30) { lastSparkAt = t; marks.push({ t, kind: "spark", lv: +$("level").value / 10, tn: +$("tension").value, a: 1 }); }
     // a tick on each new beat (two rows), brighter at a pattern's start
     const p = U().position();
     if (p && `${p}` !== lastPos) { lastPos = `${p}`; if (p[0] % 2 === 0) marks.push({ t, kind: "tick", a: p[0] === 0 ? 0.32 : 0.1 }); }
@@ -659,21 +665,26 @@ function scope() {
   g.fillStyle = "#07090a"; g.fillRect(0, 0, w, h);
   g.font = "10px system-ui"; g.textBaseline = "middle";
   ROWS.forEach((r, i) => {
-    const y = pad + i * rh;
-    if (!thin) { g.fillStyle = "#8a857680"; g.fillText(r, 6, y + rh / 2); }
-    if (!thin) { g.fillStyle = "#ffffff08"; g.fillRect(L, y + rh - 1, rw, 1); }
+    const y = top(i), hi = i ? rh : bh;
+    if (!thin) { g.fillStyle = "#8a857680"; g.fillText(r, 6, y + hi / 2); }
+    if (!thin) { g.fillStyle = i ? "#ffffff08" : "#ffffff14"; g.fillRect(L, y + hi - 1, rw, 1); }
   });
   const inset = thin ? 0.5 : 2;
   for (const m of marks) {
-    const f = Math.exp(-(t - m.t) / FADE) * m.a, x = X(m.t), y = pad + (m.row ?? 0) * rh;
+    const f = Math.exp(-(t - m.t) / FADE) * m.a, x = X(m.t), y = top(m.row ?? 0);
     if (m.kind === "tick") {
-      g.fillStyle = `rgba(150,220,130,${f})`; g.fillRect(x, pad + rh, 1, h - 2 * pad - rh);
+      g.fillStyle = `rgba(150,220,130,${f})`; g.fillRect(x, pad + bh, 1, h - 2 * pad - bh);
+    } else if (m.kind === "spark") {
+      const sy = (v) => pad + inset + (1 - v) * (bh - 2 * inset) - 0.75;
+      g.fillStyle = `rgba(${BEDC.level},${0.85 * f})`; g.fillRect(x, sy(m.lv), colW(1 / 30), 1.5);
+      g.fillStyle = `rgba(${BEDC.tension},${0.85 * f})`; g.fillRect(x, sy(m.tn), colW(1 / 30), 1.5);
     } else if (m.kind === "bed") {
-      g.fillStyle = `rgba(${BEDC[m.type]},${f})`; g.fillRect(x, pad, thin ? 1.5 : 2, rh);
-      if (!thin && m.label) { g.fillStyle = `rgba(${BEDC[m.type]},${0.9 * f})`; g.fillText(m.label, x + 4, pad + rh / 2); }
+      // a change the traces can't show: mood, seed, chord
+      g.fillStyle = `rgba(${BEDC[m.type]},${0.55 * f})`; g.fillRect(x, pad, 1, bh);
+      if (!thin && m.label) { g.fillStyle = `rgba(${BEDC[m.type]},${0.9 * f})`; g.fillText(m.label, x + 3, pad + 6); }
     } else if (m.kind === "shape") {
       // drawn up to now only, each hop at its own time and fading from it
-      const ys = pad + SHOTS * rh;
+      const ys = top(SHOTS);
       for (let i = 0; i < m.env.length; i++) {
         const ti = m.t + i * m.hop; if (ti > t) break;
         const fi = Math.exp(-(t - ti) / FADE), hh = Math.max(0.5, Math.min(1, Math.sqrt(m.env[i]) * 1.5) * (rh - 2 * inset));
@@ -711,11 +722,12 @@ window.undertoneStudioFailed = (msg) => say("audio failed: " + msg, true);
 const setCompact = (on) => { $("units").classList.toggle("compact", on); if (spec) renderUnits(); $("compact").classList.toggle("on", on); try { localStorage.setItem("studio-compact", on ? "1" : ""); } catch {} };
 try { setCompact(localStorage.getItem("studio-compact") === "1"); } catch {}
 $("compact").onclick = () => setCompact(!$("units").classList.contains("compact"));
-// The guide opens on a first visit and remembers being closed.
-try { $("guide").open = localStorage.getItem("studio-guide") !== "closed"; } catch { $("guide").open = true; }
-$("guidechip").classList.toggle("on", $("guide").open);
-$("guidechip").onclick = () => { $("guide").open = !$("guide").open; if ($("guide").open) $("guide").scrollIntoView({ behavior: "smooth" }); };
-$("guide").addEventListener("toggle", () => { $("guidechip").classList.toggle("on", $("guide").open); try { localStorage.setItem("studio-guide", $("guide").open ? "open" : "closed"); } catch {} });
+// The guide is out of the way until the guide chip shows it; closing it
+// hides it again.
+const showGuide = (on) => { $("guide").hidden = !on; $("guide").open = on; $("guidechip").classList.toggle("on", on); };
+showGuide(false);
+$("guidechip").onclick = () => { showGuide($("guide").hidden); if (!$("guide").hidden) $("guide").scrollIntoView({ behavior: "smooth" }); };
+$("guide").addEventListener("toggle", () => { if (!$("guide").open) showGuide(false); });
 // Open with a link: #shot=<EDN>, #lead=<EDN> or #palette=<EDN> imports a sound,
 // and &take=<JSON> (a vector of undertone/trigger maps) adds a button that
 // plays it. Other pages (an sfx board) link a card here this way.

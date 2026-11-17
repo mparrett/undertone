@@ -22,7 +22,7 @@
   .bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
   button, .chip, select, input[type=number], input[type=text], textarea {
     font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; }
-  button, .chip { cursor: pointer; }
+  button, .chip { cursor: pointer; user-select: none; -webkit-user-select: none; }
   .chip { font-size: 13px; color: var(--mut); padding: 3px 9px; }
   .chip.on { color: var(--fg); border-color: var(--src); background: color-mix(in srgb, var(--src) 18%, var(--panel)); }
   .chip.reg { font-style: italic; }
@@ -557,10 +557,13 @@ $("addop").onchange = () => {
 };
 for (const o of Object.keys(OPS)) $("addop").append(el("option", null, o));
 $("play").onclick = () => { setPlaying(!playing); if (playing) applyBed(); };
-$("solo").onclick = () => { solo = !solo; $("solo").classList.toggle("on", solo); applyBed(); };
+// solo and none contradict each other (only this layer vs no bed at all), so
+// at most one is on: turning one on turns the other off.
+const bedChips = () => { $("solo").classList.toggle("on", solo); $("silent").classList.toggle("on", !bedOn); quietCue(); applyBed(); };
+$("solo").onclick = () => { solo = !solo; if (solo) bedOn = true; bedChips(); };
 // No bed: every layer muted. The engine keeps running, so a shot's degree is
 // still read in the mood's scale; shots sit above the mute.
-$("silent").onclick = () => { bedOn = !bedOn; $("silent").classList.toggle("on", !bedOn); quietCue(); applyBed(); };
+$("silent").onclick = () => { bedOn = !bedOn; if (!bedOn) solo = false; bedChips(); };
 for (const id of ["level", "tension", "seed", "sgain"]) {
   const r = $(id), o = r.nextElementSibling; o.value = r.value;
   r.oninput = () => { o.value = r.value; if (id !== "sgain") applyBed(); };

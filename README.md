@@ -222,6 +222,8 @@ audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 | `undertone/play-theme` | `{:grids [{:lead [1 0 3] :bass [1] :pulse [true] :drums ["X..." "" "x.x."] :bed false} ...] :then :generate}`: an authored theme, from its first grid at once; `:then` is `:generate`, `:silence` or `:loop`; nil stops it. Sent before `music-start`, it starts with the music |
 | `undertone/theme-playing?` | whether the last theme has still to finish |
 | `undertone/position` | where the sequencer is, for a playhead: `{:row 3 :pattern 12 :frame 1234567 :pending? false :theme-pending? false :heard? true}`, or nil while stopped. `:heard?` is true when the row is the one at the speaker (the output reports its queue: the browser's webaudio), false when it is the last row rendered, ahead by the output's latency. `:pending?` is a `set-parameters` waiting for the next pattern, `:theme-pending?` a `play-theme` about to start |
+| `undertone/layer-levels` | how loud each layer is now: `{:drone 0.12 :fifth 0.05 :pad 0 :lead 0.2 :air 0.01 :pulse 0 :drums 0.3}`, or nil while stopped. A peak envelope of each layer's dry output, letting go over about 400 ms: before the music gain and the delay and reverb, and whether or not the layer is muted, so a muted layer still shows it plays |
+| `undertone/levels` | the mix's meter in four bands, `{:sub :low-mid :mid :high}`, the same envelope the CLI's `-vu` draws; nil while stopped |
 | `undertone/audio-stats` | how the render and the output are keeping up: `{:reads 812 :render-ms-last 0.4 :render-ms-mean 0.3 :render-ms-max 2.1 :over 0 :underruns 0 :queued-ms 58}`, or nil while stopped. `:over` counts renders that took longer than the audio they made. `:underruns` (the 128-frame quanta, 2.9 ms each, the speaker had to fill with silence: one 12 ms stall counts about 4) and `:queued-ms` come only from the browser's webaudio output, and are absent elsewhere. In a browser the render times are as coarse as `performance.now`, up to 1 ms on a page that isn't cross-origin isolated |
 | `undertone/trigger` | a trigger map (`{:shot :hit :gain 0.8 :pan 0.3}`) or a vector of them; fire-and-forget |
 | `undertone/register-shot` | a game's own one-shot (`{:name :ping :gate-ms 20 :patch [[:env 0.001 0.2 0 0.1] [:osc 0 :sine 0 1] [:mul] [:out 0.5 0.5]]}`); a patch the synth could not run safely is an error |
@@ -231,8 +233,8 @@ audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 
 The surface is write-only for a game: nothing it needs reads audio state back
 into lg, so game logic need not branch on whether a sound played and replays
-stay deterministic. `undertone/position` and `undertone/audio-stats` are the
-exceptions, for tools that draw or diagnose the music: they read the audio
+stay deterministic. `undertone/position`, the two level natives and
+`undertone/audio-stats` are the exceptions, for tools that draw or diagnose the music: they read the audio
 thread's state, so a game that branches on them gives up deterministic
 replays.
 Triggers sent before the music starts are dropped silently.

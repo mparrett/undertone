@@ -1338,6 +1338,8 @@ type Synth struct {
 	mlp  [3]float64 // one-pole states at the band edges
 	menv [4]float64 // per-band peak envelopes (attack instant, slow decay)
 	mout [4]uint64  // envelopes published as float bits for cross-goroutine reads
+	// the same per layer (layerlevels.go)
+	layers layerMeter
 
 	// hand-written pattern (grid.go): nil plays the generator alone
 	grid atomic.Pointer[Grid]
@@ -1787,18 +1789,25 @@ func (s *Synth) frame() (int16, int16) {
 	for i := range s.voices {
 		if s.voices[i].active {
 			if s.params.Mute&(1<<i) != 0 {
+				before := ml + mr
 				s.voices[i].run(&ml, &mr, &mbus)
+				s.layers.see(i, ml+mr-before)
 			} else {
+				before := l + r
 				s.voices[i].run(&l, &r, &s.bus)
+				s.layers.see(i, l+r-before)
 			}
 		}
 	}
 	if s.params.Mute&LayerDrums != 0 {
-		bus := s.bus
+		bus, before := s.bus, ml+mr
 		s.runDrums(&ml, &mr)
 		s.bus = bus
+		s.layers.see(layerDrums, ml+mr-before)
 	} else {
+		before := l + r
 		s.runDrums(&l, &r)
+		s.layers.see(layerDrums, l+r-before)
 	}
 	if g := s.musicLevel.next(); g != 1 {
 		l, r = l*g, r*g
@@ -1842,6 +1851,7 @@ func (s *Synth) Read(p []byte) (int, error) {
 	}
 	s.frames.Store(s.nframe)
 	s.publishLevels()
+	s.layers.publish(n / 4)
 	s.clock.record(t0, n/4)
 	return n, nil
 }

@@ -769,6 +769,12 @@ func installNS() {
 	ns.Def("audio-stats", native("audio-stats", 0, func([]vm.Value) (vm.Value, error) {
 		return current.Load().audioStats(), nil
 	}))
+	ns.Def("layer-levels", native("layer-levels", 0, func([]vm.Value) (vm.Value, error) {
+		return current.Load().layerLevels(), nil
+	}))
+	ns.Def("levels", native("levels", 0, func([]vm.Value) (vm.Value, error) {
+		return current.Load().levels(), nil
+	}))
 	ns.Def("trigger", native("trigger", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().trigger(a[0]), nil
 	}))

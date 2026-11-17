@@ -167,9 +167,9 @@ func TestNoteEventsOverflow(t *testing.T) {
 	}
 	n := s.notes.n.Load()
 	evs, next, dropped := s.NoteEvents(0, nil)
-	if next != n || dropped != n-noteRingSize || len(evs) != noteRingSize {
+	if next&cursorCount != n || dropped != n-noteRingSize || len(evs) != noteRingSize {
 		t.Fatalf("NoteEvents(0) after %d: %d events, next %d, dropped %d; want %d, %d, %d",
-			n, len(evs), next, dropped, noteRingSize, n, n-noteRingSize)
+			n, len(evs), next&cursorCount, dropped, noteRingSize, n, n-noteRingSize)
 	}
 	for i := 1; i < len(evs); i++ {
 		if evs[i].Frame < evs[i-1].Frame-int64(s.flamLead()) {
@@ -180,9 +180,71 @@ func TestNoteEventsOverflow(t *testing.T) {
 	if evs, next2, dropped := s.NoteEvents(next, evs[:0]); len(evs) != 0 || next2 != next || dropped != 0 {
 		t.Errorf("caught up: %d events, next %d, dropped %d", len(evs), next2, dropped)
 	}
-	// a cursor from a synth since replaced reads from the oldest held
-	if evs, _, dropped := s.NoteEvents(n+5, nil); len(evs) != noteRingSize || dropped != n-noteRingSize {
-		t.Errorf("stale cursor: %d events, dropped %d", len(evs), dropped)
+}
+
+// A cursor kept across a Stop and Start belongs to the old synth: the new
+// one reads from its first event, counting what it no longer holds as
+// dropped, whether the old cursor is ahead of the new synth or behind it.
+func TestNoteEventsCursorFromAnotherSynth(t *testing.T) {
+	p, _ := DeriveMood("forge", 7, 4, 1)
+	old := NewSynth(p)
+	render(old, 3*old.samplesPerRow)
+	_, cursor, _ := old.NoteEvents(0, nil)
+	for _, ahead := range []bool{true, false} {
+		s := NewSynth(p)
+		for want := cursor & cursorCount; ; {
+			render(s, s.samplesPerRow)
+			if n := s.notes.n.Load(); ahead && n > 0 && n < want || !ahead && n > want+noteRingSize {
+				break
+			}
+		}
+		n := s.notes.n.Load()
+		evs, _, dropped := s.NoteEvents(cursor, nil)
+		if uint64(len(evs))+dropped != n {
+			t.Errorf("old cursor %d, new synth at %d (ahead %v): %d events + %d dropped, want all %d",
+				cursor&cursorCount, n, ahead, len(evs), dropped, n)
+		}
+	}
+}
+
+// An off 16th armed before a theme cuts the pattern, firing while the
+// theme's first row holds back for its flam, belongs to the row that armed
+// it, not to the row before the theme's.
+func TestNoteEventsRowAcrossAThemeCut(t *testing.T) {
+	p, _ := DeriveMood("forge", 7, 4, 1)
+	s := NewSynth(p)
+	drawn := buildDrums(s.params, 0)
+	row, lane := -1, -1
+	for r := 2; r < rows && row < 0; r++ {
+		for d := range drawn {
+			if drawn[d][r].off > 0 {
+				row, lane = r, d
+				break
+			}
+		}
+	}
+	if row < 0 {
+		t.Fatal("forge's first pattern has no off 16th to test with")
+	}
+	for pos, _ := s.Position(); pos.Row != row; pos, _ = s.Position() {
+		render(s, 32)
+	}
+	start := s.rowStart(t, row, 0)
+	half := int64(float64(s.samplesPerRow) * (0.5 + s.params.Swing))
+	render(s, int(start+half-int64(s.flamLead())/2-s.Frames()))
+	s.PlayTheme(&Theme{Grids: []Grid{{Drums: [DrumLanes]string{"g......."}}}})
+	render(s, 2*s.flamLead())
+	found := false
+	for _, e := range events(s) {
+		if e.Kind == DrumOff && e.Lane == lane && e.Frame > start {
+			found = true
+			if e.Row != row || e.Pattern != 0 {
+				t.Errorf("off 16th after the cut labelled row %d of pattern %d, want row %d of 0", e.Row, e.Pattern, row)
+			}
+		}
+	}
+	if !found {
+		t.Error("the armed off 16th never fired")
 	}
 }
 

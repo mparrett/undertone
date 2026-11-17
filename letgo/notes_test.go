@@ -25,7 +25,7 @@ func TestNoteEventsFromLg(t *testing.T) {
 	v, err := c.Run(`(let [r (undertone/note-events nil)
 	                       evs (:events r)
 	                       again (undertone/note-events (:next r))]
-	                   [(= (:next r) (count evs)) (:dropped r) (:heard? r) (pos? (:now r))
+	                   [(pos? (count evs)) (:dropped r) (:heard? r) (pos? (:now r))
 	                    (every? #(contains? % :lane) (filter #(= :drums (:layer %)) evs))
 	                    (not-any? #(contains? % :lane) (remove #(= :drums (:layer %)) evs))
 	                    (boolean (some #(= [:drone :note 0 0] [(:layer %) (:kind %) (:row %) (:pattern %)]) evs))

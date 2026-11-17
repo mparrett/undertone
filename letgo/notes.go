@@ -13,7 +13,7 @@ import (
 // now is the frame at the speaker when the output reports its queue
 // (heard), else the last frame rendered, on the same clock as the events'
 // frames. ok is false while stopped. A Stop and Start replaces the synth;
-// the old cursor then reads from the new synth's oldest event.
+// a cursor from the old one reads the new one from its first event.
 func (m *Music) NoteEvents(since uint64, dst []engine.NoteEvent) (evs []engine.NoteEvent, next, dropped uint64, now int64, heard, ok bool) {
 	syn, _ := m.playing()
 	if syn == nil {
@@ -27,8 +27,6 @@ func (m *Music) NoteEvents(since uint64, dst []engine.NoteEvent) (evs []engine.N
 	}
 	return evs, next, dropped, now, heard, true
 }
-
-var drumLaneNames = [...]string{"kick", "backbeat", "top"}
 
 // noteEvents is undertone/note-events: {:next :dropped :now :heard?
 // :events [...]} for the events after cursor, or nil while stopped.
@@ -45,7 +43,7 @@ func (m *Music) noteEvents(cursor vm.Value) (vm.Value, error) {
 	if !ok {
 		return vm.NIL, nil
 	}
-	layers := engine.LayerNames()
+	layers, lanes := engine.LayerNames(), engine.LaneNames()
 	out := make([]vm.Value, len(evs))
 	for i, e := range evs {
 		kv := []vm.Value{
@@ -58,7 +56,7 @@ func (m *Music) noteEvents(cursor vm.Value) (vm.Value, error) {
 			vm.Keyword("frame"), vm.Int(e.Frame),
 		}
 		if layers[e.Layer] == "drums" {
-			kv = append(kv, vm.Keyword("lane"), vm.Keyword(drumLaneNames[e.Lane]))
+			kv = append(kv, vm.Keyword("lane"), vm.Keyword(lanes[e.Lane]))
 		}
 		out[i] = vm.NewPersistentMap(kv)
 	}

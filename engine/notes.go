@@ -11,7 +11,7 @@ type NoteEvent struct {
 	Frame int64 // the frame it starts on
 	Layer int   // LayerNames index
 	Kind  NoteKind
-	Lane  int // the drum lane (0 kick, 1 backbeat, 2 top) for drums, else 0
+	Lane  int // the drum lane, a LaneNames index, for drums; else 0
 	Note  int // MIDI
 	Gain  float64
 	// the row and pattern it belongs to; a flam's grace belongs to the row
@@ -57,9 +57,32 @@ const noteRingSize = 256
 type noteRing struct {
 	frame, pat, packed [noteSlots]atomic.Uint64
 	n                  atomic.Uint64 // events written
+	epoch              uint64        // this synth's mark on its cursors; set before the synth is shared
 }
 
 const noteSlots = noteRingSize + 1
+
+// A cursor carries the synth it came from above bit 40 (12 bits), so one
+// kept across a Stop and Start is known for another synth's whatever its
+// count; the count of events read sits below. Both fit 52 bits, so a cursor
+// survives lg numbers that pass through a float64.
+const (
+	cursorShift = 40
+	cursorCount = 1<<cursorShift - 1
+	epochMask   = 1<<12 - 1
+)
+
+var noteEpochs atomic.Uint64
+
+// newEpoch marks a new synth's cursors: never 0, so a cursor of 0 starts
+// any synth from its oldest event.
+func newEpoch() uint64 {
+	for {
+		if e := noteEpochs.Add(1) & epochMask; e != 0 {
+			return e
+		}
+	}
+}
 
 // packed: gain as float32 bits (32), note (7), row (4), lane (2), kind (3),
 // layer (3).
@@ -76,14 +99,15 @@ func (r *noteRing) add(e NoteEvent) {
 
 // NoteEvents appends the events after cursor since to dst and returns them,
 // with the cursor to pass next time and how many events since that cursor
-// were overwritten before they could be read. Start from 0. A cursor from a
-// synth that has since been replaced (one past the events written) reads
-// from the oldest still held. Safe to call from any goroutine; it allocates
-// only if dst is too small.
-func (s *Synth) NoteEvents(since uint64, dst []NoteEvent) (evs []NoteEvent, next, dropped uint64) {
+// were overwritten before they could be read. Start from 0. A cursor from
+// another synth (one replaced by a Stop and Start) reads this one from its
+// first event. Safe to call from any goroutine; it allocates only if dst is
+// too small.
+func (s *Synth) NoteEvents(cursor uint64, dst []NoteEvent) (evs []NoteEvent, next, dropped uint64) {
 	r := &s.notes
 	n := r.n.Load()
-	if since > n {
+	since := cursor & cursorCount
+	if cursor>>cursorShift != r.epoch || since > n {
 		since = 0
 	}
 	if oldest := n - min(n, noteRingSize); since < oldest {
@@ -109,7 +133,7 @@ func (s *Synth) NoteEvents(since uint64, dst []NoteEvent) (evs []NoteEvent, next
 			Layer:   int(pk >> 48 & 7),
 		})
 	}
-	return dst, n, dropped
+	return dst, r.epoch<<cursorShift | n, dropped
 }
 
 // noteAt logs a track's note started at the frame about to render, on row
@@ -127,10 +151,6 @@ func (s *Synth) hit(d int, kind NoteKind, k drumSound, gain float64, seed uint64
 	s.notes.add(NoteEvent{Frame: frame, Layer: layerDrums, Kind: kind, Lane: d, Note: clampNote(k.note), Gain: gain, Row: row, Pattern: pat})
 }
 
-// lastRow is the row stepped last and its pattern.
-func (s *Synth) lastRow() (row, pat int) {
-	if s.row == 0 {
-		return rows - 1, s.pat - 1
-	}
-	return s.row - 1, s.pat
-}
+// LaneNames names the drum lanes, the index NoteEvent.Lane uses. They are
+// roles more than sounds: a palette's kit may put another sound in a lane.
+func LaneNames() [DrumLanes]string { return laneNames }

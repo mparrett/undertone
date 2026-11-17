@@ -302,7 +302,7 @@ func (v *Voice) strike(k drumSound, gain float64, seed uint64) {
 func (s *Synth) runDrums(l, r *float64) {
 	// the countdowns fire within the last row stepped, after frame has
 	// moved the frame count past the frame being rendered
-	row, pat := s.lastRow()
+	row, pat := s.stepRow, s.stepPat
 	for d := range s.dvoices {
 		v := &s.dvoices[d]
 		if s.graceLeft[d] > 0 {

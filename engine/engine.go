@@ -1358,6 +1358,9 @@ type Synth struct {
 	frames              atomic.Int64           // nframe as of the end of the last Read
 	rowLog              rowLog
 	notes               noteRing // notes started, for a host to draw (notes.go)
+	// the row stepped last, which the drum countdowns fire within: not
+	// s.row-1 after a theme cuts the pattern short
+	stepRow, stepPat int
 
 	// The music and one-shot bus levels. Mixer controls rather than Params:
 	// they never change what the score derives, only how loud the bed and
@@ -1523,6 +1526,7 @@ func NewSynth(p Params) *Synth {
 	// arrive at any pattern boundary, on the audio thread, which must not
 	// allocate them.
 	s := &Synth{voices: make([]Voice, nTracks), verb: newReverb(), leadIn: true}
+	s.notes.epoch = newEpoch()
 	// Every voice's unit states too (about 80 KB), for the same reason: left
 	// to its first note, a voice allocated on the audio thread whenever that
 	// came, a lead with a low density many patterns in. And a string's line
@@ -1720,6 +1724,7 @@ func (s *Synth) step() {
 		s.applyGrid(g, s.row)
 	}
 	s.rowLog.add(s.nframe, s.row, s.pat)
+	s.stepRow, s.stepPat = s.row, s.pat
 	s.stepDrums()
 	for t := 0; t < nTracks; t++ {
 		v := &s.voices[t]

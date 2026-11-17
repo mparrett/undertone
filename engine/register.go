@@ -62,16 +62,16 @@ func registeredNames[T any](reg map[string]T) []string {
 	return names
 }
 
-var trackNames = [...]string{"drone", "fifth", "pad", "bell", "air", "pulse"}
+var trackNames = [...]string{"drone", "fifth", "pad", "air", "pulse"}
 var laneNames = [nDrums]string{"kick", "clap", "shaker"}
 
 // tracks lists the spec's track patches in track order.
 func (s *PaletteSpec) tracks() []*PatchSpec {
-	return []*PatchSpec{&s.Drone, &s.Fifth, &s.Pad, &s.Bell, &s.Air, &s.Pulse}
+	return []*PatchSpec{&s.Drone, &s.Fifth, &s.Pad, &s.Air, &s.Pulse}
 }
 
 func (pl *Palette) tracks() []*Patch {
-	return []*Patch{&pl.Drone, &pl.Fifth, &pl.Pad, &pl.Bell, &pl.Air, &pl.Pulse}
+	return []*Patch{&pl.Drone, &pl.Fifth, &pl.Pad, &pl.Air, &pl.Pulse}
 }
 
 // RegisterPalette makes a spec a palette a mood can name (MoodSpec.Palette,
@@ -83,10 +83,9 @@ func (pl *Palette) tracks() []*Patch {
 // ("pad", "kick"; PaletteSpecByName gives every built-in's names). A patch
 // with both must build that built-in exactly, so a spec read from a built-in
 // palette registers as it reads; one whose units were edited needs a new
-// name, or none. Bell is the built-in bell, and may be left zero; a mood
-// with leads replaces it with its lead, and a game's own sound for the slot
-// is a lead (RegisterLead). A kit lane left zero, or marked Default, plays
-// the default kit's; a Default lane naming any other sound is refused.
+// name, or none. The lead track's sound is a lead's, so a game's own is
+// registered with RegisterLead. A kit lane left zero, or marked Default,
+// plays the default kit's; a Default lane naming any other sound is refused.
 //
 // A music patch is held to a one-shot's bounds but two: its release may run
 // to 10 s and its out gain to 4 (musicBounds), as the built-in beds need.
@@ -112,9 +111,6 @@ func (s PaletteSpec) build() (Palette, PaletteSpec, error) {
 	if _, ok := palettes[s.Name]; ok {
 		return pl, out, fmt.Errorf("a built-in palette has that name")
 	}
-	if s.Bell.zero() {
-		s.Bell = PatchSpec{Name: "bell"}
-	}
 	dst, read := pl.tracks(), out.tracks()
 	for i, ps := range s.tracks() {
 		p, err := ps.build()
@@ -124,13 +120,9 @@ func (s PaletteSpec) build() (Palette, PaletteSpec, error) {
 		*dst[i] = p
 		*read[i] = PatchSpec{ps.Name, unitSpecs(p)}
 	}
-	// Every bank's bell is the built-in one: a partial :lead :none in lg
-	// puts it back without knowing which bank is playing (mergeParams). A
-	// sound of a game's own for that slot is a lead (RegisterLead).
-	if !reflect.DeepEqual(pl.Bell, bell) {
-		return pl, out, fmt.Errorf("bell: a palette's bell is the built-in bell; register a lead for a sound of your own")
-	}
-	pl.Bell, out.Bell = bell, patchSpec(bell)
+	// As in every built-in bank, so lg's partial :lead :none can put it
+	// back without knowing which bank is playing (mergeParams).
+	pl.Lead = bell
 	for i, d := range s.Kit {
 		k := drumKit[i]
 		if d.Default || d.zero() && d.Note == 0 {

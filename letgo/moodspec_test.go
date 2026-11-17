@@ -222,8 +222,8 @@ func TestLeadlessEntryRoundTrips(t *testing.T) {
 	}
 	checkParams(t, "hollow", m.params, want)
 
-	// Dropping the lead takes its patch out of the lead slot too, back to the
-	// new bank's own bell, where a grid's authored lead plays.
+	// Dropping the lead takes its patch off the lead track too, back to the
+	// bell lead, where a grid's authored lead plays.
 	s.Name, s.Palette = "hollow", "void"
 	if err := c.Def("void-src", "{"+s.EDN()+"}"); err != nil {
 		t.Fatal(err)

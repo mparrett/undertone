@@ -33,10 +33,10 @@ type mood struct {
 	drone    line
 	fifth    line
 	pad      line
-	bell     line
+	leadDensity     line
 	air      line
 	calm     int // the second drone's interval from the chord at low tension; positive floats above it
-	bellLift int
+	leadLift int
 	palette  Palette
 	leads    []string // the seed picks one; repeats are the weights; none leaves the lead silent
 
@@ -70,7 +70,7 @@ var moods = []mood{
 		drone:   lin(0.55, 0.06).atMost(0.9),
 		fifth:   lin(0, 0.2).atMost(0.7),
 		pad:     lin(0.6, -0.05),
-		bell:    lin(0.16, -0.02).atLeast(0.04),
+		leadDensity:    lin(0.16, -0.02).atLeast(0.04),
 		air:     lin(0.25, 0.05).atMost(0.6),
 		calm:    -5, // perfect fifth above the low drone
 		palette: dungeonPalette,
@@ -89,7 +89,7 @@ var moods = []mood{
 		drone:   lin(0.6, 0.03).atMost(0.8),
 		fifth:   lin(0.15, 0.04).atMost(0.45),
 		pad:     lin(0.45, -0.03).atLeast(0.2),
-		bell:    lin(0.07, -0.01).atLeast(0.02),
+		leadDensity:    lin(0.07, -0.01).atLeast(0.02),
 		air:     lin(0.35, 0.03).atMost(0.55),
 		calm:    -5, // perfect fifth above the low drone
 		palette: voidPalette,
@@ -106,10 +106,10 @@ var moods = []mood{
 		drone:    lin(0.25, 0.03),
 		fifth:    lin(0.3, 0.05),
 		pad:      lin(0.7, 0),
-		bell:     lin(0.2, 0.04),
+		leadDensity:     lin(0.2, 0.04),
 		air:      lin(0.15, 0.02),
 		calm:     -8, // major third above the low drone: sunshine
-		bellLift: 12,
+		leadLift: 12,
 		palette:  overworldPalette,
 		leads:    overworldLeads,
 	},
@@ -126,10 +126,10 @@ var moods = []mood{
 		drone:    lin(0.12, 0),
 		fifth:    lin(0.25, 0.03).atMost(0.4),
 		pad:      lin(0.5, 0),
-		bell:     lin(0.3, 0.03).atMost(0.45),
+		leadDensity:     lin(0.3, 0.03).atMost(0.45),
 		air:      lin(0.2, 0.02).atMost(0.3),
 		calm:     -3, // major sixth above the low drone
-		bellLift: 12,
+		leadLift: 12,
 		palette:  overworldPalette,
 		leads:    meadowLeads,
 	},
@@ -145,7 +145,7 @@ var moods = []mood{
 		drone:   lin(0, 0),
 		fifth:   lin(0.3, 0.02).atMost(0.4),
 		pad:     lin(0.75, 0.02).atMost(0.85),
-		bell:    lin(0.08, 0.01).atMost(0.14),
+		leadDensity:    lin(0.08, 0.01).atMost(0.14),
 		air:     lin(0.3, 0.03).atMost(0.45),
 		calm:    7, // a fifth above the chord, floating over it
 		palette: auroraPalette,
@@ -163,7 +163,7 @@ var moods = []mood{
 		drone:   lin(0, 0),
 		fifth:   lin(0.2, 0.01).atMost(0.3),
 		pad:     lin(0.55, 0.02).atMost(0.7),
-		bell:    lin(0, 0),
+		leadDensity:    lin(0, 0),
 		air:     lin(0.3, 0.02).atMost(0.4),
 		calm:    12, // an octave above the chord: the thinnest interval
 		palette: stratospherePalette,
@@ -180,10 +180,10 @@ var moods = []mood{
 		drone:    lin(0.15, 0),
 		fifth:    lin(0.25, 0),
 		pad:      lin(0.55, 0),
-		bell:     lin(0.22, 0.02).atMost(0.32),
+		leadDensity:     lin(0.22, 0.02).atMost(0.32),
 		air:      lin(0.1, 0),
 		calm:     -8, // major third above the low drone
-		bellLift: 12,
+		leadLift: 12,
 		palette:  overworldPalette,
 		leads:    villageLeads,
 		grooves:  []string{"amble", "amble", "skip", "stomp"},
@@ -205,7 +205,7 @@ var moods = []mood{
 		drone:   lin(0.6, 0.04).atMost(0.85),
 		fifth:   lin(0.15, 0.08).atMost(0.55),
 		pad:     lin(0.35, 0.03).atMost(0.6),
-		bell:    lin(0.06, 0),
+		leadDensity:    lin(0.06, 0),
 		air:     lin(0.35, 0.05).atMost(0.7),
 		calm:    -6, // a tritone from the start
 		palette: rustPalette,
@@ -231,7 +231,7 @@ var moods = []mood{
 		drone:   lin(0.45, 0.02).atMost(0.55),
 		fifth:   lin(0.15, 0.03).atMost(0.3),
 		pad:     lin(0.3, 0),
-		bell:    lin(0.04, 0),
+		leadDensity:    lin(0.04, 0),
 		air:     lin(0.25, 0.03).atMost(0.4),
 		calm:    -5, // perfect fifth above the low drone
 		palette: rustPalette,
@@ -281,14 +281,14 @@ func (m *mood) derive(seed uint64, level int, tension float64) Params {
 		DroneGain:   m.drone.at(l),
 		FifthGain:   m.fifth.at(l) + float64(0.25*t),
 		PadDensity:  m.pad.at(l) * (1 - float64(0.6*t)),
-		BellDensity: m.bell.at(l) * (1 - float64(0.5*t)),
+		LeadDensity: m.leadDensity.at(l) * (1 - float64(0.5*t)),
 		AirGain:     m.air.at(l) + float64(0.1*t),
 		PulseGain:   t,
 		Grit:        t,
 		Open:        math.Max(-1, math.Min(1, m.open.at(l))),
 		Room:        m.room,
 		FifthOffset: tenseOffset(m.calm, t),
-		BellLift:    m.bellLift,
+		LeadLift:    m.leadLift,
 		Palette:     m.palette,
 		Seed:        seed,
 		DrumGain:    m.drums.at(l),

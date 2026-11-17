@@ -238,7 +238,7 @@ func (v *Voice) glideKnobs() {
 }
 
 // A voice's note is held to minNote..maxNote. Notes reach a voice from a
-// game's arithmetic (a trigger's :note, a scale's intervals, a bell lift, a
+// game's arithmetic (a trigger's :note, a scale's intervals, a lead lift, a
 // grid's degrees), and nothing in the write-only contract can refuse one, so
 // the voice bounds what it is given. Past the top an oscillator's frequency
 // overflows, and the NaN that makes circulates in the delay and reverb lines
@@ -624,7 +624,7 @@ var bell = Patch{
 	{opOut, [4]float64{0.5, 0.6}},
 }
 
-// ---- lead instruments (the bell slot) ----
+// ---- lead instruments (the lead track) ----
 // Different species, same opcodes: inharmonic partials read as metal,
 // ring-mod as clang, filtered pulse as wood/breath.
 
@@ -1009,12 +1009,12 @@ type Params struct {
 	DroneGain   float64
 	FifthGain   float64 // second drone at the fifth; thickens with depth
 	PadDensity  float64
-	BellDensity float64
+	LeadDensity float64
 	AirGain     float64
 	PulseGain   float64 // tension pulse track level (0 = silent)
 	FifthOffset int     // second drone's interval from the chord, usually below; slides dissonant with tension
-	BellLift    int     // semitones added to bell notes (overworld sparkle register)
-	LeadName    string  // which instrument holds the bell slot
+	LeadLift    int     // semitones added to lead notes (overworld sparkle register)
+	LeadName    string  // which lead plays on the lead track
 	LeadGate    int     // gate rows for the lead (sustained leads want > 1)
 	Palette     Palette // the mood's patch bank
 	Seed        uint64
@@ -1119,22 +1119,22 @@ func pickLead(p *Params, names []string) {
 
 func ApplyLead(p *Params, name string) {
 	if d, ok := lookupLead(name); ok {
-		p.LeadName, p.LeadGate, p.Palette.Bell = d.name, d.gate, d.patch
+		p.LeadName, p.LeadGate, p.Palette.Lead = d.name, d.gate, d.patch
 	}
 }
 
 // Palette is a mood's patch bank: mood = patches + a point in parameter space.
 type Palette struct {
-	Drone, Fifth, Pad, Bell, Air, Pulse Patch
+	Drone, Fifth, Pad, Lead, Air, Pulse Patch
 	Kit                                 kit // zero: drumKit
 }
 
-var dungeonPalette = Palette{Drone: drone, Fifth: pad, Pad: pad, Bell: bell, Air: air, Pulse: pulse}
-var overworldPalette = Palette{Drone: bed, Fifth: pad, Pad: pad, Bell: bell, Air: breeze, Pulse: pulse}
-var auroraPalette = Palette{Drone: bed, Fifth: veil, Pad: veil, Bell: bell, Air: breeze, Pulse: pulse}
-var rustPalette = Palette{Drone: rust, Fifth: smear, Pad: smear, Bell: bell, Air: hiss, Pulse: grind, Kit: industrialKit}
-var voidPalette = Palette{Drone: abyss, Fifth: pad, Pad: murk, Bell: bell, Air: rumble, Pulse: pulse}
-var stratospherePalette = Palette{Drone: bed, Fifth: haze, Pad: haze, Bell: bell, Air: breeze, Pulse: pulse}
+var dungeonPalette = Palette{Drone: drone, Fifth: pad, Pad: pad, Lead: bell, Air: air, Pulse: pulse}
+var overworldPalette = Palette{Drone: bed, Fifth: pad, Pad: pad, Lead: bell, Air: breeze, Pulse: pulse}
+var auroraPalette = Palette{Drone: bed, Fifth: veil, Pad: veil, Lead: bell, Air: breeze, Pulse: pulse}
+var rustPalette = Palette{Drone: rust, Fifth: smear, Pad: smear, Lead: bell, Air: hiss, Pulse: grind, Kit: industrialKit}
+var voidPalette = Palette{Drone: abyss, Fifth: pad, Pad: murk, Lead: bell, Air: rumble, Pulse: pulse}
+var stratospherePalette = Palette{Drone: bed, Fifth: haze, Pad: haze, Lead: bell, Air: breeze, Pulse: pulse}
 
 var scalesByDarkness = [][]int{
 	{0, 2, 3, 5, 7, 9, 10}, // dorian
@@ -1216,7 +1216,7 @@ func (r *rng) f() float64  { return float64(r.next()>>11) / (1 << 53) }
 func (r *rng) n(m int) int { return int(r.next() % uint64(m)) }
 
 const rows = 16
-const nTracks = 6 // drone, fifth, pad, bell, air, pulse
+const nTracks = 6 // drone, fifth, pad, lead, air, pulse
 
 type trackRow struct {
 	note     int
@@ -1226,7 +1226,7 @@ type trackRow struct {
 }
 
 // buildPatterns fills one pattern (16 rows x nTracks) from Params.
-// Chord drifts between tonic, VI, and iv each pattern; bells walk the
+// Chord drifts between tonic, VI, and iv each pattern; the lead walks the
 // scale — per-pattern reseeding is the gradual-mutation mechanism.
 func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 	var out [nTracks][rows]trackRow
@@ -1258,10 +1258,10 @@ func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 	n := len(p.Scale)
 	deg := n + r.n(n)
 	for i := 0; i < rows; i++ {
-		if r.f() < p.BellDensity {
+		if r.f() < p.LeadDensity {
 			deg += r.n(5) - 2
 			deg = max(3, min(deg, 2*n+3))
-			out[3][i] = trackRow{chord + scaleTone(p.Scale, deg) + p.BellLift, 0.55 * leadGain(p.LeadName), p.LeadGate, p.Palette.Bell}
+			out[3][i] = trackRow{chord + scaleTone(p.Scale, deg) + p.LeadLift, 0.55 * leadGain(p.LeadName), p.LeadGate, p.Palette.Lead}
 		}
 	}
 	// Without a lead the walk is still drawn, so the pulse below draws the
@@ -1929,7 +1929,7 @@ func (p Params) sanitized() Params {
 	}
 	p.BPM = min(p.BPM, 400)
 	p.Root = max(24, min(p.Root, 96))
-	for _, g := range []*float64{&p.DroneGain, &p.FifthGain, &p.PadDensity, &p.BellDensity, &p.AirGain, &p.PulseGain} {
+	for _, g := range []*float64{&p.DroneGain, &p.FifthGain, &p.PadDensity, &p.LeadDensity, &p.AirGain, &p.PulseGain} {
 		if !(*g >= 0) {
 			*g = 0
 		}

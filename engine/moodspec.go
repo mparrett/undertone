@@ -22,8 +22,8 @@ type MoodSpec struct {
 	BPM                Line
 	RootBase, RootStep int
 	Drone, Fifth       Line
-	Pad, Bell, Air     Line
-	Calm, BellLift     int
+	Pad, LeadDensity, Air     Line
+	Calm, LeadLift     int
 	Palette            string
 	Leads              []string // empty for a mood with no lead
 	Grooves            []string
@@ -107,8 +107,8 @@ func MoodByName(name string) (MoodSpec, bool) {
 			Name: m.name, Scales: cloneScales(m.scales), BPM: m.bpm.export(),
 			RootBase: m.rootBase, RootStep: m.rootStep,
 			Drone: m.drone.export(), Fifth: m.fifth.export(), Pad: m.pad.export(),
-			Bell: m.bell.export(), Air: m.air.export(),
-			Calm: m.calm, BellLift: m.bellLift,
+			LeadDensity: m.leadDensity.export(), Air: m.air.export(),
+			Calm: m.calm, LeadLift: m.leadLift,
 			Leads: slices.Clone(m.leads), Grooves: slices.Clone(m.grooves),
 			Drums: m.drums.export(), Busy: m.busy.export(), Swing: m.swing,
 			TenseDrums: m.tenseDrums, Open: m.open.export(), Room: m.room,
@@ -158,8 +158,8 @@ func (s MoodSpec) Derive(seed uint64, level int, tension float64) (Params, error
 		name: s.Name, scales: cloneScales(s.Scales), bpm: s.BPM.internal(),
 		rootBase: s.RootBase, rootStep: s.RootStep,
 		drone: s.Drone.internal(), fifth: s.Fifth.internal(), pad: s.Pad.internal(),
-		bell: s.Bell.internal(), air: s.Air.internal(),
-		calm: s.Calm, bellLift: s.BellLift, palette: pal, leads: slices.Clone(s.Leads),
+		leadDensity: s.LeadDensity.internal(), air: s.Air.internal(),
+		calm: s.Calm, leadLift: s.LeadLift, palette: pal, leads: slices.Clone(s.Leads),
 		grooves: slices.Clone(s.Grooves), drums: s.Drums.internal(), busy: s.Busy.internal(), swing: s.Swing,
 		tenseDrums: s.TenseDrums, open: s.Open.internal(), room: s.Room,
 	}
@@ -205,10 +205,10 @@ func (s MoodSpec) EDN() string {
 	for _, f := range []struct {
 		k string
 		l Line
-	}{{"drone", s.Drone}, {"fifth", s.Fifth}, {"pad", s.Pad}, {"bell", s.Bell}, {"air", s.Air}} {
+	}{{"drone", s.Drone}, {"fifth", s.Fifth}, {"pad", s.Pad}, {"lead-density", s.LeadDensity}, {"air", s.Air}} {
 		fmt.Fprintf(&b, " :%-9s %s\n", f.k, ln(f.l))
 	}
-	fmt.Fprintf(&b, " :calm      %d\n :bell-lift %d\n", s.Calm, s.BellLift)
+	fmt.Fprintf(&b, " :calm      %d\n :lead-lift %d\n", s.Calm, s.LeadLift)
 	if s.Palette != "" { // a bare ":" would not read back
 		fmt.Fprintf(&b, " :palette   :%s\n", s.Palette)
 	}

@@ -47,7 +47,7 @@ func TestRegisterPaletteFromLg(t *testing.T) {
 		t.Fatal(err)
 	}
 	want, _ := engine.PaletteByName("rust")
-	want.Bell = m.params.Palette.Bell // the lead's, both ways
+	want.Lead = m.params.Palette.Lead // the lead's, both ways
 	if !reflect.DeepEqual(m.params.Palette, want) {
 		t.Error("a registered :palette plays other patches than the palette it copies")
 	}
@@ -71,7 +71,7 @@ func TestRegisterPaletteFromLg(t *testing.T) {
 }
 
 // A lead registered from lg reads back as Go would register it, and a :lead
-// naming it puts its patch in the bell's slot.
+// naming it puts its patch on the lead track.
 func TestRegisterLeadFromLg(t *testing.T) {
 	c, m := lgRuntime(t)
 	want, _ := engine.LeadSpecByName("reed")
@@ -88,7 +88,7 @@ func TestRegisterLeadFromLg(t *testing.T) {
 	}
 	reed := m.params
 	engine.ApplyLead(&reed, "reed")
-	if m.params.LeadName != "lg-reed" || m.params.LeadGate != want.Gate || !reflect.DeepEqual(m.params.Palette.Bell, reed.Palette.Bell) {
+	if m.params.LeadName != "lg-reed" || m.params.LeadGate != want.Gate || !reflect.DeepEqual(m.params.Palette.Lead, reed.Palette.Lead) {
 		t.Errorf("a registered :lead gave %q, gate %d", m.params.LeadName, m.params.LeadGate)
 	}
 	if _, err := c.Run("(undertone/register-lead {:name :lg-x :patch [[:env 0 0.1 0 0.1] [:osc 0 :sine 0 1] [:mul] [:out 1 0.5]]})"); err == nil || !strings.Contains(err.Error(), ":gate") {

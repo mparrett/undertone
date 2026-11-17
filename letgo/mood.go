@@ -73,7 +73,7 @@ func deriveSpec(a []vm.Value) (vm.Value, error) {
 		vm.Keyword("drone-gain"), vm.Float(p.DroneGain),
 		vm.Keyword("fifth-gain"), vm.Float(p.FifthGain),
 		vm.Keyword("pad-density"), vm.Float(p.PadDensity),
-		vm.Keyword("bell-density"), vm.Float(p.BellDensity),
+		vm.Keyword("lead-density"), vm.Float(p.LeadDensity),
 		vm.Keyword("air-gain"), vm.Float(p.AirGain),
 		vm.Keyword("pulse-gain"), vm.Float(p.PulseGain),
 		vm.Keyword("grit"), vm.Float(p.Grit),
@@ -81,7 +81,7 @@ func deriveSpec(a []vm.Value) (vm.Value, error) {
 		vm.Keyword("room-size"), vm.Float(p.Room.Size),
 		vm.Keyword("room-damp"), vm.Float(p.Room.Damp),
 		vm.Keyword("fifth-offset"), vm.Int(p.FifthOffset),
-		vm.Keyword("bell-lift"), vm.Int(p.BellLift),
+		vm.Keyword("lead-lift"), vm.Int(p.LeadLift),
 		vm.Keyword("lead"), lead,
 		vm.Keyword("groove"), groove,
 		vm.Keyword("drum-gain"), vm.Float(p.DrumGain),
@@ -100,7 +100,7 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 	ints := []struct {
 		k   string
 		dst *int
-	}{{"root-base", &s.RootBase}, {"root-step", &s.RootStep}, {"calm", &s.Calm}, {"bell-lift", &s.BellLift}}
+	}{{"root-base", &s.RootBase}, {"root-step", &s.RootStep}, {"calm", &s.Calm}, {"lead-lift", &s.LeadLift}}
 	for _, f := range ints {
 		known[f.k] = true
 		if !integer(m, f.k, f.dst) {
@@ -113,7 +113,7 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 		required bool
 	}{
 		{"bpm", &s.BPM, true}, {"drone", &s.Drone, true}, {"fifth", &s.Fifth, true},
-		{"pad", &s.Pad, true}, {"bell", &s.Bell, true}, {"air", &s.Air, true},
+		{"pad", &s.Pad, true}, {"lead-density", &s.LeadDensity, true}, {"air", &s.Air, true},
 		{"drums", &s.Drums, false}, {"busy", &s.Busy, false}, {"open", &s.Open, false},
 	}
 	for _, f := range lines {

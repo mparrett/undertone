@@ -9,8 +9,8 @@ import (
 )
 
 // paletteSpec reads an lg palette map, in the shape PaletteSpec.EDN writes,
-// into a spec; RegisterPalette judges it. An absent :bell or :kit is left
-// zero, the built-in bell and the default kit.
+// into a spec; RegisterPalette judges it. An absent :kit is left zero, the
+// default kit. The lead track takes no patch here: its sound is a lead.
 func paletteSpec(v vm.Value) (engine.PaletteSpec, error) {
 	var s engine.PaletteSpec
 	m, ok := v.(*vm.PersistentMap)
@@ -25,7 +25,7 @@ func paletteSpec(v vm.Value) (engine.PaletteSpec, error) {
 		ps  *engine.PatchSpec
 	}{
 		{"drone", &s.Drone}, {"fifth", &s.Fifth}, {"pad", &s.Pad},
-		{"bell", &s.Bell}, {"air", &s.Air}, {"pulse", &s.Pulse},
+		{"air", &s.Air}, {"pulse", &s.Pulse},
 	} {
 		pv := at(m, t.key)
 		if pv == vm.NIL {

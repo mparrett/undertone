@@ -46,6 +46,47 @@ type Temperament struct {
 	// Shade is each section's colour, in section order: build, hold, thin,
 	// break, return.
 	Shade [nSections]Shade
+	// Parts picks which of the arc's parts run, so they can be heard apart.
+	// The zero value runs them all.
+	Parts ArcParts
+}
+
+// ArcParts splits the arc in two halves that together make the whole: what
+// changes the sound and what changes the notes.
+type ArcParts uint8
+
+const (
+	ArcAll ArcParts = iota
+	// ArcTexture runs only the section colour that leaves the pitched notes
+	// alone: Open, Grit, Dark, Wash, Room, Echo, Busy and Fill. The arc keeps
+	// its timeline, but the generator draws every chord and line and no layer
+	// leaves, so lead, fifth and pad play the same notes as without a
+	// temperament. Busy and Fill change the drums.
+	ArcTexture
+	// ArcMemory runs the rest: chord cycles, line memory, the layers the arc
+	// takes out, and the colour that edits notes (Lift, Pad).
+	ArcMemory
+)
+
+// shade is the section's colour as far as Parts lets it play.
+func (t *Temperament) shade(sec section) Shade {
+	sh := t.Shade[sec]
+	switch t.Parts {
+	case ArcTexture:
+		sh.Lift, sh.Pad = 0, 0
+	case ArcMemory:
+		sh = Shade{Lift: sh.Lift, Pad: sh.Pad}
+	}
+	return sh
+}
+
+// playChord is the chord this pattern plays: the cycle's, or with only the
+// texture running the generator's own draw (-1).
+func (m *motifState) playChord(t *Temperament) int {
+	if t.Parts == ArcTexture {
+		return -1
+	}
+	return m.chord
 }
 
 // Shade is a section's colour: offsets on the mood's derived params while the
@@ -214,7 +255,7 @@ func (s *Synth) motifRow() {
 	if s.row == 0 {
 		m.advance(&s.params, s.pat)
 		m.sp = m.shaded(s.params)
-		s.pats = buildPatternsOn(m.sp, s.pat, m.chord)
+		s.pats = buildPatternsOn(m.sp, s.pat, m.playChord(s.params.Temperament))
 		s.drums = buildDrums(m.sp, s.pat)
 		m.reshape(&m.sp, s.pat, &s.pats, &s.drums)
 	}
@@ -225,7 +266,7 @@ func (s *Synth) motifRow() {
 func (s *Synth) motifNow(pat, row int) {
 	m := &s.motif
 	m.sp = m.shaded(s.params)
-	s.pats = buildPatternsOn(m.sp, pat, m.chord)
+	s.pats = buildPatternsOn(m.sp, pat, m.playChord(s.params.Temperament))
 	s.drums = buildDrums(m.sp, pat)
 	m.reshape(&m.sp, pat, &s.pats, &s.drums)
 	s.pushShade(row)
@@ -330,7 +371,7 @@ func (m *motifState) advance(p *Params, pat int) {
 	if first {
 		*m = motifState{started: true, tension: T, prevTension: T}
 		m.plan(t, p, pat, true)
-		m.from, m.to = t.Shade[m.sec], t.Shade[m.sec]
+		m.from, m.to = t.shade(m.sec), t.shade(m.sec)
 	} else {
 		m.prevTension, m.tension = m.tension, T
 		m.secPos++
@@ -389,7 +430,7 @@ func (m *motifState) advance(p *Params, pat int) {
 	if !first {
 		m.glideIn = m.sec != secWas || m.secPos == 0
 		if m.glideIn {
-			m.from, m.to = m.cur, t.Shade[m.sec]
+			m.from, m.to = m.cur, t.shade(m.sec)
 		}
 	}
 	// a fill into the next section, on the last pattern of this one
@@ -397,7 +438,7 @@ func (m *motifState) advance(p *Params, pat int) {
 	if next == secBreak && (m.tension-m.prevTension > risingBy || m.tension >= breakTension) {
 		next = secReturn // the break will be held off
 	}
-	m.fill = m.secPos == m.lens[m.sec]-1 && t.Shade[next].Fill
+	m.fill = m.secPos == m.lens[m.sec]-1 && t.shade(next).Fill
 }
 
 // nextSection is the section after this one, skipping those planned empty.
@@ -443,6 +484,14 @@ func (m *motifState) shaded(p Params) Params {
 // only reads the arc, so a mid-pattern call (applyNow) draws the same.
 func (m *motifState) reshape(p *Params, pat int, pats *[nTracks][rows]trackRow, drums *[nDrums][rows]drumHit) {
 	t := p.Temperament
+	if t.Parts == ArcTexture {
+		// the generator's pattern as drawn, the colour aside
+		m.lastLead, m.lastPad = "gen", "gen"
+		if m.fill {
+			fill(p, drums)
+		}
+		return
+	}
 	r := m.rng(p.Seed, uint64(pat), 0x5eed)
 	rate := m.restless(t) * change[m.sec]
 	k := m.slot

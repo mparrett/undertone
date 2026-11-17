@@ -78,7 +78,7 @@ func TestMotifSeeded(t *testing.T) {
 func motifPattern(m *motifState, p *Params, pat int) ([nTracks][rows]trackRow, [nDrums][rows]drumHit) {
 	m.advance(p, pat)
 	sp := m.shaded(*p)
-	pats, drums := buildPatternsOn(sp, pat, m.chord), buildDrums(sp, pat)
+	pats, drums := buildPatternsOn(sp, pat, m.playChord(p.Temperament)), buildDrums(sp, pat)
 	m.reshape(&sp, pat, &pats, &drums)
 	return pats, drums
 }
@@ -215,5 +215,52 @@ func BenchmarkMotifBoundary(b *testing.B) {
 	b.ReportAllocs()
 	for i := range b.N {
 		motifPattern(&m, &p, i)
+	}
+}
+
+// pitchedNotes renders p and returns every note event but the drums'.
+func pitchedNotes(p Params, seconds float64) []NoteEvent {
+	s := NewSynth(p)
+	buf := make([]byte, 1024*4)
+	var out []NoteEvent
+	var cur uint64
+	for range int(seconds * SampleRate / 1024) {
+		s.Read(buf)
+		var evs []NoteEvent
+		evs, cur, _ = s.NoteEvents(cur, nil)
+		for _, e := range evs {
+			if e.Layer != layerDrums {
+				out = append(out, e)
+			}
+		}
+	}
+	return out
+}
+
+// With only the texture running, the arc colours the sound but every pitched
+// note is the one the generator plays without a temperament: same frame,
+// note and gain. The texture is then heard against the same performance.
+func TestMotifTextureKeepsNotes(t *testing.T) {
+	for _, mood := range []string{"dungeon", "rust"} {
+		for _, tension := range []float64{0.3, 0.7} {
+			p, _ := DeriveMood(mood, 7, 2, tension)
+			off := pitchedNotes(p, 120)
+			tm, _ := TemperamentFor(mood)
+			tm.Parts = ArcTexture
+			p.Temperament = &tm
+			tex := pitchedNotes(p, 120)
+			if len(off) != len(tex) || len(off) == 0 {
+				t.Fatalf("%s %v: %d notes off, %d with the texture", mood, tension, len(off), len(tex))
+			}
+			for i := range off {
+				if off[i] != tex[i] {
+					t.Fatalf("%s %v: note %d off %+v, texture %+v", mood, tension, i, off[i], tex[i])
+				}
+			}
+			tm.Parts = ArcMemory
+			if mem := pitchedNotes(p, 120); len(mem) == len(off) && mem[len(mem)-1] == off[len(off)-1] && mem[len(mem)/2] == off[len(off)/2] {
+				t.Errorf("%s %v: memory left the notes as they were", mood, tension)
+			}
+		}
 	}
 }

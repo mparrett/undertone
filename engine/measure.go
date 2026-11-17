@@ -75,7 +75,7 @@ func measure[T int16 | float32](x []T, scale float64) Measurement {
 	m.EnvPeak, m.EnvRMS = m.EnvPeak[:n], m.EnvRMS[:n]
 	for i := n - 1; i >= 0; i-- {
 		if 1000*m.EnvPeak[i] >= ringFloor {
-			m.Length = float64((i+1)*EnvHop) / SampleRate
+			m.Length = float64(min((i+1)*EnvHop, frames)) / SampleRate
 			break
 		}
 	}

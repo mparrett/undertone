@@ -103,6 +103,11 @@ func TestMeasureLevelsAndLength(t *testing.T) {
 	if len(m.EnvPeak) != 80 {
 		t.Errorf("%d hops, want 80: the silence dropped, the quiet tail kept", len(m.EnvPeak))
 	}
+	// Ringing to its end through a short final hop, a sound rings its own
+	// length, not the whole hop's.
+	if m := Measure(tone(0.205, 1000, 0.5, 0.5)); math.Abs(m.Length-0.205) > 1.0/SampleRate {
+		t.Errorf("a 205 ms tone rings %v s", m.Length)
+	}
 	// A hop holds ten whole cycles of 1 kHz; its RMS over both channels: sqrt((0.5²+0.25²)/4).
 	if want := math.Sqrt((0.25 + 0.0625) / 4); math.Abs(m.EnvRMS[10]-want) > 1e-3 {
 		t.Errorf("rms %v, want %v", m.EnvRMS[10], want)

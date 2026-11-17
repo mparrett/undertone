@@ -181,17 +181,29 @@ func TestRenderVersionGolden(t *testing.T) {
 		lines = append(lines, sc.Text())
 	}
 	sameVersion := len(lines) > 0 && lines[0] == head
-	moved := !sameVersion || len(lines)-1 != len(rows)
-	for i := 0; !moved && i < len(rows); i++ {
-		gn, gp, gl, gr, gs, err1 := parseGoldenRow(lines[i+1])
-		n, p, l, r, s, err2 := parseGoldenRow(rows[i])
-		if err1 != nil || err2 != nil {
-			t.Fatalf("row %d: %v %v", i, err1, err2)
+	// Rows are matched by name: a shot or mood added or dropped changes no
+	// other take's sound, so it asks for -update but not for a new version.
+	golden := map[string]string{}
+	for _, l := range lines[min(1, len(lines)):] {
+		n, _, _, _, _, err := parseGoldenRow(l)
+		if err != nil {
+			t.Fatalf("%s: %q: %v", renderGolden, l, err)
 		}
-		if gn != n || math.Abs(gp-p) > 1e-4 || math.Abs(gl-l) > 0.01 || math.Abs(gr-r) > 0.011 ||
+		golden[n] = l
+	}
+	moved, reshaped := false, len(golden) != len(rows)
+	for _, row := range rows {
+		n, p, l, r, s, _ := parseGoldenRow(row)
+		g, ok := golden[n]
+		if !ok {
+			reshaped = true
+			continue
+		}
+		_, gp, gl, gr, gs, _ := parseGoldenRow(g)
+		if math.Abs(gp-p) > 1e-4 || math.Abs(gl-l) > 0.01 || math.Abs(gr-r) > 0.011 ||
 			math.Abs(gs-s) > 1e-3*max(1, gs) {
 			moved = true
-			t.Logf("%s moved:\n  golden %s\n  now    %s", n, lines[i+1], rows[i])
+			t.Logf("%s moved:\n  golden %s\n  now    %s", n, g, row)
 		}
 	}
 
@@ -210,5 +222,8 @@ func TestRenderVersionGolden(t *testing.T) {
 	}
 	if moved {
 		t.Errorf("what takes render moved: if that is intended, bump RenderVersion and run go test ./engine -run TestRenderVersionGolden -update")
+	}
+	if reshaped {
+		t.Errorf("the reference takes changed: run go test ./engine -run TestRenderVersionGolden -update")
 	}
 }

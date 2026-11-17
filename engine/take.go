@@ -45,11 +45,16 @@ func (t Take) Render() []int16 {
 	for _, sh := range t.Shots {
 		s.TriggerShot(sh)
 	}
-	pcm := make([]byte, t.frames()*4)
-	_, _ = s.Read(pcm)
-	out := make([]int16, len(pcm)/2)
-	for i := range out {
-		out[i] = int16(binary.LittleEndian.Uint16(pcm[2*i:]))
+	// In chunks through one small buffer: a minute's take is 10 MB of
+	// samples, and a whole-take byte buffer beside it would double that.
+	out := make([]int16, 2*t.frames())
+	var buf [4096 * 4]byte
+	for i := 0; i < len(out); {
+		b := buf[:min(len(buf), 2*(len(out)-i))]
+		_, _ = s.Read(b)
+		for k := 0; k < len(b); k, i = k+2, i+1 {
+			out[i] = int16(binary.LittleEndian.Uint16(b[k:]))
+		}
 	}
 	return out
 }

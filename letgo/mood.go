@@ -96,6 +96,10 @@ func deriveSpec(a []vm.Value) (vm.Value, error) {
 // to leave at zero.
 func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 	var s engine.MoodSpec
+	// first, or an old entry would fail on the missing :lead-density instead
+	if err := retiredKey(m, "bell", "bell-lift"); err != nil {
+		return s, err
+	}
 	known := map[string]bool{"palette": true, "leads": true, "grooves": true, "scales": true, "room": true}
 	ints := []struct {
 		k   string
@@ -200,6 +204,25 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 		s.Scales = append(s.Scales, sc)
 	}
 	return s, onlyKeys(m, known)
+}
+
+// retired maps keys the lead rename (#108) retired to what replaced them.
+// Each is an error rather than an alias: they had no users outside the repo
+// to keep working, and a silent no-op in a partial map is the worse failure.
+var retired = map[string]string{
+	"bell-density": "it is :lead-density",
+	"bell-lift":    "it is :lead-lift",
+	"bell":         "the line is :lead-density",
+}
+
+// retiredKey reports the first of keys that m still uses.
+func retiredKey(m *vm.PersistentMap, keys ...string) error {
+	for _, k := range keys {
+		if at(m, k) != vm.NIL {
+			return fmt.Errorf(":%s was renamed: %s", k, retired[k])
+		}
+	}
+	return nil
 }
 
 // onlyKeys reports the first key of m that known does not hold.

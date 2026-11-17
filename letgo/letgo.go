@@ -128,6 +128,9 @@ func (m *Music) setParameters(v vm.Value, now bool) (vm.Value, error) {
 // (forward compatibility) and absent keys keep their current value. An unknown
 // :palette is an error, checked before p changes.
 func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
+	if err := retiredKey(lgm, "bell-density", "bell-lift"); err != nil {
+		return err
+	}
 	var pal *engine.Palette
 	if s, ok := kwStr(lgm, "palette"); ok {
 		bank, ok := engine.PaletteByName(s)

@@ -20,6 +20,11 @@ func paletteSpec(v vm.Value) (engine.PaletteSpec, error) {
 	if s.Name, ok = kwStr(m, "name"); !ok {
 		return s, fmt.Errorf("want :name as a keyword or string")
 	}
+	// Refused, not ignored: a palette that brought its own bell would
+	// otherwise register and play the bell lead instead, with no error.
+	if at(m, "bell") != vm.NIL {
+		return s, fmt.Errorf("a palette has no :bell: the lead track plays a lead, so register your sound with undertone/register-lead")
+	}
 	for _, t := range []struct {
 		key string
 		ps  *engine.PatchSpec

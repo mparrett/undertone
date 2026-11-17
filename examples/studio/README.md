@@ -11,7 +11,7 @@ The page carries its own guide (the **How to use the studio** panel, open on
 a first visit). In short:
 
 1. **play** starts a mood's bed; pick **shot**, **lead** or **palette** and
-   open a sound. A built-in opens as a copy under a new name.
+   open a sound. Clicking a name opens it; a built-in becomes your own copy under a new name on your first edit, and shift-click copies it at once.
 2. Edit the units. The bars after each unit show the stack after it runs:
    signal (from an `osc` or `pluck`) or control (from an `env` or `lfo`).
 3. Every edit registers the sound, so you hear it at once: a shot on keys

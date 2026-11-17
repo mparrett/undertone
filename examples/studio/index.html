@@ -89,7 +89,7 @@
   <div class="bar" id="kinds"></div>
   <div class="lab">OPEN</div>
   <div class="bar" id="names"></div>
-  <p class="hint"><i>italic</i> = registered this session. Built-ins open as a copy under a new name.</p>
+  <p class="hint"><i>italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
 
   <div class="lab">VIEW</div>
   <div class="bar"><span class="chip" id="compact" title="a unit to a line">compact rows</span>
@@ -149,7 +149,7 @@
       <li>A lead or palette you edit replaces the bed's own, so you hear it in the music. <b>solo</b> mutes the rest.</li>
       <li><b>none</b> silences the bed (music gain 0) for a shot on its own; the room and delay still ring, and the mood still sets the key its degrees land in.</li>
       <li>Change <b>mood, level, tension, seed</b> to hear it in other keys, tempos and densities. The meters show each layer (not shots).</li>
-      <li>A built-in opens as a copy (<code>name-2</code>): built-in names can't be replaced. Sounds you registered are in <i>italic</i>.</li>
+      <li>Clicking a name opens it. A built-in plays as it is; your first edit makes it your own copy (<code>name-2</code>), since built-in names can't be replaced. <b>Shift-click</b> makes a copy straight away. Sounds you registered are in <i>italic</i>.</li>
     </ul>
 
     <h3>TAKING IT TO A GAME</h3>
@@ -238,7 +238,8 @@ const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums"];
 
 let mutedNow = [];
 const last = {};
-function resume(st) { spec = st.spec; track = st.track; render(); commit(); }
+function resume(st) { spec = st.spec; track = st.track; builtin = st.builtin; render(); builtin ? preview() : commit(); }
+let builtin = false;  // spec is a built-in, unedited: shown and played, not registered
 let kind = "shot", spec = null, track = "drone", playing = false, solo = false, bedOn = true;
 const registered = { shot: new Set(), lead: new Set(), palette: new Set() };
 const U = () => window.undertoneStudio;
@@ -258,7 +259,7 @@ function buildKinds() {
     const c = el("span", "chip", k); c.dataset.k = k;
     // each kind keeps what was being edited, so switching back resumes it
     // rather than opening another copy
-    c.onclick = () => { if (spec) last[kind] = { spec, track }; kind = k; last[k] ? resume(last[k]) : openFirst(); };
+    c.onclick = () => { if (spec) last[kind] = { spec, track, builtin }; kind = k; last[k] ? resume(last[k]) : openFirst(); };
     $("kinds").append(c);
   }
 }
@@ -267,7 +268,7 @@ function buildNames() {
   for (const n of JSON.parse(U().names(kind))) {
     const c = el("span", "chip" + (registered[kind].has(n) ? " reg" : ""), n);
     c.classList.toggle("on", spec && spec.Name === n);
-    c.onclick = () => open(n);
+    c.onclick = (e) => open(n, e.shiftKey);
     $("names").append(c);
   }
   for (const c of $("kinds").children) c.classList.toggle("on", c.dataset.k === kind);
@@ -277,16 +278,25 @@ function openFirst() {
   const names = JSON.parse(U().names(kind));
   open(names.includes(first) ? first : names[0]);
 }
-function open(name) {
+// Open a sound. A built-in plays as it is, and becomes a copy under a new
+// name on the first edit (built-in names cannot be registered over), so
+// browsing the list never piles up copies. copy makes the copy now.
+function open(name, copy) {
   const s = JSON.parse(U().get(kind, name));
   if (!s) return say(`no ${kind} ${name}`, true);
-  if (!registered[kind].has(name)) s.Name = freeName(name);  // a built-in name cannot be registered over
+  builtin = !registered[kind].has(name);
+  if (copy) { s.Name = freeName(name); builtin = false; }
   if (kind === "palette") {
     for (const t of TRACKS) s[cap(t)] = s[cap(t)] || { Name: "", Units: [] };
     if (!LANES.includes(track) && !TRACKS.includes(track)) track = "drone";
   }
   spec = s;
-  render(); commit();
+  render(); builtin ? preview() : commit();
+}
+function preview() {
+  $("edn").value = U().edn(kind, JSON.stringify(spec));
+  buildNames(); applyBed();
+  say(`built-in ${kind} ${spec.Name}: your first edit makes it your own copy`);
 }
 function freeName(n) {
   const taken = new Set(JSON.parse(U().names(kind)));
@@ -417,6 +427,11 @@ function fire(d) {
 
 // Register what is on screen, then retune the bed to it. Every edit runs this.
 function commit(refire) {
+  if (builtin) {  // the first edit of a built-in: it becomes a copy
+    builtin = false;
+    if (JSON.parse(U().names(kind)).includes(spec.Name) && !registered[kind].has(spec.Name)) spec.Name = freeName(spec.Name);
+    $("name").value = spec.Name;
+  }
   const json = JSON.stringify(spec);
   $("edn").value = U().edn(kind, json);
   const err = U().register(kind, json);
@@ -449,8 +464,8 @@ function applyBed() {
   const muted = mutedNow = solo && kind !== "shot" ? LAYERS.filter((l) => l !== layer) : [];
   const err = U().bed(JSON.stringify({
     mood: $("mood").value, seed: +$("seed").value, level: +$("level").value, tension: +$("tension").value,
-    palette: kind === "palette" && registered.palette.has(spec.Name) ? spec.Name : "",
-    lead: kind === "lead" && registered.lead.has(spec.Name) ? spec.Name : "", muted, musicGain: bedOn ? 1 : 0 }));
+    palette: kind === "palette" && (builtin || registered.palette.has(spec.Name)) ? spec.Name : "",
+    lead: kind === "lead" && (builtin || registered.lead.has(spec.Name)) ? spec.Name : "", muted, musicGain: bedOn ? 1 : 0 }));
   if (err) say(err, true);
 }
 

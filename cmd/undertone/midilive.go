@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/mparrett/undertone/engine"
@@ -26,6 +28,39 @@ const liveAhead = 60 * time.Millisecond
 
 // playMIDILive renders s in real time, without audio, and sends its notes
 // to a virtual MIDI source until interrupted.
+// liveChannels are the channels -midi-live sends, all of them unless -layer
+// names some: a receiver that plays every channel on one instrument, as Slab
+// does, gets one clean part rather than the whole mix piled on it.
+var liveChannels = func() (c [16]bool) {
+	for i := range c {
+		c[i] = true
+	}
+	return c
+}()
+
+// setLayers limits liveChannels to the named layers, comma-separated.
+func setLayers(list string) error {
+	if list == "" {
+		return nil
+	}
+	var c [16]bool
+	names := engine.LayerNames()
+	for _, n := range strings.Split(list, ",") {
+		n = strings.TrimSpace(n)
+		i := slices.Index(names[:], n)
+		switch {
+		case i < 0:
+			return fmt.Errorf("-layer %q: want %s", n, strings.Join(names[:], ", "))
+		case i == engine.NumLayers-1:
+			c[drumChannel] = true
+		default:
+			c[i] = true
+		}
+	}
+	liveChannels = c
+	return nil
+}
+
 func playMIDILive(s *engine.Synth, p engine.Params, desc string) error {
 	out, err := openVirtualSource("undertone")
 	if err != nil {
@@ -62,6 +97,10 @@ func playMIDILive(s *engine.Synth, p engine.Params, desc string) error {
 		for _, m := range t.m.out {
 			if m.frame > now {
 				break
+			}
+			if !liveChannels[m.data[0]&0x0f] {
+				n++
+				continue
 			}
 			if err := out.send(m.data); err != nil {
 				return err

@@ -42,6 +42,7 @@ func main() {
 	wav := flag.String("wav", "", "render to WAV file")
 	midiFile := flag.String("midi-file", "", "render the notes to a Standard MIDI File (with -wav, the same render)")
 	midiLive := flag.Bool("midi-live", false, "play the notes live to a virtual MIDI source named undertone, without audio (macOS)")
+	layer := flag.String("layer", "", "with -midi-live, send only these layers, comma-separated: drone, fifth, pad, lead, air, pulse, drums")
 	dur := flag.Float64("dur", 48, "WAV or MIDI file duration seconds")
 	seed := flag.Uint64("seed", 1, "level seed")
 	depth := flag.Int("depth", 0, "level within the mood (for dungeon, negative = overworld elevation)")
@@ -75,6 +76,10 @@ func main() {
 		}
 		fmt.Printf("rendered %.0fs %s -> %s\n", *dur, desc, *midiFile)
 	case *midiLive:
+		if err := setLayers(*layer); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
 		if err := playMIDILive(s, p, desc); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)

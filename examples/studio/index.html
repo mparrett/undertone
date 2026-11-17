@@ -98,12 +98,13 @@
   <div class="bar" id="kinds"></div>
   <div class="lab">OPEN</div>
   <div class="bar" id="names"></div>
-  <p class="hint"><i>italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
+  <p class="hint"><i>Dashed italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
 
   <div class="lab">VIEW</div>
   <div class="bar"><span class="chip" id="compact" title="a unit to a line">compact rows</span>
     <span class="chip" id="guidechip" title="show or hide the how-to">guide</span>
     <span class="chip" id="thinscope" title="the scope as a thin strip without labels (or click the scope)">thin scope</span></div>
+  <label class="sl" title="how long the scope's marks take to fade">fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label>
   <div class="lab">BED</div>
   <div class="bar"><button id="play" disabled>loading…</button>
     <select id="mood"></select>
@@ -608,7 +609,8 @@ function meters() {
 // brighter one each pattern. The top lane is the bed: a coloured line where
 // the mood, level, tension or seed changed, or the chord moved. The bottom
 // lane is fired shots: a dot, over the shot's own loudness in amber.
-const SWEEP = 8, FADE = 3, ROWS = ["bed", ...LAYERS, "shots"], SHOTS = ROWS.length - 1;
+let FADE = 3;  // seconds; the fade slider sets it
+const SWEEP = 8, ROWS = ["bed", ...LAYERS, "shots"], SHOTS = ROWS.length - 1;
 const BEDC = { mood: "224,184,79", level: "95,168,201", tension: "180,138,214", seed: "214,209,194", chord: "156,196,106" };
 const marks = [];  // {t, kind: dot|level|tick|bed|shape, row, ...}
 const t0 = performance.now();
@@ -693,6 +695,10 @@ function scope() {
 const setThin = (on) => { $("scope").classList.toggle("thin", on); $("thinscope").classList.toggle("on", on); try { localStorage.setItem("studio-thin-scope", on ? "1" : ""); } catch {} };
 $("thinscope").onclick = $("scope").onclick = () => setThin(!$("scope").classList.contains("thin"));
 try { setThin(localStorage.getItem("studio-thin-scope") === "1"); } catch {}
+// fade runs 0.3 s to 30 s on a log scale, kept across visits
+const setFade = (s) => { FADE = s; $("fadeout").value = s < 10 ? `${s.toFixed(1)} s` : `${Math.round(s)} s`; try { localStorage.setItem("studio-fade", s); } catch {} };
+$("fade").oninput = () => setFade(0.3 * 100 ** +$("fade").value);
+{ let s = 3; try { s = +localStorage.getItem("studio-fade") || 3; } catch {} $("fade").value = Math.log(s / 0.3) / Math.log(100); setFade(s); }
 
 window.undertoneStudioFailed = (msg) => say("audio failed: " + msg, true);
 // Compact rows are a viewer's preference, kept across visits.

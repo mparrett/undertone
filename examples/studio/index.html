@@ -16,6 +16,7 @@
   main.loading { opacity: .45; pointer-events: none; }
   h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
   .sub { color: var(--mut); font-size: 12px; margin: 0 0 12px; }
+  .help { cursor: help; color: var(--src); font-weight: 400; letter-spacing: 0; }
   .lab { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 16px 0 6px; font-weight: 600; }
   #status { color: var(--mut); min-height: 1.45em; font-size: 13px; white-space: pre-wrap; }
   #status.err { color: var(--err); }
@@ -96,9 +97,9 @@
   <h1>UNDERTONE STUDIO</h1>
   <p class="sub">shape a one-shot, a lead or a palette; hear it; take it away as EDN</p>
   <div class="bar" id="kinds"></div>
-  <div class="lab">OPEN</div>
+  <div class="lab">OPEN <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
+  <p class="hint" id="openhelp" hidden><i>Dashed italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
   <div class="bar" id="names"></div>
-  <p class="hint"><i>Dashed italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
 
   <div class="lab">VIEW</div>
   <div class="bar"><span class="chip" id="compact" title="a unit to a line">compact rows</span>

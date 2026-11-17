@@ -85,9 +85,31 @@ func TestPositionFromLg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// pending: music-start stages the params it caught up to once the output
-	// opened, after these rows rendered, for the next boundary
-	if got, want := v.String(), "[1 1 true false false true]"; got != want {
+	if got, want := v.String(), "[1 1 false false false true]"; got != want {
 		t.Errorf("position = %s, want %s", got, want)
+	}
+	if v, _ := c.Run(`(do (undertone/set-parameters {:bpm 70}) (:pending? (undertone/position)))`); v != vm.TRUE {
+		t.Errorf("pending? after set-parameters = %v, want true", v)
+	}
+}
+
+// A change made while the output opened still lands, and shows as pending
+// until it does; with none, nothing is pending after music-start.
+func TestPositionPendingAfterStart(t *testing.T) {
+	for _, moved := range []bool{false, true} {
+		p := engine.DeriveDungeon(1, 1, 0)
+		m := NewMusic(p)
+		m.start(func(src io.Reader) (output, error) {
+			if moved {
+				m.SetParams(engine.DeriveDungeon(2, 1, 0))
+			}
+			io.ReadFull(src, make([]byte, 4*(rowsOf(p, 2)+1)))
+			return gainTestOutput{}, nil
+		})
+		got, _, ok := m.Position()
+		m.Stop()
+		if !ok || got.Pending != moved {
+			t.Errorf("params moved during the wait %v: pending %v, want %v", moved, got.Pending, moved)
+		}
 	}
 }

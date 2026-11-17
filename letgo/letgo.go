@@ -50,6 +50,9 @@ type Music struct {
 	// nowWaiting is a set-parameters-now that came during that window; the
 	// catch-up applies it at once rather than at the first boundary.
 	nowWaiting bool
+	// paramsGen counts changes to params, so start can tell whether any came
+	// while the output opened.
+	paramsGen uint64
 
 	// gains are the last set-/glide-music-gain and -sfx-gain, carried into a
 	// synth that starts later.
@@ -105,6 +108,7 @@ func (m *Music) setParameters(v vm.Value, now bool) (vm.Value, error) {
 		}
 		return vm.NIL, fmt.Errorf("undertone/%s: %w", fn, err)
 	}
+	m.paramsGen++
 	switch {
 	case m.synth == nil:
 		m.nowWaiting = m.nowWaiting || now && m.starting
@@ -279,6 +283,7 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	}
 	m.opening = syn
 	opening := m.theme
+	gen := m.paramsGen
 	if opening != nil {
 		syn.PlayTheme(opening)
 	}
@@ -304,10 +309,13 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	m.out = out
 	m.synth = syn
 	// Parameters may have moved while we waited for the gesture; the synth was
-	// built from a snapshot, so catch it up to whatever is current.
-	if waited {
+	// built from a snapshot, so catch it up to whatever is current. Only if
+	// they moved: staging the snapshot again would change nothing heard, but
+	// undertone/position would report it pending for the whole first pattern.
+	switch {
+	case waited:
 		m.synth.SetParametersNow(m.params)
-	} else {
+	case m.paramsGen != gen:
 		m.synth.SetParameters(m.params)
 	}
 	// A play-theme during the wait replaces the one the synth opened with.
@@ -896,6 +904,7 @@ func (m *Music) SetParams(p engine.Params) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.params = p
+	m.paramsGen++
 	if m.synth != nil {
 		m.synth.SetParameters(p)
 	}

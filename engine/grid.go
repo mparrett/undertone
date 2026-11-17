@@ -240,10 +240,12 @@ func (s *Synth) RowAt(frame int64) int {
 func (s *Synth) Frames() int64 { return s.frames.Load() }
 
 // rowLog remembers when recent rows started: each entry packs the start
-// frame (<<8) with the row number, and pat holds the entry's pattern.
+// frame (<<8) with the row number, and pat holds the entry's pattern. It has
+// a slot more than the 64 rows it promises, since find gives up the oldest
+// slot as possibly mid-overwrite.
 type rowLog struct {
-	at  [64]atomic.Int64
-	pat [64]atomic.Int64
+	at  [65]atomic.Int64
+	pat [65]atomic.Int64
 	n   atomic.Int64
 }
 
@@ -259,7 +261,7 @@ func (l *rowLog) add(frame int64, row, pat int) {
 // two words are written one after the other, so a reader the writer laps
 // meanwhile could pair one row's frame with a later row's pattern. It reads
 // the count again after each entry, and treats an entry the writer may have
-// begun to overwrite (64 behind the next to be written) as gone.
+// begun to overwrite (a whole log behind the next to be written) as gone.
 func (l *rowLog) find(frame int64) (start int64, row, pat int, ok bool) {
 	size := int64(len(l.at))
 	n := l.n.Load()

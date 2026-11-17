@@ -50,9 +50,13 @@ func TestPositionAtFollowsTheHeardFrame(t *testing.T) {
 		}
 	}
 	// the log keeps 64 rows; older frames are gone
-	render(s, int(64*row))
+	render(s, int(44*row))
+	if got, ok := s.PositionAt(0); !ok || got.Pattern != 0 || got.Row != 0 {
+		t.Errorf("PositionAt(0) after 64 rows = %+v, %v; want row 0 of pattern 0", got, ok)
+	}
+	render(s, int(row))
 	if _, ok := s.PositionAt(0); ok {
-		t.Error("PositionAt(0) after 84 rows: ok, want gone")
+		t.Error("PositionAt(0) after 65 rows: ok, want gone")
 	}
 }
 
@@ -94,5 +98,9 @@ func TestPositionThemeCutsThePattern(t *testing.T) {
 	got, _ := s.Position()
 	if got.ThemePending || got.Pattern != 1 || got.Row != 0 {
 		t.Errorf("after the theme started: %+v, want pattern 1 row 0, no longer pending", got)
+	}
+	s.PlayTheme(nil) // a stop starts nothing
+	if got, _ := s.Position(); got.ThemePending {
+		t.Error("stopping the theme showed as a theme pending")
 	}
 }

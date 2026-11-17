@@ -31,9 +31,10 @@ func (s *Synth) PositionAt(frame int64) (Position, bool) {
 	if !ok {
 		return Position{}, false
 	}
+	c := s.themeCmd.Load() // a nil theme stops one: nothing is about to start
 	return Position{
 		Row: row, Pattern: pat, Frame: start,
 		Pending:      s.next.Load() != nil,
-		ThemePending: s.themeCmd.Load() != nil,
+		ThemePending: c != nil && c.t != nil,
 	}, true
 }

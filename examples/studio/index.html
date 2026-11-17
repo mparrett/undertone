@@ -139,7 +139,7 @@ const OPS = {
 const DEFAULT_ARGS = { env: [.005, .3, 0, .2], osc: [0, 0, 0], pluck: [0, .99], lfo: [2, 0], mul: [], lpf: [2000], hpf: [80],
   svf: [1200, .3, 0, 0], drive: [2, 0], crush: [8000, 8], scale: [.5, .5], pitch: [.3], send: [.2], verb: [.2], out: [.5, .5] };
 const SHAPES = ["sine", "saw", "pulse", "noise"];
-const TRACKS = ["drone", "fifth", "pad", "air", "pulse"];  // bell is fixed: a palette's bell is the built-in bell
+const TRACKS = ["drone", "fifth", "pad", "air", "pulse"];  // a palette has no melody track: a melody sound is a registered lead
 const LANES = ["kick", "clap", "shaker"];
 const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums"];
 
@@ -185,7 +185,7 @@ function open(name) {
   if (!s) return say(`no ${kind} ${name}`, true);
   if (!registered[kind].has(name)) s.Name = freeName(name);  // a built-in name cannot be registered over
   if (kind === "palette") {
-    for (const t of [...TRACKS, "bell"]) s[cap(t)] = s[cap(t)] || { Name: "", Units: [] };
+    for (const t of TRACKS) s[cap(t)] = s[cap(t)] || { Name: "", Units: [] };
     if (!LANES.includes(track) && !TRACKS.includes(track)) track = "drone";
   }
   spec = s;
@@ -396,7 +396,7 @@ function importEDN() {
   else if (":gate" in m) { k = "lead"; s = { Name: name, Gate: m[":gate"], ...patchOf(m[":patch"]), }; s.Name = name; }
   else if (":kit" in m || ":drone" in m) {
     k = "palette"; s = { Name: name, Kit: [] };
-    for (const t of [...TRACKS, "bell"]) if (m[":" + t]) s[cap(t)] = patchOf(m[":" + t]);
+    for (const t of TRACKS) if (m[":" + t]) s[cap(t)] = patchOf(m[":" + t]);
     s.Kit = (m[":kit"] || [":default", ":default", ":default"]).map((d) => d === ":default" ? { Name: "", Units: [], Note: 0, Default: true }
       : { ...patchOf(d[":patch"]), Note: d[":note"], Default: false });
   } else return say("EDN: not a shot (:gate-ms), lead (:gate) or palette (:kit)", true);
@@ -411,7 +411,7 @@ $("name").onchange = () => { spec.Name = $("name").value.trim(); commit(); };
 $("gate").onchange = () => { if (kind === "shot") spec.GateMS = +$("gate").value; else spec.Gate = +$("gate").value; commit(true); };
 $("kitnote").onchange = () => { patch().Note = +$("kitnote").value; patch().Default = false; render(); commit(); };
 $("kitdef").onclick = () => { const d = patch(); d.Default = !d.Default; if (d.Default) { d.Name = ""; d.Units = []; d.Note = 0; } open2(); };
-function open2() { commit(); if (kind === "palette" && registered.palette.has(spec.Name)) { const t = track; spec = JSON.parse(U().get("palette", spec.Name)); for (const x of [...TRACKS, "bell"]) spec[cap(x)] ||= { Name: "", Units: [] }; track = t; render(); } }
+function open2() { commit(); if (kind === "palette" && registered.palette.has(spec.Name)) { const t = track; spec = JSON.parse(U().get("palette", spec.Name)); for (const x of TRACKS) spec[cap(x)] ||= { Name: "", Units: [] }; track = t; render(); } }
 $("addop").onchange = () => {
   const op = $("addop").value; $("addop").value = ""; if (!op) return;
   const p = patch(); p.Units.push({ Op: op, Shape: op === "osc" ? "sine" : "", Args: [...DEFAULT_ARGS[op]] }); edited();

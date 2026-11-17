@@ -79,6 +79,8 @@ func TestConcurrentControlWhileRendering(t *testing.T) {
 		func(i int) {
 			s.Levels()
 			s.RowAt(s.Frames())
+			s.Position()
+			s.PositionAt(s.Frames() - 4096)
 		},
 		// the shot registry is shared by every synth in the process
 		func(i int) {

@@ -73,6 +73,7 @@ func TestConcurrentCallsWhilePlaying(t *testing.T) {
 		func(i int) {
 			m.Params()
 			m.Started()
+			m.position()
 			m.Pause()
 			m.Resume()
 		},

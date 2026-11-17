@@ -221,14 +221,18 @@ audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 | `undertone/set-queue` | browser only, and not in a `-w-audio` bundle (the seam owns the queue there): milliseconds of audio queued ahead of the speaker, for tuning per device without a rebuild; clamped to the ring, with the clamp reported on stderr |
 | `undertone/play-theme` | `{:grids [{:lead [1 0 3] :bass [1] :pulse [true] :drums ["X..." "" "x.x."] :bed false} ...] :then :generate}`: an authored theme, from its first grid at once; `:then` is `:generate`, `:silence` or `:loop`; nil stops it. Sent before `music-start`, it starts with the music |
 | `undertone/theme-playing?` | whether the last theme has still to finish |
+| `undertone/position` | where the sequencer is, for a playhead: `{:row 3 :pattern 12 :frame 1234567 :pending? false :theme-pending? false :heard? true}`, or nil while stopped. `:heard?` is true when the row is the one at the speaker (the output reports its queue: the browser's webaudio), false when it is the last row rendered, ahead by the output's latency. `:pending?` is a `set-parameters` waiting for the next pattern, `:theme-pending?` a `play-theme` about to start |
 | `undertone/trigger` | a trigger map (`{:shot :hit :gain 0.8 :pan 0.3}`) or a vector of them; fire-and-forget |
 | `undertone/register-shot` | a game's own one-shot (`{:name :ping :gate-ms 20 :patch [[:env 0.001 0.2 0 0.1] [:osc 0 :sine 0 1] [:mul] [:out 0.5 0.5]]}`); a patch the synth could not run safely is an error |
 | `undertone/register-palette`, `undertone/register-lead` | a game's own palette or lead, for a mood's `:palette`, `:leads` or a `:lead` (`PaletteSpec.EDN`, `LeadSpec.EDN`); an error as for a shot |
 | `undertone/render-wav` | `(undertone/render-wav "out.wav" 20.0)`: offline render of the current parameters and music gain (set it to 0 to render shots dry), for checking determinism without a sound card. It returns the PCM's SHA-256 as hex, and a nil path skips the file. An optional script plays calls at given seconds, so a test can pin a theme or an outro by hash: `[[0.0 :play-theme {...}] [4.5 :trigger {:shot :hit}] [8.0 :set-parameters-now {:mood :rust}]]`, with `:set-parameters`, `:set-parameters-now`, `:play-theme` and `:trigger` taking what the natives take. A script is stricter than live calls: a trigger it cannot play is an error, not dropped. Renders run up to 600 s |
 | `undertone/derive-spec`, `undertone/moods-edn` | the mood derivation behind `undertone.ambience`: a mood entry, seed, level and tension to a parameter map, and the built-in mood table as EDN. Pure functions; call them through `ambience/derive-spec`, `ambience/derive-mood` and `ambience/moods` |
 
-The surface is write-only: nothing reads audio state back into lg, so game
-logic cannot branch on whether a sound played and replays stay deterministic.
+The surface is write-only for a game: nothing it needs reads audio state back
+into lg, so game logic need not branch on whether a sound played and replays
+stay deterministic. `undertone/position` is the exception, for tools that draw
+the music (a playhead): it reads the audio thread's clock, so a game that
+branches on it gives up deterministic replays.
 Triggers sent before the music starts are dropped silently.
 A theme sent before the music starts waits for it, but it is checked at
 once, so a game's tests can check its themes with no audio. A lead or bass

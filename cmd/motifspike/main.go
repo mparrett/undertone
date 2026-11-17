@@ -62,7 +62,7 @@ func main() {
 	total := int(*dur * engine.SampleRate)
 	pcm := make([]byte, total*4)
 	const block = 1024
-	lastSec, lastLead, lastPad := "", "", ""
+	var last engine.MotifState
 	start := time.Now()
 	for done := 0; done < total; done += block {
 		n := min(block, total-done)
@@ -76,10 +76,17 @@ func main() {
 			os.Exit(1)
 		}
 		if *trace {
-			sec, ph, lead, pad := s.MotifTrace()
-			if sec != lastSec || lead != lastLead || pad != lastPad {
-				fmt.Printf("%6.1fs t=%.2f phrase %d %-6s lead=%-7s pad=%s\n", float64(done)/engine.SampleRate, t, ph, sec, lead, pad)
-				lastSec, lastLead, lastPad = sec, lead, pad
+			if m := s.MotifTrace(); m != last {
+				note := ""
+				if m.Fill {
+					note += " fill"
+				}
+				if m.Held && m.Section == "return" && !last.Held {
+					note += " (break held off)"
+				}
+				fmt.Printf("%6.1fs t=%.2f phrase %d %-6s %-14s lead=%-7s pad=%-7s%s\n",
+					float64(done)/engine.SampleRate, m.Tension, m.Phrase, m.Section, m.Cycle, m.Lead, m.Pad, note)
+				last = m
 			}
 		}
 	}

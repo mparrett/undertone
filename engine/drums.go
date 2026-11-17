@@ -195,7 +195,7 @@ func (s *Synth) stepDrums() {
 		h := s.drums[d][s.row]
 		s.rat[d] = ratchet{}
 		if h.on > 0 {
-			v.strike(s.sound(d), h.on, s.drumSeed(d))
+			s.hit(d, DrumOn, s.sound(d), h.on, s.drumSeed(d), s.nframe, s.row, s.pat)
 			span := half
 			if h.off > 0 && h.offFlam {
 				span = max(1, half-s.flamLead()) // done before the off 16th's grace
@@ -233,7 +233,7 @@ func (s *Synth) flamsAhead(strike bool) bool {
 		}
 		any = true
 		if strike {
-			s.dvoices[d].strike(k, gain*flamGrace, s.drumSeed(d)+3<<32)
+			s.hit(d, DrumGrace, k, gain*flamGrace, s.drumSeed(d)+3<<32, s.nframe, s.row, s.pat)
 		}
 	}
 	return any
@@ -300,17 +300,20 @@ func (v *Voice) strike(k drumSound, gain float64, seed uint64) {
 
 // runDrums fires any off 16th that is due and renders the drum voices.
 func (s *Synth) runDrums(l, r *float64) {
+	// the countdowns fire within the last row stepped, after frame has
+	// moved the frame count past the frame being rendered
+	row, pat := s.lastRow()
 	for d := range s.dvoices {
 		v := &s.dvoices[d]
 		if s.graceLeft[d] > 0 {
 			if s.graceLeft[d]--; s.graceLeft[d] == 0 {
-				v.strike(s.sound(d), s.graceGain[d], s.graceSeed[d])
+				s.hit(d, DrumGrace, s.sound(d), s.graceGain[d], s.graceSeed[d], s.nframe-1, row, pat)
 			}
 		}
 		if s.offLeft[d] > 0 {
 			s.offLeft[d]--
 			if s.offLeft[d] == 0 {
-				v.strike(s.sound(d), s.offGain[d], s.offSeed[d])
+				s.hit(d, DrumOff, s.sound(d), s.offGain[d], s.offSeed[d], s.nframe-1, row, pat)
 				// the off 16th's ratchet fills what is left of the row, up to
 				// the grace of a flam on the next row
 				span := s.rowLeft
@@ -322,7 +325,7 @@ func (s *Synth) runDrums(l, r *float64) {
 		}
 		if rt := &s.rat[d]; rt.left > 0 {
 			if rt.left--; rt.left == 0 {
-				v.strike(s.sound(d), rt.gain, rt.seed)
+				s.hit(d, DrumRatchet, s.sound(d), rt.gain, rt.seed, s.nframe-1, row, pat)
 				rt.gain, rt.seed, rt.n = rt.gain*0.75, rt.seed+1, rt.n-1
 				if rt.n > 0 {
 					rt.left = rt.gap

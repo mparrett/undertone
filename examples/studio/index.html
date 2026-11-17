@@ -91,6 +91,9 @@
   <div class="bar" id="names"></div>
   <p class="hint"><i>italic</i> = registered this session. Built-ins open as a copy under a new name.</p>
 
+  <div class="lab">VIEW</div>
+  <div class="bar"><span class="chip" id="compact" title="a unit to a line">compact rows</span>
+    <span class="chip" id="guidechip" title="show or hide the how-to">guide</span></div>
   <div class="lab">BED</div>
   <div class="bar"><button id="play" disabled>loading…</button>
     <select id="mood"></select>
@@ -170,7 +173,6 @@
   <div class="head">
     <label>name <input type="text" id="name" spellcheck="false"></label>
     <label id="gatebox"><span id="gatelbl">gate</span> <input type="number" id="gate"></label>
-    <span class="chip" id="compact" title="a unit to a line" style="margin-left:auto">compact rows</span>
   </div>
   <div class="bar" id="tracks"></div>
   <div class="bar" id="kitbox" hidden>
@@ -234,6 +236,8 @@ const LANES = ["kick", "clap", "shaker"];
 const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums"];
 
 let mutedNow = [];
+const last = {};
+function resume(st) { spec = st.spec; track = st.track; render(); commit(); }
 let kind = "shot", spec = null, track = "drone", playing = false, solo = false, bedOn = true;
 const registered = { shot: new Set(), lead: new Set(), palette: new Set() };
 const U = () => window.undertoneStudio;
@@ -251,7 +255,9 @@ const limit = (v) => v === "rel" ? (kind === "shot" ? 2 : 10) : v === "gain" ? (
 function buildKinds() {
   for (const k of ["shot", "lead", "palette"]) {
     const c = el("span", "chip", k); c.dataset.k = k;
-    c.onclick = () => { kind = k; openFirst(); };
+    // each kind keeps what was being edited, so switching back resumes it
+    // rather than opening another copy
+    c.onclick = () => { if (spec) last[kind] = { spec, track }; kind = k; last[k] ? resume(last[k]) : openFirst(); };
     $("kinds").append(c);
   }
 }
@@ -418,7 +424,9 @@ function commit(refire) {
     const m = /unit (\d+)/.exec(err); if (m && kind !== "palette") $("units").children[+m[1]]?.classList.add("bad");
     say(err, true); return;
   }
+  const fresh = !registered[kind].has(spec.Name);
   registered[kind].add(spec.Name);
+  if (fresh) buildNames();  // a new copy joins the list, lit
   say(`${kind} ${spec.Name} registered`);
   applyBed();
   if (refire && kind === "shot" && playing) U().shot(spec.Name, lastDeg, +$("sgain").value);
@@ -540,7 +548,9 @@ try { setCompact(localStorage.getItem("studio-compact") === "1"); } catch {}
 $("compact").onclick = () => setCompact(!$("units").classList.contains("compact"));
 // The guide opens on a first visit and remembers being closed.
 try { $("guide").open = localStorage.getItem("studio-guide") !== "closed"; } catch { $("guide").open = true; }
-$("guide").addEventListener("toggle", () => { try { localStorage.setItem("studio-guide", $("guide").open ? "open" : "closed"); } catch {} });
+$("guidechip").classList.toggle("on", $("guide").open);
+$("guidechip").onclick = () => { $("guide").open = !$("guide").open; if ($("guide").open) $("guide").scrollIntoView({ behavior: "smooth" }); };
+$("guide").addEventListener("toggle", () => { $("guidechip").classList.toggle("on", $("guide").open); try { localStorage.setItem("studio-guide", $("guide").open ? "open" : "closed"); } catch {} });
 window.undertoneStudioReady = () => {
   for (const m of JSON.parse(U().names("mood"))) { const o = el("option", null, m); o.selected = m === "dungeon"; $("mood").append(o); }
   buildKinds(); openFirst();

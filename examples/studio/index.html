@@ -417,23 +417,23 @@ function argControl(box, u, j, label, lo, hi, mode, unit) {
 function renderAudition() {
   stopLoop(); $("pads").replaceChildren();
   $("gainbox").hidden = kind !== "shot";
-  if (kind === "shot") {
-    for (let d = 0; d < 8; d++) {
-      const b = el("button", null, `${d + 1}`); b.title = `scale degree ${d}, key ${d + 1}`;
-      b.onclick = (e) => e.shiftKey ? loop(d) : (stopLoop(), fire(d)); $("pads").append(b);
-    }
-    const mel = el("button", null, ""); mel.innerHTML = "&#9835;"; mel.id = "melody"; mel.title = "play the xsofy title theme's melody on this shot (again to stop)";
-    mel.onclick = () => melodyTimers.length ? stopLoop() : melody(); $("pads").append(mel);
-    const x = el("button", null, "&#9632; stop"); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat and all sound";
-    x.onclick = () => { stopLoop(); setPlaying(false); }; $("pads").append(x);
-    $("audhint").innerHTML = "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it";
-    $("solo").hidden = true;
-  } else {
-    $("solo").hidden = false;
-    $("audhint").innerHTML = kind === "lead"
-      ? "the bed plays this lead in the generator's place; <b>solo</b> hears it alone"
-      : "the bed plays this palette; <b>solo</b> hears the track being edited alone";
+  const shot = kind === "shot";
+  for (let d = 0; d < 8; d++) {
+    const b = el("button", null, `${d + 1}`); b.title = `scale degree ${d + 1}, key ${d + 1}; shift-click repeats`;
+    b.onclick = (e) => e.shiftKey ? loop(d) : (stopLoop(), fire(d)); $("pads").append(b);
   }
+  const mel = el("button", null, ""); mel.innerHTML = "&#9835;"; mel.id = "melody";
+  mel.title = shot ? "play the xsofy title theme's melody on this shot (again to stop)"
+    : `play the xsofy title theme through the bed's voices, with this ${kind} (again to stop)`;
+  mel.onclick = () => $("melody").classList.contains("loop") ? stopLoop() : melody(); $("pads").append(mel);
+  const x = el("button", null, ""); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat and all sound";
+  x.onclick = () => { stopLoop(); setPlaying(false); }; $("pads").append(x);
+  $("solo").hidden = shot;
+  $("audhint").innerHTML = shot
+    ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it"
+    : kind === "lead"
+      ? "keys <kbd>1</kbd>–<kbd>8</kbd> play this lead on that degree (it plays solo); ♫ plays the title theme with it. The bed also plays it in the generator's place"
+      : "keys <kbd>1</kbd>–<kbd>8</kbd> play a lead note over this palette; ♫ plays the title theme through it. <b>solo</b> hears the track being edited alone";
 }
 let lastDeg = 0;
 // Shift-click a pad to fire it every LOOP_MS until clicked again, so a sound
@@ -443,14 +443,30 @@ let loopTimer = 0, loopDeg = -1;
 // The xsofy title theme's lead, a scale degree (1-8) per row or 0 for a rest,
 // four 16-row grids at 67 bpm, a row an eighth note (from xsofy's title
 // theme, round 2). ♪ plays it on the shot being edited, on the bed's scale.
-const TITLE = ["5004300010000000", "5004300020301000", "8007500060054000", "5004300020001000"], TITLE_ROW_MS = 60000 / 67 / 2;
+const TITLE = [
+  { lead: "5004300010000000", bass: "1000000060000000", drums: [], bed: true },
+  { lead: "5004300020301000", bass: "1000000040000000", drums: [], bed: true },
+  { lead: "8007500060054000", bass: "6000000040000000", drums: ["X...............X..............."], bed: true },
+  { lead: "5004300020001000", bass: "5000000010000000", drums: ["X..............................."], bed: true }];
+const TITLE_ROW_MS = 60000 / 67 / 2;
+let themeWatch = 0;  // clears ♫'s outline when the theme ends
 let melodyTimers = [];
+// A lead or palette plays the theme itself through the engine, voiced by the
+// bed (so by the lead or palette being edited), at the mood's tempo; a shot
+// has no voice in a theme, so its melody is fired note by note at 67 bpm.
 function melody() {
   stopLoop(); $("melody").classList.add("loop");
-  [...TITLE.join("")].forEach((c, i) => { if (c !== "0") melodyTimers.push(setTimeout(() => fire(+c - 1), i * TITLE_ROW_MS)); });
+  if (kind !== "shot") {
+    audible(); const err = U().theme(JSON.stringify(TITLE)); if (err) return say(err, true);
+    themeWatch = setInterval(() => { if (!U().themePlaying()) stopLoop(); }, 250);
+    return;
+  }
+  [...TITLE.map((g) => g.lead).join("")].forEach((c, i) => { if (c !== "0") melodyTimers.push(setTimeout(() => fire(+c - 1), i * TITLE_ROW_MS)); });
   melodyTimers.push(setTimeout(stopLoop, TITLE.length * 16 * TITLE_ROW_MS));
 }
-function stopLoop() { melodyTimers.forEach(clearTimeout); melodyTimers = []; clearInterval(loopTimer); loopDeg = -1; for (const b of $("pads").children) b.classList.remove("loop"); }
+function stopLoop() {
+  if (themeWatch || themeNote) { clearInterval(themeWatch); themeWatch = 0; themeNote = false; U()?.theme(""); }
+  melodyTimers.forEach(clearTimeout); melodyTimers = []; clearInterval(loopTimer); loopDeg = -1; for (const b of $("pads").children) b.classList.remove("loop"); }
 function loop(d) {
   const again = loopDeg === d; stopLoop(); if (again) return;
   loopDeg = d; $("pads").children[d].classList.add("loop"); fire(d);
@@ -458,8 +474,21 @@ function loop(d) {
 }
 // flash lights a pad or a layer's label for a moment, as it sounds.
 function flash(e) { if (!e) return; e.classList.add("hit"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("hit"), 260); }
+// A lead or palette has no one-shot voice, so a pad plays one note on the
+// theme player's lead lane: the bed's lead, the one being edited, the way a
+// game's theme would sound it. The rest of that pattern rests the generated lead.
+let themeNote = false;
+function audible() {
+  if (!playing) setPlaying(true);
+  if (!bedOn || (kind === "palette" && solo)) { bedOn = true; solo = kind === "lead"; bedChips(); }
+}
 function fire(d) {
   lastDeg = d;
+  if (kind !== "shot") {
+    audible(); themeNote = true;
+    const err = U().theme(JSON.stringify([{ lead: String(d + 1), bed: true }])); if (err) return say(err, true);
+    flash($("pads").children[d]); return;
+  }
   if (!playing) setPlaying(true);
   U().shot(spec.Name, d, +$("sgain").value);
   flash($("pads").children[d]); scopeNote(SHOTS, 60 + d * 2, 1); shotShape(spec.Name, d, +$("sgain").value);
@@ -598,7 +627,7 @@ addEventListener("keydown", (e) => {
   // space plays or stops the bed (and ends a repeat) rather than scrolling the page
   if (e.key === "m" && !typing && !e.metaKey && !e.ctrlKey) { $("silent").click(); return; }  // m mutes or unmutes the bed
   if (e.key === " " && !typing) { e.preventDefault(); if (playing) { stopLoop(); setPlaying(false); } else setPlaying(true); return; }
-  if (kind !== "shot" || /input|textarea|select/i.test(document.activeElement.tagName)) return;
+  if (/input|textarea|select/i.test(document.activeElement.tagName)) return;
   const d = +e.key; if (d >= 1 && d <= 8) fire(d - 1);
 });
 // meters

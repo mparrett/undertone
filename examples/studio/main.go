@@ -32,6 +32,8 @@
 //	notes()                  the bed's notes since the last call, flat: layer (a LayerNames
 //	                         index), MIDI note, gain for each
 //	position()               [row, pattern] the bed has rendered to, or null
+//	theme(json)              play grids through the bed's voices ({lead, bass, drums, bed}); "" stops
+//	themePlaying()           whether that theme is still playing
 //	levels()                 each layer's level, as JSON in LayerNames order
 //	play() / stop()          call from the tap handler: iOS resumes audio only inside one
 package main
@@ -117,6 +119,42 @@ func (s *seed) UnmarshalJSON(b []byte) error {
 	}
 	*s = seed(v)
 	return nil
+}
+
+// theme reads grids as {lead, bass, drums, bed}: lead and bass are 16
+// digits, a scale degree each (0 rests), drums up to DrumLanes groove lanes.
+// The theme hands back to the generator when it ends.
+func theme(data string) (*engine.Theme, error) {
+	var gs []struct {
+		Lead, Bass string
+		Drums      []string
+		Bed        bool
+	}
+	if err := json.Unmarshal([]byte(data), &gs); err != nil {
+		return nil, err
+	}
+	t := &engine.Theme{Then: engine.ThenGenerate}
+	for i, g := range gs {
+		var out engine.Grid
+		for lane, src := range map[*[engine.Steps]int]string{&out.Lead: g.Lead, &out.Bass: g.Bass} {
+			if len(src) > engine.Steps {
+				return nil, fmt.Errorf("grid %d: a lane is %d steps, at most %d", i, len(src), engine.Steps)
+			}
+			for j, c := range src {
+				if c < '0' || c > '0'+engine.Degrees {
+					return nil, fmt.Errorf("grid %d: %q is not a degree 0-%d", i, c, engine.Degrees)
+				}
+				lane[j] = int(c - '0')
+			}
+		}
+		if len(g.Drums) > engine.DrumLanes {
+			return nil, fmt.Errorf("grid %d: %d drum lanes, at most %d", i, len(g.Drums), engine.DrumLanes)
+		}
+		copy(out.Drums[:], g.Drums)
+		out.Bed = g.Bed
+		t.Grids = append(t.Grids, out)
+	}
+	return t, nil
 }
 
 // shotJSON is one shot of a take, in undertone/trigger's keys. A pointer
@@ -333,6 +371,23 @@ func main() {
 			}
 			return js.ValueOf([]any{pos.Row, pos.Pattern})
 		}),
+		// theme(json) plays grids through the bed's own voices, as a game's
+		// theme does: a vector of {lead, bass: 16 digits, a degree 1-8 or 0 to
+		// rest; drums: up to three groove lanes; bed}. "" or null stops it.
+		// Returns "" or an error.
+		"theme": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			if len(a) == 0 || a[0].IsNull() || a[0].String() == "" {
+				syn.PlayTheme(nil)
+				return ""
+			}
+			t, err := theme(a[0].String())
+			if err != nil {
+				return err.Error()
+			}
+			syn.PlayTheme(t)
+			return ""
+		}),
+		"themePlaying": js.FuncOf(func(_ js.Value, _ []js.Value) any { return syn.ThemePlaying() }),
 		"trigger": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			shots, err := take(a[0].String())
 			if err != nil {

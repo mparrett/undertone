@@ -10,7 +10,7 @@ import (
 // stalled worker). Each field is current, but a Read can land between two of
 // them, so they may disagree by one Read.
 type RenderStats struct {
-	Reads, Frames    int64
+	Reads            int64
 	Last, Max, Total time.Duration
 	// Over counts Reads that took longer than the audio they rendered lasts:
 	// a synth doing that falls behind whatever its output buffers.
@@ -47,11 +47,10 @@ func (c *renderClock) record(t0 time.Time, frames int) {
 func (s *Synth) RenderStats() RenderStats {
 	c := &s.clock
 	return RenderStats{
-		Reads:  c.reads.Load(),
-		Frames: s.frames.Load(),
-		Last:   time.Duration(c.last.Load()),
-		Max:    time.Duration(c.max.Load()),
-		Total:  time.Duration(c.total.Load()),
-		Over:   c.over.Load(),
+		Reads: c.reads.Load(),
+		Last:  time.Duration(c.last.Load()),
+		Max:   time.Duration(c.max.Load()),
+		Total: time.Duration(c.total.Load()),
+		Over:  c.over.Load(),
 	}
 }

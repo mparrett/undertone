@@ -33,8 +33,8 @@ func TestUnderrunsOnlyWhereTheOutputCounts(t *testing.T) {
 	if n, ok := m.Underruns(); !ok || n != 4 {
 		t.Errorf("Underruns = %d, %v; want 4, ok", n, ok)
 	}
-	if st, ok := m.RenderStats(); !ok || st.Reads != 1 || st.Frames != 512 {
-		t.Errorf("RenderStats = %+v, %v; want one Read of 512 frames", st, ok)
+	if st, ok := m.RenderStats(); !ok || st.Reads != 1 {
+		t.Errorf("RenderStats = %+v, %v; want one Read", st, ok)
 	}
 }
 
@@ -51,7 +51,7 @@ func TestAudioStatsFromLg(t *testing.T) {
 	}
 	startRendering(t, m, gainTestOutput{}, 512)
 	v, err := c.Run(`(let [s (undertone/audio-stats)]
-	                   [(:reads s) (:over s) (contains? s :underruns) (contains? s :queued-ms) (>= (:render-ms-max s) (:render-ms-last s) 0)])`)
+	                   [(:reads s) (:over s) (contains? s :underruns) (contains? s :queued-ms) (>= (:render-ms-max s) (:render-ms-mean s) 0)])`)
 	if err != nil {
 		t.Fatal(err)
 	}

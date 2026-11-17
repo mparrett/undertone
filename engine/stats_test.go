@@ -24,7 +24,10 @@ func TestRenderStatsCountsReadsAndTime(t *testing.T) {
 	}
 	s.Read(buf[:0]) // an empty Read is not a render
 	got := s.RenderStats()
-	want := RenderStats{Reads: 3, Frames: 3 * 512, Last: 2 * time.Millisecond, Max: 2 * time.Millisecond, Total: 6 * time.Millisecond}
+	if f := s.Frames(); f != 3*512 {
+		t.Errorf("Frames = %d, want %d", f, 3*512)
+	}
+	want := RenderStats{Reads: 3, Last: 2 * time.Millisecond, Max: 2 * time.Millisecond, Total: 6 * time.Millisecond}
 	if got != want {
 		t.Errorf("RenderStats = %+v, want %+v", got, want)
 	}

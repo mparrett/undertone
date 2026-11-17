@@ -101,7 +101,7 @@
   <div class="bar"><button id="play" disabled>loading…</button>
     <select id="mood"></select>
     <span class="chip" id="solo" title="hear only the layer being edited">solo</span>
-    <span class="chip" id="silent" title="mute the whole bed: a shot alone, still pitched in the mood's scale">none</span></div>
+    <span class="chip on" id="silent" title="mute the whole bed: a shot alone, still pitched in the mood's scale">none</span></div>
   <label class="sl">level <input type="range" id="level" min="0" max="10" step="1" value="1"><output></output></label>
   <label class="sl">tension <input type="range" id="tension" min="0" max="1" step="0.0625" value="0"><output></output></label>
   <label class="sl">seed <input type="range" id="seed" min="1" max="64" step="1" value="1"><output></output></label>
@@ -150,7 +150,7 @@
     <ul>
       <li>Every edit <b>registers</b> the sound. If the engine refuses it, the status says why and outlines the unit; the last good version keeps playing.</li>
       <li>A lead or palette you edit replaces the bed's own, so you hear it in the music. <b>solo</b> mutes the rest.</li>
-      <li><b>none</b> silences the bed (music gain 0) for a shot on its own; the room and delay still ring, and the mood still sets the key its degrees land in.</li>
+      <li><b>none</b> (on at first) silences the bed (music gain 0) for a shot on its own; click it off to hear the music. Leads and palettes need it off. the room and delay still ring, and the mood still sets the key its degrees land in.</li>
       <li>Change <b>mood, level, tension, seed</b> to hear it in other keys, tempos and densities. The meters show each layer (not shots).</li>
       <li>Clicking a name opens it. A built-in plays as it is; your first edit makes it your own copy (<code>name-2</code>), since built-in names can't be replaced. <b>Shift-click</b> makes a copy straight away. Sounds you registered are in <i>italic</i>.</li>
     </ul>
@@ -243,7 +243,7 @@ let mutedNow = [];
 const last = {};
 function resume(st) { spec = st.spec; track = st.track; builtin = st.builtin; render(); builtin ? preview() : commit(); }
 let builtin = false;  // spec is a built-in, unedited: shown and played, not registered
-let kind = "shot", spec = null, track = "drone", playing = false, solo = false, bedOn = true;
+let kind = "shot", spec = null, track = "drone", playing = false, solo = false, bedOn = false;  // the bed starts silent: shots are most of the work
 const registered = { shot: new Set(), lead: new Set(), palette: new Set() };
 const U = () => window.undertoneStudio;
 
@@ -412,6 +412,8 @@ function renderAudition() {
       const b = el("button", null, `${d + 1}`); b.title = `scale degree ${d}, key ${d + 1}`;
       b.onclick = (e) => e.shiftKey ? loop(d) : (stopLoop(), fire(d)); $("pads").append(b);
     }
+    const x = el("button", null, "&#9632; stop"); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat and all sound";
+    x.onclick = () => { stopLoop(); setPlaying(false); }; $("pads").append(x);
     $("audhint").innerHTML = "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it";
     $("solo").hidden = true;
   } else {

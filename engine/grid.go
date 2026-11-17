@@ -230,12 +230,8 @@ func gridHit(lane string, row, run int) drumHit {
 // (a browser output plays a few hundred ms behind the synth). It returns -1
 // for a frame older than the last 64 rows.
 func (s *Synth) RowAt(frame int64) int {
-	n := s.rowLog.n.Load()
-	for i := int64(0); i < min(n, int64(len(s.rowLog.at))); i++ {
-		e := s.rowLog.at[(n-1-i)%int64(len(s.rowLog.at))].Load()
-		if start, row := e>>8, int(e&0xff); start <= frame {
-			return row
-		}
+	if p, ok := s.PositionAt(frame); ok {
+		return p.Row
 	}
 	return -1
 }
@@ -244,14 +240,39 @@ func (s *Synth) RowAt(frame int64) int {
 func (s *Synth) Frames() int64 { return s.frames.Load() }
 
 // rowLog remembers when recent rows started: each entry packs the start
-// frame (<<8) with the row number.
+// frame (<<8) with the row number, and pat holds the entry's pattern. It has
+// a slot more than the 64 rows it promises, since find gives up the oldest
+// slot as possibly mid-overwrite.
 type rowLog struct {
-	at [64]atomic.Int64
-	n  atomic.Int64
+	at  [65]atomic.Int64
+	pat [65]atomic.Int64
+	n   atomic.Int64
 }
 
-func (l *rowLog) add(frame int64, row int) {
+func (l *rowLog) add(frame int64, row, pat int) {
 	n := l.n.Load()
-	l.at[n%int64(len(l.at))].Store(frame<<8 | int64(row))
+	i := n % int64(len(l.at))
+	l.at[i].Store(frame<<8 | int64(row))
+	l.pat[i].Store(int64(pat))
 	l.n.Store(n + 1)
+}
+
+// find returns the newest entry that started at or before frame. An entry's
+// two words are written one after the other, so a reader the writer laps
+// meanwhile could pair one row's frame with a later row's pattern. It reads
+// the count again after each entry, and treats an entry the writer may have
+// begun to overwrite (a whole log behind the next to be written) as gone.
+func (l *rowLog) find(frame int64) (start int64, row, pat int, ok bool) {
+	size := int64(len(l.at))
+	n := l.n.Load()
+	for k := n - 1; k >= max(0, n-size); k-- {
+		e, pt := l.at[k%size].Load(), l.pat[k%size].Load()
+		if k <= l.n.Load()-size {
+			return 0, 0, 0, false
+		}
+		if start := e >> 8; start <= frame {
+			return start, int(e & 0xff), int(pt), true
+		}
+	}
+	return 0, 0, 0, false
 }

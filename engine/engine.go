@@ -1711,7 +1711,7 @@ func (s *Synth) step() {
 	if g := s.playingGrid(); g != nil {
 		s.applyGrid(g, s.row)
 	}
-	s.rowLog.add(s.nframe, s.row)
+	s.rowLog.add(s.nframe, s.row, s.pat)
 	s.stepDrums()
 	for t := 0; t < nTracks; t++ {
 		v := &s.voices[t]

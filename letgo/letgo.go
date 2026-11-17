@@ -766,6 +766,9 @@ func installNS() {
 	ns.Def("position", native("position", 0, func([]vm.Value) (vm.Value, error) {
 		return current.Load().position(), nil
 	}))
+	ns.Def("audio-stats", native("audio-stats", 0, func([]vm.Value) (vm.Value, error) {
+		return current.Load().audioStats(), nil
+	}))
 	ns.Def("trigger", native("trigger", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().trigger(a[0]), nil
 	}))

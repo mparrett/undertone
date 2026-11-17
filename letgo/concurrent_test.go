@@ -74,6 +74,7 @@ func TestConcurrentCallsWhilePlaying(t *testing.T) {
 			m.Params()
 			m.Started()
 			m.position()
+			m.audioStats()
 			m.Pause()
 			m.Resume()
 		},

@@ -48,6 +48,13 @@ import (
 // audio/sample sounds, with no page.js. Its queue is the device's
 // (LETGO_AUDIO_QUEUE, or audio.Default().Configure from Go), so
 // undertone/set-queue does nothing there.
+// Music reads the queue and underruns through these; a rename in webaudio
+// would otherwise drop them silently.
+var (
+	_ queueReporter    = (*webaudio.Player)(nil)
+	_ underrunReporter = (*webaudio.Player)(nil)
+)
+
 func openOutput(src io.Reader) (output, error) {
 	if a, ok := seamDevice(); ok {
 		return streamTo(a, src)

@@ -17,6 +17,7 @@ import (
 	"os"
 	"slices"
 	"sync/atomic"
+	"time"
 )
 
 const SampleRate = 44100
@@ -1359,6 +1360,8 @@ type Synth struct {
 	// they never change what the score derives, only how loud the bed and
 	// the one-shots sit against each other.
 	musicLevel, sfxLevel level
+
+	clock renderClock // times each Read (stats.go)
 }
 
 // level is a mixer bus's gain. The caller sets a target from any goroutine;
@@ -1535,6 +1538,7 @@ func NewSynth(p Params) *Synth {
 			i++
 		}
 	}
+	s.clock.now = time.Now
 	s.musicLevel.init()
 	s.sfxLevel.init()
 	s.apply(p)
@@ -1827,6 +1831,10 @@ func (s *Synth) frame() (int16, int16) {
 
 func (s *Synth) Read(p []byte) (int, error) {
 	n := len(p) / 4 * 4
+	if n == 0 {
+		return 0, nil
+	}
+	t0 := s.clock.now()
 	for i := 0; i < n; i += 4 {
 		l, r := s.frame()
 		binary.LittleEndian.PutUint16(p[i:], uint16(l))
@@ -1834,6 +1842,7 @@ func (s *Synth) Read(p []byte) (int, error) {
 	}
 	s.frames.Store(s.nframe)
 	s.publishLevels()
+	s.clock.record(t0, n/4)
 	return n, nil
 }
 

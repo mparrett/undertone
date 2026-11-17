@@ -650,13 +650,14 @@ function scope() {
   if (U() && playing) {
     // a level sample per layer about 30 times a second
     if (t - lastLevelAt > 1 / 30) {
-      lastLevelAt = t;
+      // each sample covers the time since the last, so frame jitter leaves no gaps
+      const dt = Math.min(0.1, t - lastLevelAt); lastLevelAt = t;
       JSON.parse(U().levels()).forEach((v, i) => {
-        if (v > 0.001) marks.push({ t, kind: "level", row: i + 1, a: Math.min(1, Math.sqrt(v) * 1.6), muted: !bedOn || mutedNow.includes(LAYERS[i]) });
+        if (v > 0.001) marks.push({ t: t - dt, dt, kind: "level", row: i + 1, a: Math.min(1, Math.sqrt(v) * 1.6), muted: !bedOn || mutedNow.includes(LAYERS[i]) });
       });
     }
     // the bed's level (0..10) and tension (0..1), traced like sparklines
-    if (t - lastSparkAt > 1 / 30) { lastSparkAt = t; marks.push({ t, kind: "spark", lv: +$("level").value / 10, tn: +$("tension").value, a: 1 }); }
+    if (t - lastSparkAt > 1 / 30) { const dt = Math.min(0.1, t - lastSparkAt); lastSparkAt = t; marks.push({ t: t - dt, dt, kind: "spark", lv: +$("level").value / 10, tn: +$("tension").value, a: 1 }); }
     // a tick on each new beat (two rows), brighter at a pattern's start
     const p = U().position();
     if (p && `${p}` !== lastPos) { lastPos = `${p}`; if (p[0] % 2 === 0) marks.push({ t, kind: "tick", a: p[0] === 0 ? 0.32 : 0.1 }); }
@@ -676,8 +677,8 @@ function scope() {
       g.fillStyle = `rgba(150,220,130,${f})`; g.fillRect(x, pad + bh, 1, h - 2 * pad - bh);
     } else if (m.kind === "spark") {
       const sy = (v) => pad + inset + (1 - v) * (bh - 2 * inset) - 0.75;
-      g.fillStyle = `rgba(${BEDC.level},${0.85 * f})`; g.fillRect(x, sy(m.lv), colW(1 / 30), 1.5);
-      g.fillStyle = `rgba(${BEDC.tension},${0.85 * f})`; g.fillRect(x, sy(m.tn), colW(1 / 30), 1.5);
+      g.fillStyle = `rgba(${BEDC.level},${0.85 * f})`; g.fillRect(x, sy(m.lv), colW(m.dt), 1.5);
+      g.fillStyle = `rgba(${BEDC.tension},${0.85 * f})`; g.fillRect(x, sy(m.tn), colW(m.dt), 1.5);
     } else if (m.kind === "bed") {
       // a change the traces can't show: mood, seed, chord
       g.fillStyle = `rgba(${BEDC[m.type]},${0.55 * f})`; g.fillRect(x, pad, 1, bh);
@@ -693,14 +694,14 @@ function scope() {
     } else if (m.muted) {
       // a muted layer: one thin grey line for its level, a grey speck per note
       if (m.kind === "dot") { g.fillStyle = `rgba(170,170,170,${0.6 * f})`; g.fillRect(x - 0.5, y + inset + m.y * (rh - 2 * inset) - 0.5, 2, 2); }
-      else { g.fillStyle = `rgba(160,160,160,${(0.22 + 0.3 * m.a) * f})`; g.fillRect(x, y + rh / 2, colW(1 / 30), 1); }
+      else { g.fillStyle = `rgba(160,160,160,${(0.22 + 0.3 * m.a) * f})`; g.fillRect(x, y + rh / 2, colW(m.dt), 1); }
     } else if (m.kind === "dot") {
       const yy = y + inset + m.y * (rh - 2 * inset), r = thin ? 1.5 : 3;
       g.fillStyle = `rgba(156,240,120,${0.25 * f})`; g.fillRect(x - r, yy - r, 2 * r, 2 * r);
       g.fillStyle = `rgba(200,255,170,${f})`; g.fillRect(x - 1, yy - 1, thin ? 2 : 2.5, thin ? 2 : 2.5);
     } else {
       const hh = Math.max(1, m.a * (rh - 2 * inset));
-      g.fillStyle = `rgba(120,200,100,${0.35 * f})`; g.fillRect(x, y + (rh - hh) / 2, colW(1 / 30), hh);  // wide enough to join the next sample
+      g.fillStyle = `rgba(120,200,100,${0.35 * f})`; g.fillRect(x, y + (rh - hh) / 2, colW(m.dt), hh);
     }
   }
   const cx = X(t);

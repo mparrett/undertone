@@ -31,8 +31,11 @@ package main
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall/js"
 
@@ -73,7 +76,7 @@ func errString(err error) string {
 // bedReq is what the page plays under the sound being edited.
 type bedReq struct {
 	Mood    string   `json:"mood"`
-	Seed    uint64   `json:"seed"`
+	Seed    seed     `json:"seed"`
 	Level   int      `json:"level"`
 	Tension float64  `json:"tension"`
 	Palette string   `json:"palette"` // "" keeps the mood's
@@ -82,6 +85,30 @@ type bedReq struct {
 	// MusicGain scales the bed, 1 when left out; 0 leaves only the shots and
 	// the delay and room they send to.
 	MusicGain *float64 `json:"musicGain"`
+}
+
+// seed reads a JSON number or a decimal string. A game's seeds are full 64-bit
+// (a JSON number loses them past 2^53), and lg passes them as int64, so a
+// string may be negative; it is read as int64 and kept as its bits, as
+// undertone/trigger does.
+type seed uint64
+
+func (s *seed) UnmarshalJSON(b []byte) error {
+	t := strings.Trim(string(b), `"`)
+	if t == "" || t == "null" {
+		*s = 0
+		return nil
+	}
+	if v, err := strconv.ParseInt(t, 10, 64); err == nil {
+		*s = seed(v)
+		return nil
+	}
+	v, err := strconv.ParseUint(t, 10, 64)
+	if err != nil {
+		return fmt.Errorf("seed %s: want an integer, or one as a decimal string", b)
+	}
+	*s = seed(v)
+	return nil
 }
 
 // shotJSON is one shot of a take, in undertone/trigger's keys. A pointer
@@ -94,11 +121,11 @@ type shotJSON struct {
 	Gain    *float64 `json:"gain"`
 	Pan     *float64 `json:"pan"`
 	DelayMS float64  `json:"delay-ms"`
-	Seed    uint64   `json:"seed"`
+	Seed    seed     `json:"seed"`
 }
 
 func (j shotJSON) shot() engine.Shot {
-	sh := engine.Shot{Name: j.Shot, Gain: 1, Pan: 0.5, DelayMS: j.DelayMS, Seed: j.Seed, Octave: j.Octave}
+	sh := engine.Shot{Name: j.Shot, Gain: 1, Pan: 0.5, DelayMS: j.DelayMS, Seed: uint64(j.Seed), Octave: j.Octave}
 	if j.Gain != nil {
 		sh.Gain = *j.Gain
 	}
@@ -242,7 +269,7 @@ func main() {
 			if r.Lead != "" {
 				m.Leads = []string{r.Lead}
 			}
-			p, err := m.Derive(r.Seed, r.Level, r.Tension)
+			p, err := m.Derive(uint64(r.Seed), r.Level, r.Tension)
 			if err != nil {
 				return err.Error()
 			}

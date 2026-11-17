@@ -30,7 +30,7 @@ In a game:
 Other pages can link a sound in: `#shot=<EDN>` (or `lead=`, `palette=`)
 imports it, and `&take=<JSON>` adds a button that plays a take, a vector of
 `undertone/trigger` maps (`shot`, `note` or `degree` and `octave`, `gain`,
-`pan`, `delay-ms`, `seed`). The same take goes to `undertoneStudio.trigger`,
+`pan`, `delay-ms`, `seed`; a seed may be a decimal string, as a full 64-bit one must be). The same take goes to `undertoneStudio.trigger`,
 and `undertoneStudio.render(take, secs)` renders it offline over the bed as
 interleaved stereo float samples, for a waveform or a loudness reading.
 

@@ -20,14 +20,12 @@ type queueReporter interface {
 // the frames rendered; otherwise p is the last row rendered, ahead of the
 // speaker by the output's latency. ok is false while the music is stopped.
 func (m *Music) Position() (p engine.Position, heard, ok bool) {
-	m.mu.Lock()
-	syn, out := m.synth, m.out
-	m.mu.Unlock()
-	if out == nil {
+	syn, _ := m.playing()
+	if syn == nil {
 		return p, false, false
 	}
-	if q, isQ := out.(queueReporter); isQ {
-		frame := syn.Frames() - int64(q.Queued())*engine.SampleRate/int64(time.Second)
+	if q, isQ := m.queued(); isQ {
+		frame := syn.Frames() - int64(q)*engine.SampleRate/int64(time.Second)
 		if p, ok = syn.PositionAt(frame); ok {
 			return p, true, true
 		}

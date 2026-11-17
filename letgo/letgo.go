@@ -50,6 +50,10 @@ type Music struct {
 	// nowWaiting is a set-parameters-now that came during that window; the
 	// catch-up applies it at once rather than at the first boundary.
 	nowWaiting bool
+	// paused is a Pause not yet resumed: the output has stopped reading, so
+	// the meters hold their last values, which the level natives must not
+	// report as sounding.
+	paused bool
 	// paramsGen counts changes to params, so start can tell whether any came
 	// while the output opened.
 	paramsGen uint64
@@ -308,6 +312,7 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	}
 	m.out = out
 	m.synth = syn
+	m.paused = false
 	// Parameters may have moved while we waited for the gesture; the synth was
 	// built from a snapshot, so catch it up to whatever is current. Only if
 	// they moved: staging the snapshot again would change nothing heard, but
@@ -477,6 +482,7 @@ func (m *Music) Started() bool {
 func (m *Music) Pause() {
 	m.mu.Lock()
 	o := m.out
+	m.paused = o != nil
 	m.mu.Unlock()
 	if o != nil {
 		o.Pause()
@@ -488,6 +494,7 @@ func (m *Music) Pause() {
 func (m *Music) Resume() {
 	m.mu.Lock()
 	o := m.out
+	m.paused = false
 	m.mu.Unlock()
 	if o != nil {
 		o.Resume()
@@ -768,6 +775,12 @@ func installNS() {
 	}))
 	ns.Def("audio-stats", native("audio-stats", 0, func([]vm.Value) (vm.Value, error) {
 		return current.Load().audioStats(), nil
+	}))
+	ns.Def("layer-levels", native("layer-levels", 0, func([]vm.Value) (vm.Value, error) {
+		return current.Load().layerLevels(), nil
+	}))
+	ns.Def("levels", native("levels", 0, func([]vm.Value) (vm.Value, error) {
+		return current.Load().levels(), nil
 	}))
 	ns.Def("trigger", native("trigger", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().trigger(a[0]), nil

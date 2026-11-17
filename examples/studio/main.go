@@ -29,7 +29,8 @@
 //	                         maxLufs, length}, as JSON
 //	hash(json, secs)         the take's hash alone (engine.Take.Hash), without rendering,
 //	                         for a page that caches renders
-//	notes()                  the layers (LayerNames indices) of the bed's notes since the last call
+//	notes()                  the bed's notes since the last call, flat: layer (a LayerNames
+//	                         index), MIDI note, gain for each
 //	levels()                 each layer's level, as JSON in LayerNames order
 //	play() / stop()          call from the tap handler: iOS resumes audio only inside one
 package main
@@ -312,9 +313,9 @@ func main() {
 		"notes": js.FuncOf(func(_ js.Value, _ []js.Value) any {
 			var evs []engine.NoteEvent
 			evs, noteCursor, _ = syn.NoteEvents(noteCursor, noteBuf[:0])
-			out := make([]any, len(evs))
-			for i, e := range evs {
-				out[i] = e.Layer
+			out := make([]any, 0, 3*len(evs))
+			for _, e := range evs {
+				out = append(out, e.Layer, e.Note, e.Gain)
 			}
 			return js.ValueOf(out)
 		}),

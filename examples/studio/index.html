@@ -25,7 +25,9 @@
   button, .chip { cursor: pointer; user-select: none; -webkit-user-select: none; }
   .chip { font-size: 13px; color: var(--mut); padding: 3px 9px; }
   .chip.on { color: var(--fg); border-color: var(--src); background: color-mix(in srgb, var(--src) 18%, var(--panel)); }
-  .chip.reg { font-style: italic; }
+  /* registered this session: dashed and in the control colour, so it can't be read as selected (solid gold) */
+  .chip.reg { font-style: italic; border-style: dashed; border-color: color-mix(in srgb, var(--mod) 70%, var(--line)); }
+  #scope { display: block; width: 100%; height: 118px; background: #07090a; border: 1px solid var(--line); border-radius: 8px; }
   #play { min-width: 6.5em; border-color: #3d5a47; background: #18241d; }
   #play.on { border-color: var(--src); background: #2a2414; }
   #names { max-height: 220px; overflow: auto; }
@@ -114,6 +116,7 @@
 </aside>
 
 <section>
+  <canvas id="scope" title="each layer's notes and level, swept left to right; marks fade over a few seconds"></canvas>
   <details id="guide">
     <summary>HOW TO USE THE STUDIO</summary>
     <p>Every sound undertone plays is a <b>patch</b>: a short list of units run once per sample, left to right, on a
@@ -443,7 +446,7 @@ function fire(d) {
   lastDeg = d;
   if (!playing) setPlaying(true);
   U().shot(spec.Name, d, +$("sgain").value);
-  flash($("pads").children[d]);
+  flash($("pads").children[d]); scopeNote(LAYERS.length, 60 + d * 2, 1);
 }
 
 // Register what is on screen, then retune the bed to it. Every edit runs this.
@@ -580,9 +583,66 @@ addEventListener("keydown", (e) => {
 for (const l of LAYERS) { $("meters").append(el("div")); $("meters").lastChild.append(el("i")); $("meterlbl").append(el("span", null, l)); }
 function meters() {
   // The engine meters a layer before the mix mutes it, so the page drops muted ones itself.
-  if (U() && playing) for (const l of U().notes()) if (bedOn && !mutedNow.includes(LAYERS[l])) flash($("meterlbl").children[l]);
+  if (U() && playing) {
+    const ns = U().notes();
+    for (let i = 0; i < ns.length; i += 3) {
+      const l = ns[i]; if (!bedOn || mutedNow.includes(LAYERS[l])) continue;
+      flash($("meterlbl").children[l]); scopeNote(l, ns[i + 1], ns[i + 2]);
+    }
+  }
+  scope();
   if (U() && playing) JSON.parse(U().levels()).forEach((v, i) => { $("meters").children[i].firstChild.style.height = `${!bedOn || mutedNow.includes(LAYERS[i]) ? 0 : Math.min(100, Math.sqrt(v) * 140)}%`; });
   requestAnimationFrame(meters);
+}
+
+// ---- the scope: a phosphor sweep of what each layer plays ----
+// A cursor sweeps left to right every SWEEP seconds and wraps. Each layer's
+// level leaves a faint trace and each note a bright dot placed by its pitch
+// within the row; marks fade by exp(-age/FADE), so what the cursor last
+// passed is still dimly there a sweep later. The bottom row is fired shots.
+const SWEEP = 8, FADE = 3, ROWS = [...LAYERS, "shots"];
+const marks = [];  // {t, x, row, y (0..1 within the row), a (strength), dot}
+const t0 = performance.now();
+const sweepX = (t) => ((t / SWEEP) % 1);
+function scopeNote(row, note, gain) {
+  const t = (performance.now() - t0) / 1000;
+  marks.push({ t, x: sweepX(t), row, y: 1 - ((note % 36) / 36), a: Math.min(1, 0.45 + gain), dot: true });
+}
+let lastLevelAt = 0;
+function scope() {
+  const c = $("scope"), dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const t = (performance.now() - t0) / 1000, L = 46, rw = w - L - 6, rh = (h - 8) / ROWS.length;
+  // a level sample per layer about 30 times a second while the bed plays
+  if (U() && playing && t - lastLevelAt > 1 / 30) {
+    lastLevelAt = t;
+    JSON.parse(U().levels()).forEach((v, i) => {
+      if (bedOn && !mutedNow.includes(LAYERS[i]) && v > 0.001) marks.push({ t, x: sweepX(t), row: i, y: 0.5, a: Math.min(1, Math.sqrt(v) * 1.6), dot: false });
+    });
+  }
+  while (marks.length && t - marks[0].t > FADE * 4) marks.shift();
+  g.fillStyle = "#07090a"; g.fillRect(0, 0, w, h);
+  g.font = "10px system-ui"; g.textBaseline = "middle";
+  ROWS.forEach((r, i) => {
+    const y = 4 + i * rh;
+    g.fillStyle = "#8a857680"; g.fillText(r, 6, y + rh / 2);
+    g.fillStyle = "#ffffff08"; g.fillRect(L, y + rh - 1, rw, 1);
+  });
+  for (const m of marks) {
+    const f = Math.exp(-(t - m.t) / FADE) * m.a, x = L + m.x * rw, y = 4 + m.row * rh;
+    if (m.dot) {
+      const yy = y + 2 + m.y * (rh - 4);
+      g.fillStyle = `rgba(156,240,120,${0.25 * f})`; g.fillRect(x - 3, yy - 3, 6, 6);
+      g.fillStyle = `rgba(200,255,170,${f})`; g.fillRect(x - 1, yy - 1, 2.5, 2.5);
+    } else {
+      const hh = Math.max(1, m.a * (rh - 4));
+      g.fillStyle = `rgba(120,200,100,${0.35 * f})`; g.fillRect(x, y + (rh - hh) / 2, rw / SWEEP / 30 + 0.6, hh);  // wide enough to join the next sample
+    }
+  }
+  const cx = L + sweepX(t) * rw;
+  g.fillStyle = "rgba(170,255,150,0.18)"; g.fillRect(cx - 6, 2, 6, h - 4);
+  g.fillStyle = "rgba(190,255,170,0.8)"; g.fillRect(cx, 2, 1, h - 4);
 }
 
 window.undertoneStudioFailed = (msg) => say("audio failed: " + msg, true);

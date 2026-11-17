@@ -110,7 +110,7 @@
   <div class="bar"><button id="play" disabled>loading…</button>
     <select id="mood"></select>
     <span class="chip" id="solo" title="hear only the layer being edited">solo</span>
-    <span class="chip on" id="silent" title="mute the whole bed: a shot alone, still pitched in the mood's scale">mute</span></div>
+    <span class="chip on" id="silent" title="(m) mute the whole bed: a shot alone, still pitched in the mood's scale">mute</span></div>
   <label class="sl">level <input type="range" id="level" min="0" max="10" step="1" value="1"><output></output></label>
   <label class="sl">tension <input type="range" id="tension" min="0" max="1" step="0.0625" value="0"><output></output></label>
   <label class="sl">seed <input type="range" id="seed" min="1" max="64" step="1" value="1"><output></output></label>
@@ -137,7 +137,7 @@
 
     <h3>A FIRST SOUND IN A MINUTE</h3>
     <ol>
-      <li>Press <b>play</b> (or <kbd>space</kbd>) to start the bed (dungeon is a good quiet one).</li>
+      <li>Press <b>play</b> (or <kbd>space</kbd>; <kbd>m</kbd> mutes and unmutes) to start the bed (dungeon is a good quiet one).</li>
       <li>Pick <b>shot</b>, open <b>tink</b>, and press <kbd>1</kbd>–<kbd>8</kbd>: the shot plays on that degree of the bed's scale.</li>
       <li>Drag the <b>env</b> unit's decay: every edit fires the shot, so you hear it change as you drag. <b>Shift-click</b> a pad to repeat it while you work; shift-click again (or click any pad) to stop.</li>
       <li><b>+ add a unit… → svf</b>, then move it with ↑ to just before <code>out</code>: a resonant filter. Turn up <i>res</i>.</li>
@@ -584,6 +584,7 @@ $("import").onclick = importEDN;
 addEventListener("keydown", (e) => {
   const typing = /textarea|select/i.test(document.activeElement.tagName) || (document.activeElement.tagName === "INPUT" && !/range|checkbox/.test(document.activeElement.type));
   // space plays or stops the bed (and ends a repeat) rather than scrolling the page
+  if (e.key === "m" && !typing && !e.metaKey && !e.ctrlKey) { $("silent").click(); return; }  // m mutes or unmutes the bed
   if (e.key === " " && !typing) { e.preventDefault(); if (playing) { stopLoop(); setPlaying(false); } else setPlaying(true); return; }
   if (kind !== "shot" || /input|textarea|select/i.test(document.activeElement.tagName)) return;
   const d = +e.key; if (d >= 1 && d <= 8) fire(d - 1);

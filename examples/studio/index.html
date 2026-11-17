@@ -422,6 +422,8 @@ function renderAudition() {
       const b = el("button", null, `${d + 1}`); b.title = `scale degree ${d}, key ${d + 1}`;
       b.onclick = (e) => e.shiftKey ? loop(d) : (stopLoop(), fire(d)); $("pads").append(b);
     }
+    const mel = el("button", null, ""); mel.innerHTML = "&#9835;"; mel.id = "melody"; mel.title = "play the xsofy title theme's melody on this shot (again to stop)";
+    mel.onclick = () => melodyTimers.length ? stopLoop() : melody(); $("pads").append(mel);
     const x = el("button", null, "&#9632; stop"); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat and all sound";
     x.onclick = () => { stopLoop(); setPlaying(false); }; $("pads").append(x);
     $("audhint").innerHTML = "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it";
@@ -438,7 +440,17 @@ let lastDeg = 0;
 // can be shaped while it repeats; a plain click or another kind stops it.
 const LOOP_MS = 700;
 let loopTimer = 0, loopDeg = -1;
-function stopLoop() { clearInterval(loopTimer); loopDeg = -1; for (const b of $("pads").children) b.classList.remove("loop"); }
+// The xsofy title theme's lead, a scale degree (1-8) per row or 0 for a rest,
+// four 16-row grids at 67 bpm, a row an eighth note (from xsofy's title
+// theme, round 2). ♪ plays it on the shot being edited, on the bed's scale.
+const TITLE = ["5004300010000000", "5004300020301000", "8007500060054000", "5004300020001000"], TITLE_ROW_MS = 60000 / 67 / 2;
+let melodyTimers = [];
+function melody() {
+  stopLoop(); $("melody").classList.add("loop");
+  [...TITLE.join("")].forEach((c, i) => { if (c !== "0") melodyTimers.push(setTimeout(() => fire(+c - 1), i * TITLE_ROW_MS)); });
+  melodyTimers.push(setTimeout(stopLoop, TITLE.length * 16 * TITLE_ROW_MS));
+}
+function stopLoop() { melodyTimers.forEach(clearTimeout); melodyTimers = []; clearInterval(loopTimer); loopDeg = -1; for (const b of $("pads").children) b.classList.remove("loop"); }
 function loop(d) {
   const again = loopDeg === d; stopLoop(); if (again) return;
   loopDeg = d; $("pads").children[d].classList.add("loop"); fire(d);

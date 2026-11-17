@@ -222,8 +222,8 @@ func TestLeadlessEntryRoundTrips(t *testing.T) {
 	}
 	checkParams(t, "hollow", m.params, want)
 
-	// Dropping the lead takes its patch out of the lead slot too, back to the
-	// new bank's own bell, where a grid's authored lead plays.
+	// Dropping the lead takes its patch off the lead track too, back to the
+	// bell lead, where a grid's authored lead plays.
 	s.Name, s.Palette = "hollow", "void"
 	if err := c.Def("void-src", "{"+s.EDN()+"}"); err != nil {
 		t.Fatal(err)
@@ -234,4 +234,31 @@ func TestLeadlessEntryRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkParams(t, "hollow on void", m.params, want)
+}
+
+// The keys the lead rename retired are errors that name their replacement,
+// not aliases and not silent no-ops: a partial set-parameters map ignores
+// keys it does not know, and a palette's reader ignored :bell.
+func TestRetiredBellKeys(t *testing.T) {
+	c, m := lgRuntime(t)
+	m.params = engine.DeriveDungeon(1, 0, 0)
+	before := m.params
+	for _, c2 := range []struct{ expr, says string }{
+		{"(undertone/set-parameters {:bell-density 0.4})", ":lead-density"},
+		{"(undertone/set-parameters {:bpm 61.0 :bell-lift 12})", ":lead-lift"},
+		{"(ambience/derive-spec (-> (:village ambience/moods) (dissoc :lead-density) (assoc :bell {:base 0.2 :step 0.0})) 7 2 0.5)", ":lead-density"},
+		{"(ambience/derive-spec (-> (:village ambience/moods) (dissoc :lead-lift) (assoc :bell-lift 12)) 7 2 0.5)", ":lead-lift"},
+		{"(undertone/register-palette {:name :lg-retired :drone :drone :fifth :pad :pad :pad :air :air :pulse :pulse :bell :chime})", "register-lead"},
+	} {
+		_, err := c.Run(c2.expr)
+		if err == nil || !strings.Contains(err.Error(), c2.says) {
+			t.Errorf("%s: got %v, want an error naming %s", c2.expr, err, c2.says)
+		}
+	}
+	if !reflect.DeepEqual(m.params, before) {
+		t.Error("a map with a retired key still changed the music")
+	}
+	if _, ok := engine.PaletteByName("lg-retired"); ok {
+		t.Error("a palette with a :bell was registered")
+	}
 }

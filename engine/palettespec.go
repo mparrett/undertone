@@ -20,18 +20,17 @@ type DrumSpec struct {
 // kit's lanes (kick, clap, shaker). PaletteSpecByName reads one, and
 // RegisterPalette makes one a mood can name, as RegisterShot does a shot.
 //
-// Bell is the exception to "plays": it is the bell track's patch before the
-// lead is picked. A mood with leads replaces it with the seed's pick
-// (ApplyLead; LeadSpecByName reads that patch), and a mood without leads
-// plays the track at zero gain (leadTrim), so as built in, it is never heard.
+// The lead track has no field: its patch is the lead's (ApplyLead,
+// LeadSpecByName), and with no lead, every palette's is the bell lead's
+// (Palette.Lead), so `:lead :none` can restore it without knowing the bank.
 type PaletteSpec struct {
-	Name                                string
-	Drone, Fifth, Pad, Bell, Air, Pulse PatchSpec
-	Kit                                 [nDrums]DrumSpec
+	Name                          string
+	Drone, Fifth, Pad, Air, Pulse PatchSpec
+	Kit                           [nDrums]DrumSpec
 }
 
-// LeadSpec is a lead as data: the patch the seed's pick puts in the bell's
-// slot, and its gate in grid rows (sustained leads hold more than one).
+// LeadSpec is a lead as data: the patch the seed's pick puts on the lead
+// track, and its gate in grid rows (sustained leads hold more than one).
 type LeadSpec struct {
 	PatchSpec
 	Gate int
@@ -91,7 +90,7 @@ func PaletteSpecByName(name string) (PaletteSpec, bool) {
 	s := PaletteSpec{
 		Name:  name,
 		Drone: patchSpec(pl.Drone), Fifth: patchSpec(pl.Fifth), Pad: patchSpec(pl.Pad),
-		Bell: patchSpec(pl.Bell), Air: patchSpec(pl.Air), Pulse: patchSpec(pl.Pulse),
+		Air: patchSpec(pl.Air), Pulse: patchSpec(pl.Pulse),
 	}
 	for i, d := range pl.Kit {
 		def := d.patch == nil

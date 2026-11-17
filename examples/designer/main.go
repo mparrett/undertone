@@ -76,26 +76,26 @@ func (j lineJSON) line() engine.Line {
 }
 
 type specJSON struct {
-	Name     string   `json:"name"`
-	Scales   [][]int  `json:"scales"`
-	BPM      lineJSON `json:"bpm"`
-	RootBase int      `json:"rootBase"`
-	RootStep int      `json:"rootStep"`
-	Drone    lineJSON `json:"drone"`
-	Fifth    lineJSON `json:"fifth"`
-	Pad      lineJSON `json:"pad"`
-	Bell     lineJSON `json:"bell"`
-	Air      lineJSON `json:"air"`
-	Calm     int      `json:"calm"`
-	BellLift int      `json:"bellLift"`
-	Palette  string   `json:"palette"`
-	Leads    []string `json:"leads"`
-	Grooves  []string `json:"grooves"`
-	Drums    lineJSON `json:"drums"`
-	Busy     lineJSON `json:"busy"`
-	Swing    float64  `json:"swing"`
-	Tense    float64  `json:"tenseDrums"`
-	Open     lineJSON `json:"open"`
+	Name        string   `json:"name"`
+	Scales      [][]int  `json:"scales"`
+	BPM         lineJSON `json:"bpm"`
+	RootBase    int      `json:"rootBase"`
+	RootStep    int      `json:"rootStep"`
+	Drone       lineJSON `json:"drone"`
+	Fifth       lineJSON `json:"fifth"`
+	Pad         lineJSON `json:"pad"`
+	LeadDensity lineJSON `json:"lead"`
+	Air         lineJSON `json:"air"`
+	Calm        int      `json:"calm"`
+	LeadLift    int      `json:"leadLift"`
+	Palette     string   `json:"palette"`
+	Leads       []string `json:"leads"`
+	Grooves     []string `json:"grooves"`
+	Drums       lineJSON `json:"drums"`
+	Busy        lineJSON `json:"busy"`
+	Swing       float64  `json:"swing"`
+	Tense       float64  `json:"tenseDrums"`
+	Open        lineJSON `json:"open"`
 	// The page has no room control yet; carrying the field keeps an
 	// imported room through an edit.
 	Room roomJSON `json:"room"`
@@ -110,8 +110,8 @@ type roomJSON struct {
 func toJSON(s engine.MoodSpec) specJSON {
 	return specJSON{
 		Name: s.Name, Scales: s.Scales, BPM: toLine(s.BPM), RootBase: s.RootBase, RootStep: s.RootStep,
-		Drone: toLine(s.Drone), Fifth: toLine(s.Fifth), Pad: toLine(s.Pad), Bell: toLine(s.Bell), Air: toLine(s.Air),
-		Calm: s.Calm, BellLift: s.BellLift, Palette: s.Palette, Leads: s.Leads, Grooves: s.Grooves,
+		Drone: toLine(s.Drone), Fifth: toLine(s.Fifth), Pad: toLine(s.Pad), LeadDensity: toLine(s.LeadDensity), Air: toLine(s.Air),
+		Calm: s.Calm, LeadLift: s.LeadLift, Palette: s.Palette, Leads: s.Leads, Grooves: s.Grooves,
 		Drums: toLine(s.Drums), Busy: toLine(s.Busy), Swing: s.Swing, Tense: s.TenseDrums, Open: toLine(s.Open),
 		Room: roomJSON(s.Room),
 	}
@@ -120,8 +120,8 @@ func toJSON(s engine.MoodSpec) specJSON {
 func (j specJSON) spec() engine.MoodSpec {
 	return engine.MoodSpec{
 		Name: j.Name, Scales: j.Scales, BPM: j.BPM.line(), RootBase: j.RootBase, RootStep: j.RootStep,
-		Drone: j.Drone.line(), Fifth: j.Fifth.line(), Pad: j.Pad.line(), Bell: j.Bell.line(), Air: j.Air.line(),
-		Calm: j.Calm, BellLift: j.BellLift, Palette: j.Palette, Leads: j.Leads, Grooves: j.Grooves,
+		Drone: j.Drone.line(), Fifth: j.Fifth.line(), Pad: j.Pad.line(), LeadDensity: j.LeadDensity.line(), Air: j.Air.line(),
+		Calm: j.Calm, LeadLift: j.LeadLift, Palette: j.Palette, Leads: j.Leads, Grooves: j.Grooves,
 		Drums: j.Drums.line(), Busy: j.Busy.line(), Swing: j.Swing, TenseDrums: j.Tense, Open: j.Open.line(),
 		Room: engine.Room(j.Room),
 	}
@@ -202,7 +202,7 @@ func main() {
 				"bpm": math.Round(p.BPM), "key": noteNames[((p.Root%12)+12)%12], "root": p.Root,
 				"scale": p.Scale, "lead": p.LeadName, "groove": p.Groove,
 				"gains": map[string]float64{
-					"drone": p.DroneGain, "fifth": p.FifthGain, "pad": p.PadDensity, "bell": p.BellDensity,
+					"drone": p.DroneGain, "fifth": p.FifthGain, "pad": p.PadDensity, "lead": p.LeadDensity,
 					"air": p.AirGain, "pulse": p.PulseGain, "drums": p.DrumGain, "busy": p.DrumBusy,
 				},
 			})

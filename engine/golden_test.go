@@ -18,9 +18,9 @@ var update = flag.Bool("update", false, "rewrite testdata/derive.golden from the
 // guards against fusion, does not.
 func goldenLine(name string, p Params) string {
 	h := func(x float64) string { return strconv.FormatFloat(x, 'x', -1, 64) }
-	return fmt.Sprintf("%s bpm=%s root=%d scale=%v drone=%s fifth=%s pad=%s bell=%s air=%s pulse=%s off=%d lift=%d lead=%s/%d seed=%d palette=%v",
-		name, h(p.BPM), p.Root, p.Scale, h(p.DroneGain), h(p.FifthGain), h(p.PadDensity), h(p.BellDensity),
-		h(p.AirGain), h(p.PulseGain), p.FifthOffset, p.BellLift, p.LeadName, p.LeadGate, p.Seed, p.Palette)
+	return fmt.Sprintf("%s bpm=%s root=%d scale=%v drone=%s fifth=%s pad=%s lead-density=%s air=%s pulse=%s off=%d lift=%d lead=%s/%d seed=%d palette=%v",
+		name, h(p.BPM), p.Root, p.Scale, h(p.DroneGain), h(p.FifthGain), h(p.PadDensity), h(p.LeadDensity),
+		h(p.AirGain), h(p.PulseGain), p.FifthOffset, p.LeadLift, p.LeadName, p.LeadGate, p.Seed, p.Palette)
 }
 
 // The mood table must reproduce the moods that existed before it byte for

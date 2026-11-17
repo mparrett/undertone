@@ -25,20 +25,20 @@ func (l line) at(x float64) float64 {
 // and a minor ninth, the calm layers thinning, and drums, where a mood has
 // them, busier and harder.
 type mood struct {
-	name     string
-	scales   [][]int // indexed by level/2; the last one holds for higher levels
-	bpm      line
-	rootBase int
-	rootStep int
-	drone    line
-	fifth    line
-	pad      line
-	bell     line
-	air      line
-	calm     int // the second drone's interval from the chord at low tension; positive floats above it
-	bellLift int
-	palette  Palette
-	leads    []string // the seed picks one; repeats are the weights; none leaves the lead silent
+	name        string
+	scales      [][]int // indexed by level/2; the last one holds for higher levels
+	bpm         line
+	rootBase    int
+	rootStep    int
+	drone       line
+	fifth       line
+	pad         line
+	leadDensity line
+	air         line
+	calm        int // the second drone's interval from the chord at low tension; positive floats above it
+	leadLift    int
+	palette     Palette
+	leads       []string // the seed picks one; repeats are the weights; none leaves the lead silent
 
 	// Drums, for rhythmic moods; the zero values leave them off.
 	grooves []string // grooveLib names; the seed picks one
@@ -67,14 +67,14 @@ var moods = []mood{
 		scales:   scalesByDarkness,
 		bpm:      lin(66, -3).atLeast(46),
 		rootBase: 57, rootStep: -1,
-		drone:   lin(0.55, 0.06).atMost(0.9),
-		fifth:   lin(0, 0.2).atMost(0.7),
-		pad:     lin(0.6, -0.05),
-		bell:    lin(0.16, -0.02).atLeast(0.04),
-		air:     lin(0.25, 0.05).atMost(0.6),
-		calm:    -5, // perfect fifth above the low drone
-		palette: dungeonPalette,
-		leads:   dungeonLeads,
+		drone:       lin(0.55, 0.06).atMost(0.9),
+		fifth:       lin(0, 0.2).atMost(0.7),
+		pad:         lin(0.6, -0.05),
+		leadDensity: lin(0.16, -0.02).atLeast(0.04),
+		air:         lin(0.25, 0.05).atMost(0.6),
+		calm:        -5, // perfect fifth above the low drone
+		palette:     dungeonPalette,
+		leads:       dungeonLeads,
 	},
 	// Past the dungeon: where depth would take it if it kept going. Nine
 	// semitones under the dungeon and slower at every level, phrygian
@@ -86,15 +86,15 @@ var moods = []mood{
 		scales:   scalesForVoid,
 		bpm:      lin(42, -1).atLeast(34),
 		rootBase: 48, rootStep: -1,
-		drone:   lin(0.6, 0.03).atMost(0.8),
-		fifth:   lin(0.15, 0.04).atMost(0.45),
-		pad:     lin(0.45, -0.03).atLeast(0.2),
-		bell:    lin(0.07, -0.01).atLeast(0.02),
-		air:     lin(0.35, 0.03).atMost(0.55),
-		calm:    -5, // perfect fifth above the low drone
-		palette: voidPalette,
-		leads:   voidLeads,
-		room:    Room{Size: 0.8, Damp: 0.6},
+		drone:       lin(0.6, 0.03).atMost(0.8),
+		fifth:       lin(0.15, 0.04).atMost(0.45),
+		pad:         lin(0.45, -0.03).atLeast(0.2),
+		leadDensity: lin(0.07, -0.01).atLeast(0.02),
+		air:         lin(0.35, 0.03).atMost(0.55),
+		calm:        -5, // perfect fifth above the low drone
+		palette:     voidPalette,
+		leads:       voidLeads,
+		room:        Room{Size: 0.8, Damp: 0.6},
 	},
 	// The bright mirror: elevation raises and opens (mixolydian -> major ->
 	// lydian, higher root, denser lifted bells, breeze instead of rumble).
@@ -103,15 +103,15 @@ var moods = []mood{
 		scales:   scalesByBrightness,
 		bpm:      lin(74, 3),
 		rootBase: 62, rootStep: 1,
-		drone:    lin(0.25, 0.03),
-		fifth:    lin(0.3, 0.05),
-		pad:      lin(0.7, 0),
-		bell:     lin(0.2, 0.04),
-		air:      lin(0.15, 0.02),
-		calm:     -8, // major third above the low drone: sunshine
-		bellLift: 12,
-		palette:  overworldPalette,
-		leads:    overworldLeads,
+		drone:       lin(0.25, 0.03),
+		fifth:       lin(0.3, 0.05),
+		pad:         lin(0.7, 0),
+		leadDensity: lin(0.2, 0.04),
+		air:         lin(0.15, 0.02),
+		calm:        -8, // major third above the low drone: sunshine
+		leadLift:    12,
+		palette:     overworldPalette,
+		leads:       overworldLeads,
 	},
 	// Warm, grounded and sunny: overworld without the floor. The drone is
 	// near silent, so nothing sits under the bed; the root starts high, bells
@@ -123,15 +123,15 @@ var moods = []mood{
 		scales:   scalesForMeadow,
 		bpm:      lin(88, 2).atMost(100),
 		rootBase: 67, rootStep: 0,
-		drone:    lin(0.12, 0),
-		fifth:    lin(0.25, 0.03).atMost(0.4),
-		pad:      lin(0.5, 0),
-		bell:     lin(0.3, 0.03).atMost(0.45),
-		air:      lin(0.2, 0.02).atMost(0.3),
-		calm:     -3, // major sixth above the low drone
-		bellLift: 12,
-		palette:  overworldPalette,
-		leads:    meadowLeads,
+		drone:       lin(0.12, 0),
+		fifth:       lin(0.25, 0.03).atMost(0.4),
+		pad:         lin(0.5, 0),
+		leadDensity: lin(0.3, 0.03).atMost(0.45),
+		air:         lin(0.2, 0.02).atMost(0.3),
+		calm:        -3, // major sixth above the low drone
+		leadLift:    12,
+		palette:     overworldPalette,
+		leads:       meadowLeads,
 	},
 	// Bright by being thin rather than warm: no drone at all, a slow lydian
 	// sky of veil pads smeared through the delay, the second voice a fifth
@@ -142,14 +142,14 @@ var moods = []mood{
 		scales:   scalesForAurora,
 		bpm:      lin(52, 1).atMost(58),
 		rootBase: 69, rootStep: 1,
-		drone:   lin(0, 0),
-		fifth:   lin(0.3, 0.02).atMost(0.4),
-		pad:     lin(0.75, 0.02).atMost(0.85),
-		bell:    lin(0.08, 0.01).atMost(0.14),
-		air:     lin(0.3, 0.03).atMost(0.45),
-		calm:    7, // a fifth above the chord, floating over it
-		palette: auroraPalette,
-		leads:   auroraLeads,
+		drone:       lin(0, 0),
+		fifth:       lin(0.3, 0.02).atMost(0.4),
+		pad:         lin(0.75, 0.02).atMost(0.85),
+		leadDensity: lin(0.08, 0.01).atMost(0.14),
+		air:         lin(0.3, 0.03).atMost(0.45),
+		calm:        7, // a fifth above the chord, floating over it
+		palette:     auroraPalette,
+		leads:       auroraLeads,
 	},
 	// Above the aurora: thinner still, with no lead at all. No drone, a
 	// single sine haze an octave over the chord, higher than aurora's veils,
@@ -160,14 +160,14 @@ var moods = []mood{
 		scales:   scalesForAurora,
 		bpm:      lin(46, 1).atMost(52),
 		rootBase: 74, rootStep: 1,
-		drone:   lin(0, 0),
-		fifth:   lin(0.2, 0.01).atMost(0.3),
-		pad:     lin(0.55, 0.02).atMost(0.7),
-		bell:    lin(0, 0),
-		air:     lin(0.3, 0.02).atMost(0.4),
-		calm:    12, // an octave above the chord: the thinnest interval
-		palette: stratospherePalette,
-		room:    Room{Size: 0.4, Damp: -0.8},
+		drone:       lin(0, 0),
+		fifth:       lin(0.2, 0.01).atMost(0.3),
+		pad:         lin(0.55, 0.02).atMost(0.7),
+		leadDensity: lin(0, 0),
+		air:         lin(0.3, 0.02).atMost(0.4),
+		calm:        12, // an octave above the chord: the thinnest interval
+		palette:     stratospherePalette,
+		room:        Room{Size: 0.4, Damp: -0.8},
 	},
 	// The first mood with drums: a warm daytime village, mixolydian turning
 	// major, a light shuffle under kalimba and pluck. Level is the day
@@ -177,19 +177,19 @@ var moods = []mood{
 		scales:   scalesForVillage,
 		bpm:      lin(100, 2).atMost(112),
 		rootBase: 62, rootStep: 0,
-		drone:    lin(0.15, 0),
-		fifth:    lin(0.25, 0),
-		pad:      lin(0.55, 0),
-		bell:     lin(0.22, 0.02).atMost(0.32),
-		air:      lin(0.1, 0),
-		calm:     -8, // major third above the low drone
-		bellLift: 12,
-		palette:  overworldPalette,
-		leads:    villageLeads,
-		grooves:  []string{"amble", "amble", "skip", "stomp"},
-		drums:    lin(0.55, 0.05).atMost(0.8),
-		busy:     lin(0.2, 0.12).atMost(0.8),
-		swing:    0.1,
+		drone:       lin(0.15, 0),
+		fifth:       lin(0.25, 0),
+		pad:         lin(0.55, 0),
+		leadDensity: lin(0.22, 0.02).atMost(0.32),
+		air:         lin(0.1, 0),
+		calm:        -8, // major third above the low drone
+		leadLift:    12,
+		palette:     overworldPalette,
+		leads:       villageLeads,
+		grooves:     []string{"amble", "amble", "skip", "stomp"},
+		drums:       lin(0.55, 0.05).atMost(0.8),
+		busy:        lin(0.2, 0.12).atMost(0.8),
+		swing:       0.1,
 	},
 	// Industrial, after the bed of "Hurt": detuned saws grinding through
 	// resonant filters that never sit still, a hiss bed played like an
@@ -202,15 +202,15 @@ var moods = []mood{
 		scales:   scalesForRust,
 		bpm:      lin(58, -2).atLeast(44),
 		rootBase: 45, rootStep: -1,
-		drone:   lin(0.6, 0.04).atMost(0.85),
-		fifth:   lin(0.15, 0.08).atMost(0.55),
-		pad:     lin(0.35, 0.03).atMost(0.6),
-		bell:    lin(0.06, 0),
-		air:     lin(0.35, 0.05).atMost(0.7),
-		calm:    -6, // a tritone from the start
-		palette: rustPalette,
-		leads:   rustLeads,
-		open:    lin(0, -0.12), // the filters close as it sinks
+		drone:       lin(0.6, 0.04).atMost(0.85),
+		fifth:       lin(0.15, 0.08).atMost(0.55),
+		pad:         lin(0.35, 0.03).atMost(0.6),
+		leadDensity: lin(0.06, 0),
+		air:         lin(0.35, 0.05).atMost(0.7),
+		calm:        -6, // a tritone from the start
+		palette:     rustPalette,
+		leads:       rustLeads,
+		open:        lin(0, -0.12), // the filters close as it sinks
 		// no drums at rest; from a quarter tension the machine comes in
 		grooves:    []string{"machine"},
 		drums:      lin(0, 0),
@@ -228,16 +228,16 @@ var moods = []mood{
 		scales:   scalesByDarkness,
 		bpm:      lin(88, 2).atMost(98),
 		rootBase: 45, rootStep: 0,
-		drone:   lin(0.45, 0.02).atMost(0.55),
-		fifth:   lin(0.15, 0.03).atMost(0.3),
-		pad:     lin(0.3, 0),
-		bell:    lin(0.04, 0),
-		air:     lin(0.25, 0.03).atMost(0.4),
-		calm:    -5, // perfect fifth above the low drone
-		palette: rustPalette,
-		leads:   rustLeads,
-		open:    lin(0, 0.08),
-		grooves: []string{"machine"},
+		drone:       lin(0.45, 0.02).atMost(0.55),
+		fifth:       lin(0.15, 0.03).atMost(0.3),
+		pad:         lin(0.3, 0),
+		leadDensity: lin(0.04, 0),
+		air:         lin(0.25, 0.03).atMost(0.4),
+		calm:        -5, // perfect fifth above the low drone
+		palette:     rustPalette,
+		leads:       rustLeads,
+		open:        lin(0, 0.08),
+		grooves:     []string{"machine"},
 		// Flat in level: tension's push is clamped to the same ceiling as
 		// the level line, so a rising line would leave tension no gain to
 		// add at high levels.
@@ -281,14 +281,14 @@ func (m *mood) derive(seed uint64, level int, tension float64) Params {
 		DroneGain:   m.drone.at(l),
 		FifthGain:   m.fifth.at(l) + float64(0.25*t),
 		PadDensity:  m.pad.at(l) * (1 - float64(0.6*t)),
-		BellDensity: m.bell.at(l) * (1 - float64(0.5*t)),
+		LeadDensity: m.leadDensity.at(l) * (1 - float64(0.5*t)),
 		AirGain:     m.air.at(l) + float64(0.1*t),
 		PulseGain:   t,
 		Grit:        t,
 		Open:        math.Max(-1, math.Min(1, m.open.at(l))),
 		Room:        m.room,
 		FifthOffset: tenseOffset(m.calm, t),
-		BellLift:    m.bellLift,
+		LeadLift:    m.leadLift,
 		Palette:     m.palette,
 		Seed:        seed,
 		DrumGain:    m.drums.at(l),

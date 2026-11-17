@@ -33,7 +33,7 @@ func TestPaletteSpecRoundTrip(t *testing.T) {
 		}
 		tracks := []track{
 			{"drone", s.Drone, pl.Drone}, {"fifth", s.Fifth, pl.Fifth}, {"pad", s.Pad, pl.Pad},
-			{"bell", s.Bell, pl.Bell}, {"air", s.Air, pl.Air}, {"pulse", s.Pulse, pl.Pulse},
+			{"air", s.Air, pl.Air}, {"pulse", s.Pulse, pl.Pulse},
 		}
 		// the lane the engine plays, default-kit fallback included
 		params := Params{Palette: pl}

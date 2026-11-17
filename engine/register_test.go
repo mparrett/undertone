@@ -128,12 +128,13 @@ func TestRegisteredPaletteSpecIsACopy(t *testing.T) {
 	}
 }
 
-// Left zero, the bell is the built-in bell and a kit lane the default kit's.
+// Left zero, a kit lane is the default kit's, and every palette's lead
+// track holds the bell lead until a lead is picked.
 func TestRegisterPaletteDefaults(t *testing.T) {
 	forgetRegistered(t, "reg-")
 	full, _ := PaletteSpecByName("dungeon")
 	s := full
-	s.Name, s.Bell, s.Kit = "reg-defaults", PatchSpec{}, [nDrums]DrumSpec{}
+	s.Name, s.Kit = "reg-defaults", [nDrums]DrumSpec{}
 	if err := RegisterPalette(s); err != nil {
 		t.Fatal(err)
 	}
@@ -141,6 +142,9 @@ func TestRegisterPaletteDefaults(t *testing.T) {
 	full.Name = s.Name
 	if !reflect.DeepEqual(got, full) {
 		t.Errorf("reads back\n%+v\nwant\n%+v", got, full)
+	}
+	if pl, _ := PaletteByName(s.Name); !samePatch(pl.Lead, bell) {
+		t.Error("a registered palette's lead track does not start on the bell lead")
 	}
 }
 
@@ -180,7 +184,6 @@ func TestRegisterRefusesUnsafe(t *testing.T) {
 		{"a kick out of range", func(s *PaletteSpec) {
 			s.Kit[0] = DrumSpec{PatchSpec: PatchSpec{Name: "kick"}, Note: 500}
 		}, "note"},
-		{"a bell of its own", func(s *PaletteSpec) { s.Bell = drone(1) }, "built-in bell"},
 		{"a lane with a note and no patch", func(s *PaletteSpec) { s.Kit[0] = DrumSpec{Note: 40} }, "kit kick"},
 		{"a Default lane with another sound", func(s *PaletteSpec) {
 			s.Kit[1] = DrumSpec{PatchSpec: PatchSpec{Name: "slam"}, Note: 53, Default: true}

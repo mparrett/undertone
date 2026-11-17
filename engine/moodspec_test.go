@@ -75,12 +75,12 @@ func TestMoodSpecRejectsWhatTheEngineLacks(t *testing.T) {
 	}
 }
 
-// set-parameters' :lead :none puts the bell back in the lead slot without
-// knowing the bank, which holds while every bank's own bell is the same.
+// set-parameters' :lead :none puts the bell lead back on the lead track
+// without knowing the bank, which holds while every bank starts on it.
 func TestEveryBankHasTheBell(t *testing.T) {
 	for name, p := range palettes {
-		if !samePatch(p.Bell, bell) {
-			t.Errorf("palette %s has its own bell; :lead :none would restore the wrong one", name)
+		if !samePatch(p.Lead, bell) {
+			t.Errorf("palette %s starts on another lead; :lead :none would restore the wrong one", name)
 		}
 	}
 }

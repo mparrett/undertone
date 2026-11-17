@@ -40,9 +40,9 @@ func TestTensionOneAgitates(t *testing.T) {
 	if pulses < 2 {
 		t.Fatalf("full tension should place at least the 0/8 heartbeat, got %d notes", pulses)
 	}
-	if hot.BellDensity >= calm.BellDensity || hot.PadDensity >= calm.PadDensity {
+	if hot.LeadDensity >= calm.LeadDensity || hot.PadDensity >= calm.PadDensity {
 		t.Fatalf("tension should thin the calm layers: bells %v>=%v or pads %v>=%v",
-			hot.BellDensity, calm.BellDensity, hot.PadDensity, calm.PadDensity)
+			hot.LeadDensity, calm.LeadDensity, hot.PadDensity, calm.PadDensity)
 	}
 }
 
@@ -55,9 +55,9 @@ func TestOverworldIsBrighter(t *testing.T) {
 	if over.FifthOffset != -8 {
 		t.Fatalf("calm overworld wants the major third, got %d", over.FifthOffset)
 	}
-	if over.BellDensity <= dun.BellDensity || over.BellLift != 12 {
+	if over.LeadDensity <= dun.LeadDensity || over.LeadLift != 12 {
 		t.Fatalf("overworld bells should be denser and lifted: %v vs %v, lift %d",
-			over.BellDensity, dun.BellDensity, over.BellLift)
+			over.LeadDensity, dun.LeadDensity, over.LeadLift)
 	}
 	if over.DroneGain >= dun.DroneGain {
 		t.Fatalf("overworld drone is a bed, not a weight: %v >= %v", over.DroneGain, dun.DroneGain)
@@ -126,8 +126,8 @@ func TestMeadowIsBrightest(t *testing.T) {
 		if mead.DroneGain >= over.DroneGain {
 			t.Errorf("level %d: meadow drone %v not under overworld %v", level, mead.DroneGain, over.DroneGain)
 		}
-		if mead.BellDensity <= over.BellDensity {
-			t.Errorf("level %d: meadow bells %v not denser than overworld %v", level, mead.BellDensity, over.BellDensity)
+		if mead.LeadDensity <= over.LeadDensity {
+			t.Errorf("level %d: meadow bells %v not denser than overworld %v", level, mead.LeadDensity, over.LeadDensity)
 		}
 	}
 	if p, _ := DeriveMood("meadow", 1, 2, 0); p.FifthOffset != -3 {
@@ -160,9 +160,9 @@ func TestAuroraIsThin(t *testing.T) {
 		if aur.DroneGain != 0 {
 			t.Errorf("level %d: aurora drone %v, want silent", level, aur.DroneGain)
 		}
-		if aur.BellDensity >= mead.BellDensity || aur.BPM >= mead.BPM {
+		if aur.LeadDensity >= mead.LeadDensity || aur.BPM >= mead.BPM {
 			t.Errorf("level %d: aurora bells/bpm %v/%v not under meadow %v/%v",
-				level, aur.BellDensity, aur.BPM, mead.BellDensity, mead.BPM)
+				level, aur.LeadDensity, aur.BPM, mead.LeadDensity, mead.BPM)
 		}
 		if aur.Root < mead.Root {
 			t.Errorf("level %d: aurora root %d under meadow %d", level, aur.Root, mead.Root)
@@ -205,7 +205,7 @@ func TestStratosphereLeadStaysSilent(t *testing.T) {
 	}
 }
 
-// A mood without leads keeps a bell line's walk but strikes nothing, and the
+// A mood without leads keeps a lead-density line's walk but strikes nothing, and the
 // walk's draws keep the rest of the pattern as it was with a lead.
 func TestLeadlessSpecSilencesOnlyTheLead(t *testing.T) {
 	s, _ := MoodByName("dungeon")
@@ -215,10 +215,10 @@ func TestLeadlessSpecSilencesOnlyTheLead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if without.BellDensity == 0 {
+	if without.LeadDensity == 0 {
 		t.Fatal("the test needs a bell line that plays")
 	}
-	// A grid's lead is authored, so it still plays, on the palette's bell.
+	// A grid's lead is authored, so it still plays, on the palette's bell lead.
 	syn := NewSynth(without)
 	syn.SetGrid(&Grid{Lead: [Steps]int{1}})
 	syn.Read(make([]byte, 4*syn.samplesPerRow))

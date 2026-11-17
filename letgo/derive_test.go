@@ -55,11 +55,11 @@ func checkParams(t *testing.T, name string, got, want engine.Params) {
 		t.Errorf("%s: lead = %s/%d, want %s/%d", name, got.LeadName, got.LeadGate, want.LeadName, want.LeadGate)
 	}
 	// The lead slot's patch is heard by a grid even with no lead named.
-	if !reflect.DeepEqual(got.Palette.Bell, want.Palette.Bell) {
+	if !reflect.DeepEqual(got.Palette.Lead, want.Palette.Lead) {
 		t.Errorf("%s: the lead slot holds another patch than the derivation's", name)
 	}
-	if got.FifthOffset != want.FifthOffset || got.BellLift != want.BellLift {
-		t.Errorf("%s: offset/lift = %d/%d, want %d/%d", name, got.FifthOffset, got.BellLift, want.FifthOffset, want.BellLift)
+	if got.FifthOffset != want.FifthOffset || got.LeadLift != want.LeadLift {
+		t.Errorf("%s: offset/lift = %d/%d, want %d/%d", name, got.FifthOffset, got.LeadLift, want.FifthOffset, want.LeadLift)
 	}
 	if got.Groove != want.Groove {
 		t.Errorf("%s: groove = %q, want %q", name, got.Groove, want.Groove)
@@ -75,7 +75,7 @@ func checkParams(t *testing.T, name string, got, want engine.Params) {
 		{"drone-gain", got.DroneGain, want.DroneGain},
 		{"fifth-gain", got.FifthGain, want.FifthGain},
 		{"pad-density", got.PadDensity, want.PadDensity},
-		{"bell-density", got.BellDensity, want.BellDensity},
+		{"lead-density", got.LeadDensity, want.LeadDensity},
 		{"air-gain", got.AirGain, want.AirGain},
 		{"pulse-gain", got.PulseGain, want.PulseGain},
 		{"grit", got.Grit, want.Grit},
@@ -141,7 +141,7 @@ func TestSetParametersMergesPartialMap(t *testing.T) {
 		t.Errorf("bpm = %v, want 42", m.params.BPM)
 	}
 	if m.params.Root != before.Root || m.params.LeadName != before.LeadName ||
-		m.params.BellDensity != before.BellDensity {
+		m.params.LeadDensity != before.LeadDensity {
 		t.Errorf("partial map disturbed untouched fields: %+v", m.params)
 	}
 }

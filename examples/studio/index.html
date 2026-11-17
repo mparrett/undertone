@@ -448,7 +448,7 @@ function fire(d) {
   lastDeg = d;
   if (!playing) setPlaying(true);
   U().shot(spec.Name, d, +$("sgain").value);
-  flash($("pads").children[d]); scopeNote(LAYERS.length, 60 + d * 2, 1);
+  flash($("pads").children[d]); scopeNote(SHOTS, 60 + d * 2, 1); shotShape(spec.Name, d, +$("sgain").value);
 }
 
 // Register what is on screen, then retune the bed to it. Every edit runs this.
@@ -572,8 +572,10 @@ $("silent").onclick = () => { bedOn = !bedOn; if (!bedOn) solo = false; bedChips
 for (const id of ["level", "tension", "seed", "sgain"]) {
   const r = $(id), o = r.nextElementSibling; o.value = r.value;
   r.oninput = () => { o.value = r.value; if (id !== "sgain") applyBed(); };
+  if (id !== "sgain") r.onchange = () => bedMark(id, `${id[0]} ${r.value}`);  // on release, not every step of a drag
 }
-$("mood").onchange = applyBed;
+$("mood").onchange = () => { applyBed(); bedMark("mood", $("mood").value); lastDrone = -1; };
+const NOTE = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
 $("copy").onclick = async () => { try { await navigator.clipboard.writeText($("edn").value); say("EDN copied"); } catch { $("edn").select(); say("select the EDN to copy it"); } };
 $("save").onclick = () => { const a = el("a"); a.href = URL.createObjectURL(new Blob([$("edn").value + "\n"], { type: "application/edn" })); a.download = `${spec.Name}.edn`; a.click(); };
 $("import").onclick = importEDN;
@@ -589,7 +591,8 @@ function meters() {
     const ns = U().notes();
     for (let i = 0; i < ns.length; i += 3) {
       const l = ns[i]; if (!bedOn || mutedNow.includes(LAYERS[l])) continue;
-      flash($("meterlbl").children[l]); scopeNote(l, ns[i + 1], ns[i + 2]);
+      flash($("meterlbl").children[l]); scopeNote(l + 1, ns[i + 1], ns[i + 2]);
+      if (l === 0 && ns[i + 1] !== lastDrone) { if (lastDrone >= 0) bedMark("chord", NOTE[ns[i + 1] % 12]); lastDrone = ns[i + 1]; }
     }
   }
   scope();
@@ -601,29 +604,52 @@ function meters() {
 // A cursor sweeps left to right every SWEEP seconds and wraps. Each layer's
 // level leaves a faint trace and each note a bright dot placed by its pitch
 // within the row; marks fade by exp(-age/FADE), so what the cursor last
-// passed is still dimly there a sweep later. The bottom row is fired shots.
-const SWEEP = 8, FADE = 3, ROWS = [...LAYERS, "shots"];
-const marks = [];  // {t, x, row, y (0..1 within the row), a (strength), dot}
+// passed is still dimly there a sweep later. Faint ticks mark the beats and a
+// brighter one each pattern. The top lane is the bed: a coloured line where
+// the mood, level, tension or seed changed, or the chord moved. The bottom
+// lane is fired shots: a dot, over the shot's own loudness in amber.
+const SWEEP = 8, FADE = 3, ROWS = ["bed", ...LAYERS, "shots"], SHOTS = ROWS.length - 1;
+const BEDC = { mood: "224,184,79", level: "95,168,201", tension: "180,138,214", seed: "214,209,194", chord: "156,196,106" };
+const marks = [];  // {t, kind: dot|level|tick|bed|shape, row, ...}
 const t0 = performance.now();
+const now = () => (performance.now() - t0) / 1000;
 const sweepX = (t) => ((t / SWEEP) % 1);
-function scopeNote(row, note, gain) {
-  const t = (performance.now() - t0) / 1000;
-  marks.push({ t, x: sweepX(t), row, y: 1 - ((note % 36) / 36), a: Math.min(1, 0.45 + gain), dot: true });
+function scopeNote(row, note, gain) { marks.push({ t: now(), kind: "dot", row, y: 1 - ((note % 36) / 36), a: Math.min(1, 0.45 + gain) }); }
+function bedMark(type, label) { if (playing) marks.push({ t: now(), kind: "bed", type, label, a: 1 }); }
+// A fired shot's loudness envelope, from the same render measure() uses but
+// with the music silent, cached by the take's hash: an edit changes the hash.
+const shapes = new Map();
+function shotShape(name, d, gain) {
+  const take = JSON.stringify([{ shot: name, degree: d, gain }]), key = U().hash(take, 2.5, 0);
+  let m = shapes.get(key);
+  if (!m) {
+    m = JSON.parse(U().measure(take, 2.5, 0));
+    const n = Math.max(1, Math.ceil(m.length / m.envHop));
+    m = { env: m.envPeak.slice(0, n), hop: m.envHop };
+    shapes.set(key, m); if (shapes.size > 64) shapes.delete(shapes.keys().next().value);
+  }
+  marks.push({ t: now(), kind: "shape", env: m.env, hop: m.hop, a: 1 });
 }
-let lastLevelAt = 0;
+let lastLevelAt = 0, lastPos = "", lastDrone = -1;
 function scope() {
   const c = $("scope"), dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
   if (c.width !== w * dpr || c.height !== h * dpr) { c.width = w * dpr; c.height = h * dpr; }
   const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   // the thin strip drops the labels and packs the lanes close
   const thin = c.classList.contains("thin"), pad = thin ? 2 : 4;
-  const t = (performance.now() - t0) / 1000, L = thin ? 4 : 46, rw = w - L - 4, rh = (h - 2 * pad) / ROWS.length;
-  // a level sample per layer about 30 times a second while the bed plays
-  if (U() && playing && t - lastLevelAt > 1 / 30) {
-    lastLevelAt = t;
-    JSON.parse(U().levels()).forEach((v, i) => {
-      if (bedOn && !mutedNow.includes(LAYERS[i]) && v > 0.001) marks.push({ t, x: sweepX(t), row: i, y: 0.5, a: Math.min(1, Math.sqrt(v) * 1.6), dot: false });
-    });
+  const t = now(), L = thin ? 4 : 46, rw = w - L - 4, rh = (h - 2 * pad) / ROWS.length;
+  const X = (tt) => L + sweepX(tt) * rw, colW = (dt) => rw / SWEEP * dt + 0.6;
+  if (U() && playing) {
+    // a level sample per layer about 30 times a second
+    if (t - lastLevelAt > 1 / 30) {
+      lastLevelAt = t;
+      JSON.parse(U().levels()).forEach((v, i) => {
+        if (bedOn && !mutedNow.includes(LAYERS[i]) && v > 0.001) marks.push({ t, kind: "level", row: i + 1, a: Math.min(1, Math.sqrt(v) * 1.6) });
+      });
+    }
+    // a tick on each new beat (two rows), brighter at a pattern's start
+    const p = U().position();
+    if (p && `${p}` !== lastPos) { lastPos = `${p}`; if (p[0] % 2 === 0) marks.push({ t, kind: "tick", a: p[0] === 0 ? 0.32 : 0.1 }); }
   }
   while (marks.length && t - marks[0].t > FADE * 4) marks.shift();
   g.fillStyle = "#07090a"; g.fillRect(0, 0, w, h);
@@ -633,18 +659,32 @@ function scope() {
     if (!thin) { g.fillStyle = "#8a857680"; g.fillText(r, 6, y + rh / 2); }
     if (!thin) { g.fillStyle = "#ffffff08"; g.fillRect(L, y + rh - 1, rw, 1); }
   });
+  const inset = thin ? 0.5 : 2;
   for (const m of marks) {
-    const f = Math.exp(-(t - m.t) / FADE) * m.a, x = L + m.x * rw, y = pad + m.row * rh, inset = thin ? 0.5 : 2;
-    if (m.dot) {
+    const f = Math.exp(-(t - m.t) / FADE) * m.a, x = X(m.t), y = pad + (m.row ?? 0) * rh;
+    if (m.kind === "tick") {
+      g.fillStyle = `rgba(150,220,130,${f})`; g.fillRect(x, pad + rh, 1, h - 2 * pad - rh);
+    } else if (m.kind === "bed") {
+      g.fillStyle = `rgba(${BEDC[m.type]},${f})`; g.fillRect(x, pad, thin ? 1.5 : 2, rh);
+      if (!thin && m.label) { g.fillStyle = `rgba(${BEDC[m.type]},${0.9 * f})`; g.fillText(m.label, x + 4, pad + rh / 2); }
+    } else if (m.kind === "shape") {
+      // drawn up to now only, each hop at its own time and fading from it
+      const ys = pad + SHOTS * rh;
+      for (let i = 0; i < m.env.length; i++) {
+        const ti = m.t + i * m.hop; if (ti > t) break;
+        const fi = Math.exp(-(t - ti) / FADE), hh = Math.max(0.5, Math.min(1, Math.sqrt(m.env[i]) * 1.5) * (rh - 2 * inset));
+        g.fillStyle = `rgba(224,184,79,${0.55 * fi})`; g.fillRect(X(ti), ys + rh - inset - hh, colW(m.hop), hh);
+      }
+    } else if (m.kind === "dot") {
       const yy = y + inset + m.y * (rh - 2 * inset), r = thin ? 1.5 : 3;
       g.fillStyle = `rgba(156,240,120,${0.25 * f})`; g.fillRect(x - r, yy - r, 2 * r, 2 * r);
       g.fillStyle = `rgba(200,255,170,${f})`; g.fillRect(x - 1, yy - 1, thin ? 2 : 2.5, thin ? 2 : 2.5);
     } else {
       const hh = Math.max(1, m.a * (rh - 2 * inset));
-      g.fillStyle = `rgba(120,200,100,${0.35 * f})`; g.fillRect(x, y + (rh - hh) / 2, rw / SWEEP / 30 + 0.6, hh);  // wide enough to join the next sample
+      g.fillStyle = `rgba(120,200,100,${0.35 * f})`; g.fillRect(x, y + (rh - hh) / 2, colW(1 / 30), hh);  // wide enough to join the next sample
     }
   }
-  const cx = L + sweepX(t) * rw;
+  const cx = X(t);
   g.fillStyle = "rgba(170,255,150,0.18)"; g.fillRect(cx - 6, 2, 6, h - 4);
   g.fillStyle = "rgba(190,255,170,0.8)"; g.fillRect(cx, 2, 1, h - 4);
 }

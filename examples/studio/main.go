@@ -24,13 +24,14 @@
 //	render(json, secs)       the same take rendered offline over the bed's params and music
 //	                         gain, from a fresh synth (engine.Take): interleaved stereo
 //	                         Float32Array, at most 60 s
-//	measure(json, secs)      that render measured as the sfx board does (engine.MeasurePCM,
+//	measure(json, secs[, g]) that render (g overrides the music gain: 0 for a shot alone) measured as the sfx board does (engine.MeasurePCM,
 //	                         on the 16-bit samples): {hash, peak, envPeak, envRms, envHop,
 //	                         maxLufs, length}, as JSON
-//	hash(json, secs)         the take's hash alone (engine.Take.Hash), without rendering,
+//	hash(json, secs[, g])    the take's hash alone (engine.Take.Hash), without rendering,
 //	                         for a page that caches renders
 //	notes()                  the bed's notes since the last call, flat: layer (a LayerNames
 //	                         index), MIDI note, gain for each
+//	position()               [row, pattern] the bed has rendered to, or null
 //	levels()                 each layer's level, as JSON in LayerNames order
 //	play() / stop()          call from the tap handler: iOS resumes audio only inside one
 package main
@@ -180,7 +181,11 @@ func main() {
 		if err != nil {
 			return engine.Take{}, false
 		}
-		return engine.Take{Params: cur, MusicGain: gain, Shots: shots, Seconds: a[1].Float()}, true
+		g := gain
+		if len(a) > 2 && a[2].Type() == js.TypeNumber {
+			g = a[2].Float() // a page measuring a shot alone passes 0
+		}
+		return engine.Take{Params: cur, MusicGain: g, Shots: shots, Seconds: a[1].Float()}, true
 	}
 	src := &gate{src: syn}
 
@@ -318,6 +323,15 @@ func main() {
 				out = append(out, e.Layer, e.Note, e.Gain)
 			}
 			return js.ValueOf(out)
+		}),
+		// position is the row and pattern the bed has rendered to, or null
+		// before the first row.
+		"position": js.FuncOf(func(_ js.Value, _ []js.Value) any {
+			pos, ok := syn.Position()
+			if !ok {
+				return nil
+			}
+			return js.ValueOf([]any{pos.Row, pos.Pattern})
 		}),
 		"trigger": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			shots, err := take(a[0].String())

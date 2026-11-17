@@ -131,7 +131,7 @@
     <ul>
       <li><b>shot</b>: a one-shot (a hit, a pickup, a footstep). Its gate is in milliseconds. Fire it on a degree of the music's scale.</li>
       <li><b>lead</b>: the melody voice the generator picks. Its gate is in rows (a row is an eighth note).</li>
-      <li><b>palette</b>: the patches a mood's bed is made of: drone, fifth, pad, air, pulse, and a drum kit (kick, clap, shaker).
+      <li><b>bed palette</b>: the band a mood's bed is made of, everything but the lead: drone, fifth, pad, air, pulse, and a drum kit (kick, clap, shaker).
         A palette has no melody track; a melody sound is a lead.</li>
     </ul>
 
@@ -269,7 +269,7 @@ const limit = (v) => v === "rel" ? (kind === "shot" ? 2 : 10) : v === "gain" ? (
 // ---- the list of names ----
 function buildKinds() {
   for (const k of ["shot", "lead", "palette"]) {
-    const c = el("span", "chip", k); c.dataset.k = k;
+    const c = el("span", "chip", k === "palette" ? "bed palette" : k); c.dataset.k = k;  // a palette is the bed's band, all but the lead
     // each kind keeps what was being edited, so switching back resumes it
     // rather than opening another copy
     c.onclick = () => { if (spec) last[kind] = { spec, track, builtin }; kind = k; last[k] ? resume(last[k]) : openFirst(); };

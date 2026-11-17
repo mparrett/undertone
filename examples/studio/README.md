@@ -32,7 +32,10 @@ imports it, and `&take=<JSON>` adds a button that plays a take, a vector of
 `undertone/trigger` maps (`shot`, `note` or `degree` and `octave`, `gain`,
 `pan`, `delay-ms`, `seed`; a seed may be a decimal string, as a full 64-bit one must be). The same take goes to `undertoneStudio.trigger`,
 and `undertoneStudio.render(take, secs)` renders it offline over the bed as
-interleaved stereo float samples, for a waveform or a loudness reading.
+interleaved stereo float samples, for a waveform. `measure(take, secs)` returns
+the sfx board's numbers for it (hash, peak, envelopes, max LUFS, length; on the
+16-bit samples), and `hash(take, secs)` the hash alone, for a cache. All three
+build one `engine.Take`, so they always describe the same render.
 
 `main.go` is the page's bridge to the engine (`window.undertoneStudio`); the
 unit table in `index.html` mirrors the ranges `engine.UnitSpec` validates.

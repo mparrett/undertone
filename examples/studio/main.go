@@ -22,8 +22,13 @@
 //	                         reads them: {shot, note | degree (+ octave), gain, pan,
 //	                         delay-ms, seed}; returns which were staged, as JSON
 //	render(json, secs)       the same take rendered offline over the bed's params and music
-//	                         gain, from a fresh synth: interleaved stereo Float32Array,
-//	                         at most 60 s
+//	                         gain, from a fresh synth (engine.Take): interleaved stereo
+//	                         Float32Array, at most 60 s
+//	measure(json, secs)      that render measured as the sfx board does (engine.MeasurePCM,
+//	                         on the 16-bit samples): {hash, peak, envPeak, envRms, envHop,
+//	                         maxLufs, length}, as JSON
+//	hash(json, secs)         the take's hash alone (engine.Take.Hash), without rendering,
+//	                         for a page that caches renders
 //	levels()                 each layer's level, as JSON in LayerNames order
 //	play() / stop()          call from the tap handler: iOS resumes audio only inside one
 package main
@@ -162,7 +167,17 @@ func main() {
 	start, _ := engine.MoodByName("village")
 	p0, _ := start.Derive(1, 0, 0)
 	syn := engine.NewSynth(p0)
-	cur, gain := p0, 1.0 // what the bed plays, for render's fresh synth
+	cur, gain := p0, 1.0 // what the bed plays, for a take's fresh synth
+
+	// newTake reads (take json, seconds) as an engine.Take over the bed, so a
+	// render, its measurement and its hash all describe the same thing.
+	newTake := func(a []js.Value) (engine.Take, bool) {
+		shots, err := take(a[0].String())
+		if err != nil {
+			return engine.Take{}, false
+		}
+		return engine.Take{Params: cur, MusicGain: gain, Shots: shots, Seconds: a[1].Float()}, true
+	}
 	src := &gate{src: syn}
 
 	var player atomic.Pointer[webaudio.Player]
@@ -301,28 +316,36 @@ func main() {
 			return marshal(staged)
 		}),
 		"render": js.FuncOf(func(_ js.Value, a []js.Value) any {
-			shots, err := take(a[0].String())
-			if err != nil {
+			t, ok := newTake(a)
+			if !ok {
 				return nil
 			}
-			secs := min(max(a[1].Float(), 0), 60)
-			// A fresh synth, so a render never disturbs what is playing and
-			// starts from silence: the bed's params and gain, then the take.
-			r := engine.NewSynth(cur)
-			r.SetMusicGain(gain)
-			for _, sh := range shots {
-				r.TriggerShot(sh)
-			}
-			pcm := make([]byte, int(secs*engine.SampleRate)*4)
-			_, _ = r.Read(pcm)
-			f := make([]byte, len(pcm)*2)
-			for i := 0; i < len(pcm); i += 2 {
-				v := float32(int16(binary.LittleEndian.Uint16(pcm[i:]))) / 32768
-				binary.LittleEndian.PutUint32(f[i*2:], math.Float32bits(v))
+			pcm := t.Render()
+			f := make([]byte, len(pcm)*4)
+			for i, v := range pcm {
+				binary.LittleEndian.PutUint32(f[i*4:], math.Float32bits(float32(v)/32768))
 			}
 			u8 := js.Global().Get("Uint8Array").New(len(f))
 			js.CopyBytesToJS(u8, f)
 			return js.Global().Get("Float32Array").New(u8.Get("buffer"))
+		}),
+		"measure": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			t, ok := newTake(a)
+			if !ok {
+				return nil
+			}
+			m := engine.MeasurePCM(t.Render())
+			return marshal(map[string]any{
+				"hash": t.Hash(), "peak": m.Peak, "envPeak": m.EnvPeak, "envRms": m.EnvRMS,
+				"envHop": float64(engine.EnvHop) / engine.SampleRate, "maxLufs": m.MaxLUFS, "length": m.Length,
+			})
+		}),
+		"hash": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			t, ok := newTake(a)
+			if !ok {
+				return nil
+			}
+			return t.Hash()
 		}),
 		"levels": js.FuncOf(func(js.Value, []js.Value) any { return marshal(syn.LayerLevels()) }),
 		"play": js.FuncOf(func(js.Value, []js.Value) any {

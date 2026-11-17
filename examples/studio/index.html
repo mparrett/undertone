@@ -69,6 +69,9 @@
   #units.compact .unit .ops button { padding: 0 5px; font-size: 11px; }
   #units.compact .unit .stack b { height: 9px; width: 5px; }
   #pads button { min-width: 2.6em; transition: background .25s, color .25s; }
+  /* the bed is running but silent (none): the mood select breathes, so it's clear the music is there to bring in */
+  #mood.quiet { animation: breathe 2.4s ease-in-out infinite; }
+  @keyframes breathe { 50% { border-color: var(--src); box-shadow: 0 0 6px -1px var(--src); } }
   #pads button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
   #pads button.hit, #meterlbl span.hit { background: var(--src); color: var(--bg); transition: none; }
   #meterlbl span { transition: background .3s, color .3s; border-radius: 3px; }
@@ -487,8 +490,9 @@ function applyBed() {
   if (err) say(err, true);
 }
 
+const quietCue = () => $("mood").classList.toggle("quiet", playing && !bedOn);
 function setPlaying(on) {
-  playing = on;
+  playing = on; quietCue();
   playing ? U().play() : U().stop();
   $("play").classList.toggle("on", playing);
   $("play").innerHTML = playing ? "&#10074;&#10074; stop" : "&#9654; play";
@@ -556,7 +560,7 @@ $("play").onclick = () => { setPlaying(!playing); if (playing) applyBed(); };
 $("solo").onclick = () => { solo = !solo; $("solo").classList.toggle("on", solo); applyBed(); };
 // No bed: every layer muted. The engine keeps running, so a shot's degree is
 // still read in the mood's scale; shots sit above the mute.
-$("silent").onclick = () => { bedOn = !bedOn; $("silent").classList.toggle("on", !bedOn); applyBed(); };
+$("silent").onclick = () => { bedOn = !bedOn; $("silent").classList.toggle("on", !bedOn); quietCue(); applyBed(); };
 for (const id of ["level", "tension", "seed", "sgain"]) {
   const r = $(id), o = r.nextElementSibling; o.value = r.value;
   r.oninput = () => { o.value = r.value; if (id !== "sgain") applyBed(); };

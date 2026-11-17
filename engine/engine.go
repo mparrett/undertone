@@ -1212,6 +1212,10 @@ type Params struct {
 	// than a voice at the mix, because the grid bass plays on the fifth's
 	// voice; SetParametersNow fades notes already sounding to the new level.
 	LeadDB, PadDB, BassDB float64
+
+	// Temperament, when set, turns on motif memory and the phrase arc
+	// (motif.go): a spike, off by default, so nil plays as before.
+	Temperament *Temperament
 }
 
 // dbGain is a trim in dB as a gain factor; 0 dB returns exactly 1, so an
@@ -1537,6 +1541,7 @@ type Synth struct {
 	frames              atomic.Int64             // nframe as of the end of the last Read
 	rowLog              rowLog
 	notes               noteRing // notes started, for a host to draw (notes.go)
+	motif               motifState
 	// the row stepped last, which the drum countdowns fire within: not
 	// s.row-1 after a theme cuts the pattern short
 	stepRow, stepPat int
@@ -1926,6 +1931,9 @@ func (s *Synth) applyNow(c *paramCmd) {
 	}
 	s.pats = buildPatterns(s.params, pat)
 	s.drums = buildDrums(s.params, pat)
+	if s.params.Temperament != nil && s.motif.started {
+		s.motif.reshape(&s.params, pat, &s.pats, &s.drums)
+	}
 	if g := s.playingGrid(); g != nil {
 		for r := 0; r <= row; r++ {
 			s.applyGrid(g, r)
@@ -1972,6 +1980,11 @@ func (s *Synth) step() {
 		}
 		s.pats = buildPatterns(s.params, s.pat)
 		s.drums = buildDrums(s.params, s.pat)
+		if s.params.Temperament != nil {
+			s.motif.boundary(&s.params, s.pat, &s.pats, &s.drums)
+		} else {
+			s.motif.started = false
+		}
 	}
 	if g := s.playingGrid(); g != nil {
 		s.applyGrid(g, s.row)

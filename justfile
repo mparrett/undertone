@@ -26,15 +26,23 @@ bench-wasm pattern=".":
 lint:
     go vet ./...
     go vet -tags audio_oto ./...
-    GOOS=js GOARCH=wasm go vet ./examples/designer ./webaudio ./letgo
+    GOOS=js GOARCH=wasm go vet ./examples/designer ./examples/studio ./webaudio ./letgo
     GOBIN="$(go env GOPATH)/bin" go install {{staticcheck}}
     "$(go env GOPATH)/bin/staticcheck" ./...
     "$(go env GOPATH)/bin/staticcheck" -tags audio_oto ./...
-    GOOS=js GOARCH=wasm "$(go env GOPATH)/bin/staticcheck" ./examples/designer ./webaudio ./letgo
+    GOOS=js GOARCH=wasm "$(go env GOPATH)/bin/staticcheck" ./examples/designer ./examples/studio ./webaudio ./letgo
 
 # build the mood designer and serve it on localhost:{{port}}
 designer port="8373": designer-build
     python3 examples/serve.py {{port}} designer
+
+# build the sound studio and serve it on localhost:{{port}}
+studio port="8374": studio-build
+    python3 examples/serve.py {{port}} studio
+
+studio-build:
+    GOOS=js GOARCH=wasm go build -o examples/studio/main.wasm ./examples/studio
+    cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" examples/studio/
 
 designer-build:
     GOOS=js GOARCH=wasm go build -o examples/designer/main.wasm ./examples/designer

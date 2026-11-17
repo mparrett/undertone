@@ -12,6 +12,7 @@ AudioWorklet in a secure context; tap to start audio.
 | [`player/`](player) | The engine alone, generative, with a four-band meter and query-string controls (`?depth=4&tension=0.6&seed=7&lead=pluck`). | ~3 MB |
 | [`descent/`](descent) | let-go driving the engine: lg code derives music parameters and sound-effect triggers from a scripted descent-and-fight, natively (`cli/`) and in the browser (`web/`). | ~29 MB |
 | [`designer/`](designer) | A mood designer: start from a built-in mood, shape its tempo, key, layers and drums, and hear each change as you make it at any level and tension. A mix mutes layers one at a time, and the mood exports as an EDN entry that `ambience/derive-spec` plays. | ~5 MB |
+| [`studio/`](studio) | A sound studio: open a one-shot, a lead or a palette, edit its units with the stack shown after each, and hear it over a mood's bed (a shot on a scale degree, a lead or palette in the generator's place, solo or in the mix). Every edit registers it; it exports as the EDN map `undertone/register-shot`, `register-lead` or `register-palette` takes, and imports one back. | ~5 MB |
 
 The descent demo's size is let-go's runtime; the engine is a few MB of it.
 Served compressed it is about 4.4 MB with brotli.
@@ -34,6 +35,9 @@ python3 examples/serve.py 8899 player
 
 # designer: builds, copies wasm_exec.js, and serves on :8373
 just designer
+
+# studio: the same, on :8374
+just studio
 
 # descent, native
 go run ./examples/descent/cli -demo -dry   # the tension trace, no sound

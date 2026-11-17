@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Undertone Studio</title>
+<style>
+  :root { --bg: #0d0d10; --panel: #15151a; --line: #26262e; --fg: #d6d1c2; --mut: #8a8576; --err: #c96a5f;
+          --src: #e0b84f; --mod: #b48ad6; --fx: #5fa8c9; --out: #9cc46a; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 ui-monospace, Menlo, monospace; }
+  main { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; }
+  @media (min-width: 900px) { main { grid-template-columns: 300px 1fr; align-items: start; } body { padding: 28px; }
+                              aside { position: sticky; top: 28px; } }
+  main.loading { opacity: .45; pointer-events: none; }
+  h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
+  .sub { color: var(--mut); font-size: 12px; margin: 0 0 12px; }
+  .lab { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 16px 0 6px; font-weight: 600; }
+  #status { color: var(--mut); min-height: 1.45em; font-size: 13px; white-space: pre-wrap; }
+  #status.err { color: var(--err); }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+  button, .chip, select, input[type=number], input[type=text], textarea {
+    font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; }
+  button, .chip { cursor: pointer; }
+  .chip { font-size: 13px; color: var(--mut); padding: 3px 9px; }
+  .chip.on { color: var(--fg); border-color: var(--src); background: color-mix(in srgb, var(--src) 18%, var(--panel)); }
+  .chip.reg { font-style: italic; }
+  #play { min-width: 6.5em; border-color: #3d5a47; background: #18241d; }
+  #play.on { border-color: var(--src); background: #2a2414; }
+  #names { max-height: 220px; overflow: auto; }
+  label.sl { display: grid; grid-template-columns: 5.5em 1fr 6ch; gap: 8px; align-items: center; font-size: 13px; color: var(--mut); margin: 4px 0; }
+  label.sl output { color: var(--fg); text-align: right; }
+  input[type=range] { width: 100%; accent-color: var(--src); }
+  #meters { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; height: 54px; align-items: end; }
+  #meters div { background: var(--line); border-radius: 3px; position: relative; height: 100%; }
+  #meters div i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--out); border-radius: 3px; }
+  #meterlbl { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; font-size: 10px; color: var(--mut); text-align: center; }
+  .head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .head input[type=text] { width: 16em; }
+  .head label { color: var(--mut); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  .head input[type=number] { width: 6.5em; }
+  #units { display: grid; gap: 6px; margin-top: 10px; }
+  .unit { display: grid; grid-template-columns: 2ch 5.5em 4.5em 1fr auto; gap: 8px; align-items: center;
+          background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--k, var(--line)); border-radius: 8px; padding: 6px 8px; }
+  .unit.bad { border-color: var(--err); }
+  .unit .ix { color: var(--mut); font-size: 12px; }
+  .unit .stack { display: flex; gap: 2px; align-items: center; }
+  .unit .stack b { width: 6px; height: 12px; border-radius: 2px; background: var(--mod); }
+  .unit .stack b.sig { background: var(--src); }
+  .unit .args { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 14px; }
+  .unit .args label.sl { grid-template-columns: 4.6em 1fr 7ch; margin: 0; }
+  .unit .args input[type=number] { padding: 2px 4px; width: 100%; text-align: right; font-size: 12px; }
+  .unit .ops button { padding: 2px 7px; font-size: 12px; }
+  .unit .doc { grid-column: 2 / -1; color: var(--mut); font-size: 11px; margin-top: -2px; }
+  #pads button { min-width: 2.6em; }
+  textarea { width: 100%; min-height: 150px; font-size: 12px; }
+  .hint { color: var(--mut); font-size: 12px; }
+  kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 11px; }
+</style>
+</head>
+<body>
+<main class="loading">
+<aside>
+  <h1>UNDERTONE STUDIO</h1>
+  <p class="sub">shape a one-shot, a lead or a palette; hear it; take it away as EDN</p>
+  <div class="bar" id="kinds"></div>
+  <div class="lab">OPEN</div>
+  <div class="bar" id="names"></div>
+  <p class="hint"><i>italic</i> = registered this session. Built-ins open as a copy under a new name.</p>
+
+  <div class="lab">BED</div>
+  <div class="bar"><button id="play" disabled>loading…</button>
+    <select id="mood"></select>
+    <span class="chip" id="solo" title="hear only the layer being edited">solo</span></div>
+  <label class="sl">level <input type="range" id="level" min="0" max="10" step="1" value="1"><output></output></label>
+  <label class="sl">tension <input type="range" id="tension" min="0" max="1" step="0.0625" value="0"><output></output></label>
+  <label class="sl">seed <input type="range" id="seed" min="1" max="64" step="1" value="1"><output></output></label>
+  <div id="meters"></div><div id="meterlbl"></div>
+  <div class="lab">STATUS</div>
+  <div id="status">loading the engine…</div>
+</aside>
+
+<section>
+  <div class="head">
+    <label>name <input type="text" id="name" spellcheck="false"></label>
+    <label id="gatebox"><span id="gatelbl">gate</span> <input type="number" id="gate"></label>
+  </div>
+  <div class="bar" id="tracks"></div>
+  <div class="bar" id="kitbox" hidden>
+    <label class="hint">note <input type="number" id="kitnote" min="0" max="127" style="width:5em"></label>
+    <span class="chip" id="kitdef" title="leave this lane to the default kit">default kit</span>
+  </div>
+
+  <div id="units"></div>
+  <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select>
+    <span class="hint">the bars after each unit are its stack: <b style="color:var(--src)">signal</b>, <b style="color:var(--mod)">control</b></span></div>
+
+  <div class="lab" id="audlab">AUDITION</div>
+  <div class="bar" id="pads"></div>
+  <label class="sl" id="gainbox">gain <input type="range" id="sgain" min="0" max="2" step="0.05" value="1"><output></output></label>
+  <p class="hint" id="audhint"></p>
+
+  <div class="lab">EDN</div>
+  <div class="bar"><button id="copy">copy</button><button id="save">download</button>
+    <button id="import">import pasted EDN</button>
+    <span class="hint">the map undertone/register-<span id="regkind">shot</span> takes</span></div>
+  <textarea id="edn" spellcheck="false"></textarea>
+</section>
+</main>
+
+<script src="wasm_exec.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const status = $("status");
+const say = (t, err) => { status.textContent = t; status.classList.toggle("err", !!err); };
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+// Each op's arguments, with the ranges the engine validates (engine/shotspec.go,
+// UnitSpec.unit). "rel" and "gain" stretch for music patches (musicBounds).
+// k is the role colour: a source, a modulator, a processor or an output.
+const OPS = {
+  env:   { k: "mod", doc: "push an envelope", args: [["attack", 0, 10, "log", "s"], ["decay", .001, 10, "log", "s"], ["sustain", 0, 1], ["release", .001, "rel", "log", "s"]] },
+  osc:   { k: "src", doc: "push an oscillator; shape below", shape: true, args: [["transpose", -48, 48, 0, "st"], ["sweep", -48, 48, 0, "st"], ["sweep dec", 0, 5, 0, "s"]] },
+  pluck: { k: "src", doc: "push a plucked string", args: [["transpose", -24, 24, 0, "st"], ["feedback", 0, .999]] },
+  lfo:   { k: "mod", doc: "push a slow wave, -1..1", args: [["rate", .01, 100, "log", "Hz"], ["shape", 0, 2, "int", ["sine", "tri", "s&h"]]] },
+  mul:   { k: "fx", doc: "pop two, push their product", args: [] },
+  lpf:   { k: "fx", doc: "one-pole lowpass", args: [["cutoff", 20, 22050, "log", "Hz"]] },
+  hpf:   { k: "fx", doc: "one-pole highpass", args: [["cutoff", 20, 22050, "log", "Hz"]] },
+  svf:   { k: "fx", doc: "resonant filter; depth ≠ 0 pops a modulator first", args: [["cutoff", 20, 22050, "log", "Hz"], ["res", 0, 1], ["mode", 0, 2, "int", ["low", "band", "high"]], ["depth", -8, 8, 0, "oct"]] },
+  drive: { k: "fx", doc: "tanh overdrive", args: [["drive", .1, 20, "log"], ["bias", -1, 1]] },
+  crush: { k: "fx", doc: "sample-hold and bit depth", args: [["hold", 50, 44100, "log", "Hz"], ["bits", 1, 16, "int"]] },
+  scale: { k: "mod", doc: "top·gain + offset (offset only on a control)", args: [["gain", -2, 2], ["offset", -2, 2]] },
+  pitch: { k: "mod", doc: "pop m; bend later oscs by m·depth", args: [["depth", -12, 12, 0, "st"]] },
+  send:  { k: "out", doc: "add to the delay bus", args: [["amount", 0, 1]] },
+  verb:  { k: "out", doc: "add to the reverb bus", args: [["amount", 0, 1]] },
+  out:   { k: "out", doc: "pop and mix", args: [["gain", 0, "gain"], ["pan", 0, 1]] },
+};
+const DEFAULT_ARGS = { env: [.005, .3, 0, .2], osc: [0, 0, 0], pluck: [0, .99], lfo: [2, 0], mul: [], lpf: [2000], hpf: [80],
+  svf: [1200, .3, 0, 0], drive: [2, 0], crush: [8000, 8], scale: [.5, .5], pitch: [.3], send: [.2], verb: [.2], out: [.5, .5] };
+const SHAPES = ["sine", "saw", "pulse", "noise"];
+const TRACKS = ["drone", "fifth", "pad", "air", "pulse"];  // bell is fixed: a palette's bell is the built-in bell
+const LANES = ["kick", "clap", "shaker"];
+const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums"];
+
+let mutedNow = [];
+let kind = "shot", spec = null, track = "drone", playing = false, solo = false, bedOn = true;
+const registered = { shot: new Set(), lead: new Set(), palette: new Set() };
+const U = () => window.undertoneStudio;
+
+// The patch being edited: a shot's or lead's units, or one track of a palette.
+function patch() {
+  if (kind !== "palette") return spec;
+  const li = LANES.indexOf(track);
+  return li >= 0 ? spec.Kit[li] : spec[cap(track)];
+}
+const cap = (s) => s[0].toUpperCase() + s.slice(1);
+const limit = (v) => v === "rel" ? (kind === "shot" ? 2 : 10) : v === "gain" ? (kind === "shot" ? 2 : 4) : v;
+
+// ---- the list of names ----
+function buildKinds() {
+  for (const k of ["shot", "lead", "palette"]) {
+    const c = el("span", "chip", k); c.dataset.k = k;
+    c.onclick = () => { kind = k; openFirst(); };
+    $("kinds").append(c);
+  }
+}
+function buildNames() {
+  $("names").replaceChildren();
+  for (const n of JSON.parse(U().names(kind))) {
+    const c = el("span", "chip" + (registered[kind].has(n) ? " reg" : ""), n);
+    c.classList.toggle("on", spec && spec.Name === n);
+    c.onclick = () => open(n);
+    $("names").append(c);
+  }
+  for (const c of $("kinds").children) c.classList.toggle("on", c.dataset.k === kind);
+}
+function openFirst() {
+  const first = { shot: "chime", lead: "chime", palette: "village" }[kind];
+  const names = JSON.parse(U().names(kind));
+  open(names.includes(first) ? first : names[0]);
+}
+function open(name) {
+  const s = JSON.parse(U().get(kind, name));
+  if (!s) return say(`no ${kind} ${name}`, true);
+  if (!registered[kind].has(name)) s.Name = freeName(name);  // a built-in name cannot be registered over
+  if (kind === "palette") {
+    for (const t of [...TRACKS, "bell"]) s[cap(t)] = s[cap(t)] || { Name: "", Units: [] };
+    if (!LANES.includes(track) && !TRACKS.includes(track)) track = "drone";
+  }
+  spec = s;
+  render(); commit();
+}
+function freeName(n) {
+  const taken = new Set(JSON.parse(U().names(kind)));
+  for (let i = 2; ; i++) if (!taken.has(`${n}-${i}`)) return `${n}-${i}`;
+}
+
+// ---- the editor ----
+function render() {
+  $("name").value = spec.Name;
+  $("regkind").textContent = kind;
+  $("gatebox").hidden = kind === "palette";
+  if (kind === "shot") { $("gatelbl").textContent = "gate ms"; $("gate").value = spec.GateMS; $("gate").min = 1; $("gate").max = 10000; }
+  if (kind === "lead") { $("gatelbl").textContent = "gate rows"; $("gate").value = spec.Gate; $("gate").min = 1; $("gate").max = 16; }
+  $("tracks").replaceChildren();
+  $("kitbox").hidden = !(kind === "palette" && LANES.includes(track));
+  if (kind === "palette") {
+    for (const t of [...TRACKS, ...LANES]) {
+      const c = el("span", "chip" + (t === track ? " on" : ""), t);
+      c.onclick = () => { track = t; render(); };
+      $("tracks").append(c);
+    }
+    if (LANES.includes(track)) {
+      const d = patch();
+      $("kitnote").value = d.Note; $("kitdef").classList.toggle("on", !!d.Default);
+    }
+  }
+  renderUnits();
+  renderAudition();
+  buildNames();
+}
+
+// stack depth and which slots carry signal after each unit, as buildPatch counts them
+function stacks(units) {
+  const out = []; let st = [];
+  for (const u of units) {
+    const a = u.Args || [];
+    switch (u.Op) {
+      case "env": case "lfo": st.push(false); break;
+      case "osc": case "pluck": st.push(true); break;
+      case "mul": { const b = st.pop(), x = st.pop(); if (x === undefined) { out.push(null); continue; } st.push(x || b); break; }
+      case "out": case "pitch": st.pop(); break;
+      case "svf": if (a[3]) st.splice(st.length - 2, 1); break;
+    }
+    out.push(st.length > 8 || st.includes(undefined) ? null : [...st]);
+  }
+  return out;
+}
+
+function renderUnits() {
+  const p = patch(), units = p.Units || (p.Units = []);
+  const st = stacks(units);
+  $("units").replaceChildren();
+  units.forEach((u, i) => {
+    const op = OPS[u.Op], row = el("div", "unit");
+    row.style.setProperty("--k", `var(--${op ? op.k : "line"})`);
+    row.append(el("span", "ix", i));
+    const sel = el("select");
+    for (const o of Object.keys(OPS)) { const opt = el("option", null, o); opt.selected = o === u.Op; sel.append(opt); }
+    sel.onchange = () => { u.Op = sel.value; u.Args = [...DEFAULT_ARGS[u.Op]]; u.Shape = u.Op === "osc" ? "sine" : ""; edited(); };
+    row.append(sel);
+    const stk = el("span", "stack");
+    if (st[i]) for (const s of st[i]) stk.append(el("b", s ? "sig" : ""));
+    else stk.append(el("span", "hint", "!"));
+    row.append(stk);
+    const args = el("div", "args");
+    if (op && op.shape) {
+      const sh = el("select");
+      for (const s of SHAPES) { const o = el("option", null, s); o.selected = s === u.Shape; sh.append(o); }
+      sh.onchange = () => { u.Shape = sh.value; edited(); };
+      const l = el("label", "sl"); l.append("shape", sh, el("output")); args.append(l);
+    }
+    (op ? op.args : []).forEach(([label, lo, hi, mode, unit], j) => argControl(args, u, j, label, lo, limit(hi), mode, unit));
+    row.append(args);
+    const ops = el("span", "ops");
+    const mk = (t, f, tip) => { const b = el("button", null, t); b.title = tip; b.onclick = f; ops.append(b); };
+    mk("↑", () => { if (i) { [units[i - 1], units[i]] = [units[i], units[i - 1]]; edited(); } }, "move up");
+    mk("↓", () => { if (i < units.length - 1) { [units[i + 1], units[i]] = [units[i], units[i + 1]]; edited(); } }, "move down");
+    mk("⧉", () => { units.splice(i + 1, 0, JSON.parse(JSON.stringify(u))); edited(); }, "duplicate");
+    mk("×", () => { units.splice(i, 1); edited(); }, "remove");
+    row.append(ops);
+    if (op) row.append(el("div", "doc", op.doc));
+    $("units").append(row);
+  });
+}
+
+function argControl(box, u, j, label, lo, hi, mode, unit) {
+  const l = el("label", "sl"), r = el("input"), n = el("input");
+  r.type = "range"; n.type = "number";
+  const isLog = mode === "log", isInt = mode === "int";
+  const toPos = (v) => isLog ? Math.log(Math.max(v, lo || .0005) / (lo || .0005)) / Math.log(hi / (lo || .0005)) : (v - lo) / (hi - lo);
+  const fromPos = (p) => isLog ? (lo || .0005) * Math.pow(hi / (lo || .0005), p) : lo + p * (hi - lo);
+  const round = (v) => isInt ? Math.round(v) : Math.abs(v) >= 100 ? Math.round(v) : +v.toPrecision(3);
+  r.min = 0; r.max = 1; r.step = isInt ? 1 / (hi - lo) : .001;
+  n.step = "any"; n.min = lo; n.max = hi;
+  const show = () => { r.value = toPos(u.Args[j]); n.value = u.Args[j]; n.title = Array.isArray(unit) ? unit[u.Args[j]] : unit || ""; };
+  r.oninput = () => { u.Args[j] = round(isLog && lo === 0 && +r.value === 0 ? 0 : fromPos(+r.value)); n.value = u.Args[j]; edited(true); };
+  n.onchange = () => { u.Args[j] = +n.value; show(); edited(true); };
+  l.append(Array.isArray(unit) ? `${label}` : label, r, n);
+  if (Array.isArray(unit)) l.title = unit.map((s, i) => `${i} ${s}`).join(", ");
+  box.append(l); show();
+}
+
+// ---- audition ----
+function renderAudition() {
+  $("pads").replaceChildren();
+  $("gainbox").hidden = kind !== "shot";
+  if (kind === "shot") {
+    for (let d = 0; d < 8; d++) {
+      const b = el("button", null, `${d + 1}`); b.title = `scale degree ${d}, key ${d + 1}`;
+      b.onclick = () => fire(d); $("pads").append(b);
+    }
+    $("audhint").innerHTML = "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it";
+    $("solo").hidden = true;
+  } else {
+    $("solo").hidden = false;
+    $("audhint").innerHTML = kind === "lead"
+      ? "the bed plays this lead in the generator's place; <b>solo</b> hears it alone"
+      : "the bed plays this palette; <b>solo</b> hears the track being edited alone";
+  }
+}
+let lastDeg = 0;
+function fire(d) {
+  lastDeg = d;
+  if (!playing) setPlaying(true);
+  U().shot(spec.Name, d, +$("sgain").value);
+}
+
+// Register what is on screen, then retune the bed to it. Every edit runs this.
+function commit(refire) {
+  const json = JSON.stringify(spec);
+  $("edn").value = U().edn(kind, json);
+  const err = U().register(kind, json);
+  document.querySelectorAll(".unit").forEach((r) => r.classList.remove("bad"));
+  if (err) {
+    const m = /unit (\d+)/.exec(err); if (m && kind !== "palette") $("units").children[+m[1]]?.classList.add("bad");
+    say(err, true); return;
+  }
+  registered[kind].add(spec.Name);
+  say(`${kind} ${spec.Name} registered`);
+  applyBed();
+  if (refire && kind === "shot" && playing) U().shot(spec.Name, lastDeg, +$("sgain").value);
+}
+let refireTimer = 0;
+function edited(fromSlider) {
+  if (kind === "palette" && patch().Name && !LANES.includes(track)) patch().Name = "";  // edited units are no longer the built-in's
+  if (kind === "palette" && LANES.includes(track)) patch().Default = false;
+  if (!fromSlider) renderUnits();
+  else { const st = stacks(patch().Units); $("units").querySelectorAll(".stack").forEach((s, i) => { s.replaceChildren(); (st[i] || []).forEach((x) => s.append(el("b", x ? "sig" : ""))); }); }
+  clearTimeout(refireTimer);
+  refireTimer = setTimeout(() => commit(true), fromSlider ? 90 : 0);
+}
+
+function applyBed() {
+  const layer = kind === "lead" ? "lead" : LANES.includes(track) ? "drums" : track;
+  const muted = mutedNow = !bedOn ? LAYERS : solo && kind !== "shot" ? LAYERS.filter((l) => l !== layer) : [];
+  const err = U().bed(JSON.stringify({
+    mood: $("mood").value, seed: +$("seed").value, level: +$("level").value, tension: +$("tension").value,
+    palette: kind === "palette" && registered.palette.has(spec.Name) ? spec.Name : "",
+    lead: kind === "lead" && registered.lead.has(spec.Name) ? spec.Name : "", muted }));
+  if (err) say(err, true);
+}
+
+function setPlaying(on) {
+  playing = on;
+  playing ? U().play() : U().stop();
+  $("play").classList.toggle("on", playing);
+  $("play").innerHTML = playing ? "&#10074;&#10074; stop" : "&#9654; play";
+}
+
+// ---- a small EDN reader: maps, vectors, keywords, numbers, strings ----
+function readEDN(src) {
+  let i = 0;
+  const ws = () => { while (i < src.length) { if (/[\s,]/.test(src[i])) i++; else if (src[i] === ";") { while (i < src.length && src[i] !== "\n") i++; } else break; } };
+  const val = () => {
+    ws(); const c = src[i];
+    if (c === "{") { i++; const m = {}; for (;;) { ws(); if (src[i] === "}") { i++; return m; } const k = val(); m[k] = val(); } }
+    if (c === "[" || c === "(") { const end = c === "[" ? "]" : ")"; i++; const v = []; for (;;) { ws(); if (src[i] === end) { i++; return v; } v.push(val()); } }
+    if (c === '"') { const j = src.indexOf('"', i + 1); const s = src.slice(i + 1, j); i = j + 1; return s; }
+    const m = /^[^\s,{}\[\]()";]+/.exec(src.slice(i)); if (!m) throw new Error(`EDN: unexpected ${c ?? "end"} at ${i}`);
+    i += m[0].length; const t = m[0];
+    if (t[0] === ":") return t;
+    if (!isNaN(+t)) return +t;
+    if (t === "true" || t === "false") return t === "true";
+    if (t === "nil") return null;
+    return t;
+  };
+  return val();
+}
+const kw = (x) => typeof x === "string" && x[0] === ":" ? x.slice(1) : x;
+const unitsOf = (v) => v.map(([op, ...rest]) => {
+  op = kw(op); let shape = "";
+  if (op === "osc") { const si = rest.findIndex((x) => typeof x === "string"); shape = kw(rest[si]); rest.splice(si, 1); }
+  return { Op: op, Shape: shape, Args: rest };
+});
+const patchOf = (p) => typeof p === "string" ? { Name: kw(p), Units: [] }
+  : Array.isArray(p) ? { Name: "", Units: unitsOf(p) } : { Name: kw(p[":name"] || ""), Units: unitsOf(p[":patch"]) };
+
+function importEDN() {
+  let m;
+  try { m = readEDN($("edn").value); } catch (e) { return say(e.message, true); }
+  const name = kw(m[":name"]);
+  let k, s;
+  if (":gate-ms" in m) { k = "shot"; s = { Name: name, GateMS: m[":gate-ms"], Units: unitsOf(m[":patch"]) }; }
+  else if (":gate" in m) { k = "lead"; s = { Name: name, Gate: m[":gate"], ...patchOf(m[":patch"]), }; s.Name = name; }
+  else if (":kit" in m || ":drone" in m) {
+    k = "palette"; s = { Name: name, Kit: [] };
+    for (const t of [...TRACKS, "bell"]) if (m[":" + t]) s[cap(t)] = patchOf(m[":" + t]);
+    s.Kit = (m[":kit"] || [":default", ":default", ":default"]).map((d) => d === ":default" ? { Name: "", Units: [], Note: 0, Default: true }
+      : { ...patchOf(d[":patch"]), Note: d[":note"], Default: false });
+  } else return say("EDN: not a shot (:gate-ms), lead (:gate) or palette (:kit)", true);
+  const err = U().register(k, JSON.stringify(s));
+  if (err) return say(err, true);
+  registered[k].add(name); kind = k; open(name);  // read back: built-in patch names come back with their units
+  say(`imported ${k} ${name}`);
+}
+
+// ---- wiring ----
+$("name").onchange = () => { spec.Name = $("name").value.trim(); commit(); };
+$("gate").onchange = () => { if (kind === "shot") spec.GateMS = +$("gate").value; else spec.Gate = +$("gate").value; commit(true); };
+$("kitnote").onchange = () => { patch().Note = +$("kitnote").value; patch().Default = false; render(); commit(); };
+$("kitdef").onclick = () => { const d = patch(); d.Default = !d.Default; if (d.Default) { d.Name = ""; d.Units = []; d.Note = 0; } open2(); };
+function open2() { commit(); if (kind === "palette" && registered.palette.has(spec.Name)) { const t = track; spec = JSON.parse(U().get("palette", spec.Name)); for (const x of [...TRACKS, "bell"]) spec[cap(x)] ||= { Name: "", Units: [] }; track = t; render(); } }
+$("addop").onchange = () => {
+  const op = $("addop").value; $("addop").value = ""; if (!op) return;
+  const p = patch(); p.Units.push({ Op: op, Shape: op === "osc" ? "sine" : "", Args: [...DEFAULT_ARGS[op]] }); edited();
+};
+for (const o of Object.keys(OPS)) $("addop").append(el("option", null, o));
+$("play").onclick = () => { setPlaying(!playing); if (playing) applyBed(); };
+$("solo").onclick = () => { solo = !solo; $("solo").classList.toggle("on", solo); applyBed(); };
+for (const id of ["level", "tension", "seed", "sgain"]) {
+  const r = $(id), o = r.nextElementSibling; o.value = r.value;
+  r.oninput = () => { o.value = r.value; if (id !== "sgain") applyBed(); };
+}
+$("mood").onchange = applyBed;
+$("copy").onclick = async () => { try { await navigator.clipboard.writeText($("edn").value); say("EDN copied"); } catch { $("edn").select(); say("select the EDN to copy it"); } };
+$("save").onclick = () => { const a = el("a"); a.href = URL.createObjectURL(new Blob([$("edn").value + "\n"], { type: "application/edn" })); a.download = `${spec.Name}.edn`; a.click(); };
+$("import").onclick = importEDN;
+addEventListener("keydown", (e) => {
+  if (kind !== "shot" || /input|textarea|select/i.test(document.activeElement.tagName)) return;
+  const d = +e.key; if (d >= 1 && d <= 8) fire(d - 1);
+});
+// meters
+for (const l of LAYERS) { $("meters").append(el("div")); $("meters").lastChild.append(el("i")); $("meterlbl").append(el("span", null, l)); }
+function meters() {
+  // The engine meters a layer before the mix mutes it, so the page drops muted ones itself.
+  if (U() && playing) JSON.parse(U().levels()).forEach((v, i) => { $("meters").children[i].firstChild.style.height = `${mutedNow.includes(LAYERS[i]) ? 0 : Math.min(100, Math.sqrt(v) * 140)}%`; });
+  requestAnimationFrame(meters);
+}
+
+window.undertoneStudioFailed = (msg) => say("audio failed: " + msg, true);
+window.undertoneStudioReady = () => {
+  for (const m of JSON.parse(U().names("mood"))) { const o = el("option", null, m); o.selected = m === "dungeon"; $("mood").append(o); }
+  buildKinds(); openFirst();
+  $("play").disabled = false; setPlaying(false);
+  document.querySelector("main").classList.remove("loading");
+  requestAnimationFrame(meters);
+};
+const go = new Go();
+WebAssembly.instantiateStreaming(fetch("main.wasm", { cache: "no-cache" }), go.importObject)
+  .then((r) => go.run(r.instance))
+  .catch((e) => say("wasm failed: " + e, true));
+</script>
+</body>
+</html>

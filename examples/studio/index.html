@@ -71,7 +71,7 @@
   #units.compact .unit .ops button { padding: 0 5px; font-size: 11px; }
   #units.compact .unit .stack b { height: 9px; width: 5px; }
   #pads button { min-width: 2.6em; transition: background .25s, color .25s; }
-  /* the bed is running but silent (none): the mood select breathes, so it's clear the music is there to bring in */
+  /* the bed is running but silent (mute): the mood select breathes, so it's clear the music is there to bring in */
   #mood.quiet { animation: breathe 2.4s ease-in-out infinite; }
   @keyframes breathe { 50% { border-color: var(--src); box-shadow: 0 0 6px -1px var(--src); } }
   #pads button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
@@ -106,7 +106,7 @@
   <div class="bar"><button id="play" disabled>loading…</button>
     <select id="mood"></select>
     <span class="chip" id="solo" title="hear only the layer being edited">solo</span>
-    <span class="chip on" id="silent" title="mute the whole bed: a shot alone, still pitched in the mood's scale">none</span></div>
+    <span class="chip on" id="silent" title="mute the whole bed: a shot alone, still pitched in the mood's scale">mute</span></div>
   <label class="sl">level <input type="range" id="level" min="0" max="10" step="1" value="1"><output></output></label>
   <label class="sl">tension <input type="range" id="tension" min="0" max="1" step="0.0625" value="0"><output></output></label>
   <label class="sl">seed <input type="range" id="seed" min="1" max="64" step="1" value="1"><output></output></label>
@@ -156,7 +156,7 @@
     <ul>
       <li>Every edit <b>registers</b> the sound. If the engine refuses it, the status says why and outlines the unit; the last good version keeps playing.</li>
       <li>A lead or palette you edit replaces the bed's own, so you hear it in the music. <b>solo</b> mutes the rest.</li>
-      <li><b>none</b> (on at first) silences the bed (music gain 0) for a shot on its own; click it off to hear the music. Leads and palettes need it off. the room and delay still ring, and the mood still sets the key its degrees land in.</li>
+      <li><b>mute</b> (on at first) silences the bed (music gain 0) for a shot on its own: the room and delay still ring, and the mood still sets the key its degrees land in. Click it off to hear the music; leads and palettes need it off.</li>
       <li>Change <b>mood, level, tension, seed</b> to hear it in other keys, tempos and densities. The meters show each layer (not shots).</li>
       <li>Clicking a name opens it. A built-in plays as it is; your first edit makes it your own copy (<code>name-2</code>), since built-in names can't be replaced. <b>Shift-click</b> makes a copy straight away. Sounds you registered are in <i>italic</i>.</li>
     </ul>
@@ -483,7 +483,7 @@ function edited(fromSlider) {
 
 function applyBed() {
   const layer = kind === "lead" ? "lead" : LANES.includes(track) ? "drums" : track;
-  // none is music gain 0, not a mute: the bed goes silent but its delay and
+  // mute is music gain 0, not a layer mute: the bed goes silent but its delay and
   // room still carry the shots, as a game with its music off hears them
   const muted = mutedNow = solo && kind !== "shot" ? LAYERS.filter((l) => l !== layer) : [];
   const err = U().bed(JSON.stringify({

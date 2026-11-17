@@ -19,7 +19,7 @@ The module has these parts:
 | `engine` | The synth VM, the sequencer, a one-shot sfx voice pool, and the game-state → parameters derivation. Plain Go; imports nothing from let-go. |
 | `letgo` | The let-go binding: an `undertone` namespace that drives the engine from lg code, plus `undertone.ambience`, the derivation's lg names (it runs in Go). |
 | `webaudio` | Browser output: an AudioWorklet fed in small slices from the page's event loop (see [In the browser](#in-the-browser)). |
-| `cmd/undertone` | A CLI that plays live, renders WAVs, and draws a four-band VU meter. |
+| `cmd/undertone` | A CLI that plays live, renders WAVs and MIDI files, plays to a virtual MIDI source, and draws a four-band VU meter. |
 | [`examples/`](examples) | A step sequencer, the engine in a web page, and a let-go-driven game demo, each runnable in a browser. |
 
 [VISION.md](VISION.md) says what undertone is for and what it won't be.
@@ -200,7 +200,20 @@ undertone -play -depth 5 -tension 0.8      # deeper and more dangerous
 undertone -play -mood overworld -depth 3   # -depth -3 is the same thing
 undertone -play -vu compact                # meters: bars | compact | tall
 undertone -wav out.wav -depth 4 -lead pluck -dur 30
+undertone -midi-file out.mid -mood forge -dur 60     # add -wav out.wav for both, aligned
+undertone -midi-live -mood village                   # macOS: a MIDI source named "undertone"
 ```
+
+The MIDI output is the notes the sequencer starts, for a DAW to play through
+its own instruments: one channel per layer (drone 1, fifth 2, pad 3, lead 4,
+air 5, pulse 6) and the drums on 10 as General MIDI kick 36, clap 39 and
+shaker 82. Velocity is the note's gain × 127. A track note lasts its gate
+(drone and fifth 16 rows, pad 6, air 10, pulse 1, the lead its instrument's
+gate), or until the track's next note cuts it, as its single voice does; a
+drum strike lasts a 16th. The file's tempo is the synth's row length, so
+notes sit on the grid and line up with a WAV of the same render.
+`-midi-live` renders in real time without audio and needs a cgo build on
+macOS.
 
 ## The let-go binding
 

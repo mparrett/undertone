@@ -24,6 +24,8 @@
 //	go run ./cmd/undertone -play -mood rust -tension 0.6  # industrial, grinding
 //	go run ./cmd/undertone -play -mood forge -depth 3     # industrial, driving
 //	go run ./cmd/undertone -wav out.wav -depth 4 -lead pluck  # deterministic render
+//	go run ./cmd/undertone -midi-file out.mid -mood forge -dur 60  # the notes, one channel per layer
+//	go run ./cmd/undertone -midi-live -mood village       # a virtual MIDI source "undertone" (macOS)
 package main
 
 import (
@@ -38,7 +40,9 @@ import (
 func main() {
 	play := flag.Bool("play", false, "play live (endless) via oto")
 	wav := flag.String("wav", "", "render to WAV file")
-	dur := flag.Float64("dur", 48, "WAV duration seconds")
+	midiFile := flag.String("midi-file", "", "render the notes to a Standard MIDI File (with -wav, the same render)")
+	midiLive := flag.Bool("midi-live", false, "play the notes live to a virtual MIDI source named undertone, without audio (macOS)")
+	dur := flag.Float64("dur", 48, "WAV or MIDI file duration seconds")
 	seed := flag.Uint64("seed", 1, "level seed")
 	depth := flag.Int("depth", 0, "level within the mood (for dungeon, negative = overworld elevation)")
 	mood := flag.String("mood", "dungeon", strings.Join(engine.MoodNames(), " | ")+" (level = depth)")
@@ -64,6 +68,17 @@ func main() {
 		desc += " groove=" + p.Groove
 	}
 	switch {
+	case *midiFile != "":
+		if err := writeMIDIFile(*midiFile, *wav, s, p, *dur); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Printf("rendered %.0fs %s -> %s\n", *dur, desc, *midiFile)
+	case *midiLive:
+		if err := playMIDILive(s, p, desc); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case *wav != "":
 		if err := engine.WriteWAV(*wav, s, *dur); err != nil {
 			fmt.Fprintln(os.Stderr, err)

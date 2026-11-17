@@ -3,6 +3,7 @@
 //
 //	go run ./cmd/motifspike -mood rust -seed 7 -dur 150 -temper -wav on.wav
 //	go run ./cmd/motifspike -mood dungeon -ramp 0,0.8 -wav ramp-off.wav
+//	go run ./cmd/motifspike -mood rust -temper -parts texture -notes tex.tsv
 package main
 
 import (
@@ -28,7 +29,14 @@ func main() {
 	temper := flag.Bool("temper", false, "turn on motif memory and the phrase arc")
 	wav := flag.String("wav", "", "output WAV")
 	trace := flag.Bool("trace", false, "print the arc and each lane's choice per pattern")
+	parts := flag.String("parts", "all", "with -temper, the arc's parts to run: all, texture or memory")
+	notesOut := flag.String("notes", "", "write every note event as TSV, to compare renders note for note")
 	flag.Parse()
+	arcParts, ok := map[string]engine.ArcParts{"all": engine.ArcAll, "texture": engine.ArcTexture, "memory": engine.ArcMemory}[*parts]
+	if !ok {
+		fmt.Fprintf(os.Stderr, "-parts wants all, texture or memory, not %q\n", *parts)
+		os.Exit(2)
+	}
 
 	from, to := *tension, *tension
 	if *ramp != "" {
@@ -53,6 +61,7 @@ func main() {
 				fmt.Fprintf(os.Stderr, "mood %q has no temperament\n", *mood)
 				os.Exit(2)
 			}
+			tm.Parts = arcParts
 			p.Temperament = &tm
 		}
 		return p
@@ -63,6 +72,10 @@ func main() {
 	pcm := make([]byte, total*4)
 	const block = 1024
 	var last engine.MotifState
+	var notes bytes.Buffer
+	var cursor uint64
+	var evs []engine.NoteEvent
+	names := engine.LayerNames()
 	start := time.Now()
 	for done := 0; done < total; done += block {
 		n := min(block, total-done)
@@ -74,6 +87,18 @@ func main() {
 		if _, err := io.ReadFull(s, pcm[done*4:(done+n)*4]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
+		}
+		if *notesOut != "" {
+			var dropped uint64
+			evs, cursor, dropped = s.NoteEvents(cursor, evs[:0])
+			if dropped > 0 {
+				fmt.Fprintf(os.Stderr, "%d note events dropped\n", dropped)
+				os.Exit(1)
+			}
+			for _, e := range evs {
+				fmt.Fprintf(&notes, "%d\t%s\t%s\t%d\t%d\t%.4f\t%d\t%d\n",
+					e.Frame, names[e.Layer], e.Kind, e.Lane, e.Note, e.Gain, e.Pattern, e.Row)
+			}
 		}
 		if *trace {
 			if m := s.MotifTrace(); m != last {
@@ -93,6 +118,12 @@ func main() {
 	el := time.Since(start)
 	fmt.Fprintf(os.Stderr, "%s seed=%d level=%d tension=%v..%v temper=%v: %.0fs in %v (%.0fx real time)\n",
 		*mood, *seed, *level, from, to, *temper, *dur, el.Round(time.Millisecond), *dur/el.Seconds())
+	if *notesOut != "" {
+		if err := os.WriteFile(*notesOut, notes.Bytes(), 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
 	if *wav != "" {
 		if err := engine.WriteWAV(*wav, bytes.NewReader(pcm), *dur); err != nil {
 			fmt.Fprintln(os.Stderr, err)

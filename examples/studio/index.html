@@ -69,6 +69,7 @@
   #units.compact .unit .ops button { padding: 0 5px; font-size: 11px; }
   #units.compact .unit .stack b { height: 9px; width: 5px; }
   #pads button { min-width: 2.6em; transition: background .25s, color .25s; }
+  #pads button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
   #pads button.hit, #meterlbl span.hit { background: var(--src); color: var(--bg); transition: none; }
   #meterlbl span { transition: background .3s, color .3s; border-radius: 3px; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
@@ -128,7 +129,7 @@
     <ol>
       <li>Press <b>play</b> to start the bed (dungeon is a good quiet one).</li>
       <li>Pick <b>shot</b>, open <b>tink</b>, and press <kbd>1</kbd>–<kbd>8</kbd>: the shot plays on that degree of the bed's scale.</li>
-      <li>Drag the <b>env</b> unit's decay: every edit refires the shot, so you hear it change as you drag.</li>
+      <li>Drag the <b>env</b> unit's decay: every edit fires the shot, so you hear it change as you drag. <b>Shift-click</b> a pad to repeat it while you work; shift-click again (or click any pad) to stop.</li>
       <li><b>+ add a unit… → svf</b>, then move it with ↑ to just before <code>out</code>: a resonant filter. Turn up <i>res</i>.</li>
       <li>Rename it, then <b>download</b> the EDN.</li>
     </ol>
@@ -404,12 +405,12 @@ function argControl(box, u, j, label, lo, hi, mode, unit) {
 
 // ---- audition ----
 function renderAudition() {
-  $("pads").replaceChildren();
+  stopLoop(); $("pads").replaceChildren();
   $("gainbox").hidden = kind !== "shot";
   if (kind === "shot") {
     for (let d = 0; d < 8; d++) {
       const b = el("button", null, `${d + 1}`); b.title = `scale degree ${d}, key ${d + 1}`;
-      b.onclick = () => fire(d); $("pads").append(b);
+      b.onclick = (e) => e.shiftKey ? loop(d) : (stopLoop(), fire(d)); $("pads").append(b);
     }
     $("audhint").innerHTML = "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it";
     $("solo").hidden = true;
@@ -421,8 +422,18 @@ function renderAudition() {
   }
 }
 let lastDeg = 0;
+// Shift-click a pad to fire it every LOOP_MS until clicked again, so a sound
+// can be shaped while it repeats; a plain click or another kind stops it.
+const LOOP_MS = 700;
+let loopTimer = 0, loopDeg = -1;
+function stopLoop() { clearInterval(loopTimer); loopDeg = -1; for (const b of $("pads").children) b.classList.remove("loop"); }
+function loop(d) {
+  const again = loopDeg === d; stopLoop(); if (again) return;
+  loopDeg = d; $("pads").children[d].classList.add("loop"); fire(d);
+  loopTimer = setInterval(() => kind === "shot" ? fire(d) : stopLoop(), LOOP_MS);
+}
 // flash lights a pad or a layer's label for a moment, as it sounds.
-function flash(e) { if (!e) return; e.classList.add("hit"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("hit"), 120); }
+function flash(e) { if (!e) return; e.classList.add("hit"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("hit"), 260); }
 function fire(d) {
   lastDeg = d;
   if (!playing) setPlaying(true);
@@ -450,7 +461,7 @@ function commit(refire) {
   if (fresh) buildNames();  // a new copy joins the list, lit
   say(`${kind} ${spec.Name} registered`);
   applyBed();
-  if (refire && kind === "shot") fire(lastDeg);  // auto-audition: hear each edit
+  if (refire && kind === "shot" && loopDeg < 0) fire(lastDeg);  // auto-audition: hear each edit (a loop already repeats it)
 }
 let refireTimer = 0;
 function edited(fromSlider) {

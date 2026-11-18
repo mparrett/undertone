@@ -44,7 +44,7 @@
   .edgebar .edge { font-size: 11px; color: var(--mut); padding: 1px 12px 2px; border-radius: 0 0 8px 8px; border-top: none; }
   .edgebar .edge:hover { color: var(--fg); }
   /* the units' size toggle sits on their top edge instead */
-  /* the units' tab row: scope fade, then the tab, which sits on the first unit's top edge */
+  /* the units' tab row: the tab sits on the first unit's top edge */
   .edgebar.top { margin: 12px 0 -1px; flex-wrap: wrap; align-items: flex-end; row-gap: 8px; }
   /* name and gate on their own line; under them UNITS and the tab, on the units' top edge, as SCOPE has */
   .edgebar.top .head { flex-basis: 100%; margin-bottom: 8px; }
@@ -251,7 +251,7 @@
   <div class="scoperow" id="scoperow">
   <div class="edgebar top scopetab"><span class="lab">SCOPE</span><button id="thinscope" class="edge"></button></div>
   <canvas id="scope" title="each layer's notes and level, swept left to right; marks fade over a few seconds. Click for the thin strip."></canvas>
-  <div class="edgebar scopefade"><label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label></div>
+  <div class="edgebar scopefade"><label class="fade" title="how long the scope's marks take to fade">decay <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label></div>
   <div id="bed">
   <div class="bar"><button id="play" disabled>loading…</button>
     <select id="mood"></select>

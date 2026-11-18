@@ -270,12 +270,20 @@
     into the mix. The studio edits that list and plays the result as you go.</p>
 
     <h3>WHAT YOU CAN EDIT</h3>
+    <p>All three are patches, which is why they edit alike. What differs is who plays them, and when:</p>
     <ul>
-      <li><b>shot</b>: a one-shot (a hit, a pickup, a footstep). Its gate is in milliseconds. Fire it on a degree of the music's scale.</li>
-      <li><b>lead</b>: the melody voice the generator picks. Its gate is in rows (a row is an eighth note).</li>
-      <li><b>bed palette</b>: the band a mood's bed is made of, everything but the lead: drone, fifth, pad, air, pulse, and a drum kit (kick, clap, shaker).
-        A palette has no melody track; a melody sound is a lead.</li>
+      <li><b>shot</b>: a sound effect (a hit, a pickup, a footstep). The <i>game</i> fires it once, on an event, on a degree of the
+        music's scale so it stays in key. It isn't part of the music: mute, solo and the meters leave it alone. Its gate is in
+        milliseconds, since nothing musical times it.</li>
+      <li><b>lead</b>: the soloist. The <i>music</i> plays it on every melody note. Its gate is in rows, the music's steps
+        (a row is an eighth note).</li>
+      <li><b>bed palette</b>: the backing band, everything but the melody: a patch each for drone, fifth, pad, air and pulse,
+        and for the drum lanes (kick, clap, shaker). The music plays them all at once, so you edit one track at a time.</li>
     </ul>
+    <p>A <b>mood</b> ties them together. It is the arrangement: scales and key, tempo, how loud each layer is and how busy the
+    drums are at each level, the room, and which palette and leads to play. The game moves the mood's
+    <b>level</b> (how deep it is) and <b>tension</b> (how dangerous); the <b>seed</b> picks among the mood's choices. So the music
+    is a mood playing its palette and a lead, and the game's shots sound over it.</p>
 
     <h3>A FIRST SOUND IN A MINUTE</h3>
     <ol>
@@ -1148,7 +1156,9 @@ addEventListener("keydown", (e) => {
   // space plays or stops the bed (and ends a repeat) rather than scrolling the page
   if (e.key === "m" && !typing && !e.metaKey && !e.ctrlKey) { $("silent").click(); return; }  // m mutes or unmutes the bed
   if (e.key === " " && !typing) { e.preventDefault(); if (playing) { stopLoop(); setPlaying(false); } else setPlaying(true); return; }
-  if (/input|textarea|select/i.test(document.activeElement.tagName)) return;
+  // Enter or Escape leaves a number box, so the next 1-8 auditions instead of typing into it
+  if ((e.key === "Enter" || e.key === "Escape") && document.activeElement.type === "number") { document.activeElement.blur(); return; }
+  if (typing || e.metaKey || e.ctrlKey || e.altKey) return;  // a focused slider still lets 1-8 fire; a text box keeps its digits
   const d = +e.key;
   if (kind === "shot" && takes[selRow]) {
     if (e.key === "t") return fireTakeRow(selRow, TAKE);

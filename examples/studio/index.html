@@ -56,6 +56,14 @@
   /* registered this session: dashed and in the control colour, so it can't be read as selected (solid gold) */
   .chip.reg { font-style: italic; border-style: dashed; border-color: color-mix(in srgb, var(--mod) 70%, var(--line)); }
   #scope.thin { height: 34px; }
+  .scoperow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; }
+  /* side by side only where the scope keeps most of the width; narrower, the same stacking point as audition and EDN */
+  @media (min-width: 1180px) { .scoperow { grid-template-columns: 320px minmax(0, 1fr); } }
+  #bed { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-height: 118px; }
+  #bed .bar { flex-wrap: nowrap; gap: 6px; margin: 0 0 4px; }
+  #bed #play { min-width: 5em; }
+  #bed #mood { flex: 1; min-width: 0; }
+  #bed label.sl { grid-template-columns: 4.5em 1fr 3ch; margin: 1px 0; font-size: 12px; }
   #scope { cursor: pointer; display: block; margin: 0; width: 100%; height: 118px; background: #07090a; border: 1px solid var(--line); border-radius: 8px; }
   #play { min-width: 6.5em; border-color: #3d5a47; background: #18241d; }
   #play.on { border-color: var(--src); background: #2a2414; }
@@ -177,7 +185,16 @@
     <div class="bar" id="tracks"></div>
   </div>
 
-  <div class="lab">BED</div>
+  <div class="lab">BED LAYERS</div>
+  <div id="meters"></div><div id="meterlbl"></div>
+  <div class="lab">STATUS</div>
+  <div id="status">loading the engine…</div>
+</aside>
+
+<section>
+  <!-- the bed's controls sit beside the scope that draws it -->
+  <div class="scoperow">
+  <div id="bed">
   <div class="bar"><button id="play" disabled>loading…</button>
     <select id="mood"></select>
     <span class="chip" id="solo" title="hear only the layer being edited">solo</span>
@@ -185,14 +202,12 @@
   <label class="sl">level <input type="range" id="level" min="0" max="10" step="1" value="1"><output></output></label>
   <label class="sl">tension <input type="range" id="tension" min="0" max="1" step="0.0625" value="0"><output></output></label>
   <label class="sl">seed <input type="range" id="seed" min="1" max="64" step="1" value="1"><output></output></label>
-  <div id="meters"></div><div id="meterlbl"></div>
-  <div class="lab">STATUS</div>
-  <div id="status">loading the engine…</div>
-</aside>
-
-<section>
+  </div>
+  <div>
   <canvas id="scope" title="each layer's notes and level, swept left to right; marks fade over a few seconds. Click for the thin strip."></canvas>
   <div class="edgebar"><button id="thinscope" class="edge"></button></div>
+  </div>
+  </div>
   <details id="guide">
     <summary>HOW TO USE THE STUDIO</summary>
     <p>Every sound undertone plays is a <b>patch</b>: a short list of units run once per sample, left to right, on a

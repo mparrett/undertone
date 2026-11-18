@@ -702,7 +702,12 @@ function readEDN(src) {
     ws(); const c = src[i];
     if (c === "{") { i++; const m = {}; for (;;) { ws(); if (src[i] === "}") { i++; return m; } const k = val(); m[k] = val(); } }
     if (c === "[" || c === "(") { const end = c === "[" ? "]" : ")"; i++; const v = []; for (;;) { ws(); if (src[i] === end) { i++; return v; } v.push(val()); } }
-    if (c === '"') { const j = src.indexOf('"', i + 1); const s = src.slice(i + 1, j); i = j + 1; return s; }
+    if (c === '"') {
+      let s = "", j = i + 1;
+      for (; j < src.length && src[j] !== '"'; j++) s += src[j] === "\\" && j + 1 < src.length ? src[++j] : src[j];
+      if (j >= src.length) throw new Error(`EDN: a string opened at ${i} never closes`);
+      i = j + 1; return s;
+    }
     const m = /^[^\s,{}\[\]()";]+/.exec(src.slice(i)); if (!m) throw new Error(`EDN: unexpected ${c ?? "end"} at ${i}`);
     i += m[0].length; const t = m[0];
     if (t[0] === ":") return t;
@@ -711,20 +716,29 @@ function readEDN(src) {
     if (t === "nil") return null;
     return t;
   };
-  return val();
+  const v = val(); ws();
+  if (i < src.length) throw new Error(`EDN: unexpected ${src[i]} at ${i}, after the end`);
+  return v;
 }
 const kw = (x) => typeof x === "string" && x[0] === ":" ? x.slice(1) : x;
-const unitsOf = (v) => v.map(([op, ...rest]) => {
+const unitsOf = (v) => {
+  if (!Array.isArray(v)) throw new Error("EDN: a patch is a vector of units, [[:env …] [:osc …] …]");
+  return v.map((u, n) => {
+  if (!Array.isArray(u) || typeof u[0] !== "string" || u[0][0] !== ":") throw new Error(`EDN: unit ${n} should be a vector starting with an op, like [:mul]`);
+  let [op, ...rest] = u;
   op = kw(op); let shape = "";
   if (op === "osc") { const si = rest.findIndex((x) => typeof x === "string"); shape = kw(rest[si]); rest.splice(si, 1); }
   return { Op: op, Shape: shape, Args: rest };
-});
+  });
+};
 const patchOf = (p) => typeof p === "string" ? { Name: kw(p), Units: [] }
   : Array.isArray(p) ? { Name: "", Units: unitsOf(p) } : { Name: kw(p[":name"] || ""), Units: unitsOf(p[":patch"]) };
 
 // Read a shot, lead or palette map; throws on bad EDN or an unknown shape.
 function soundOf(text) {
-  const m = readEDN(text), name = kw(m[":name"]);
+  const m = readEDN(text);
+  if (!m || typeof m !== "object" || Array.isArray(m)) throw new Error("EDN: expected a map, {:name … }");
+  const name = kw(m[":name"]);
   let k, s;
   if (":gate-ms" in m) { k = "shot"; s = { Name: name, GateMS: m[":gate-ms"], Units: unitsOf(m[":patch"]) }; }
   else if (":gate" in m) { k = "lead"; s = { Name: name, Gate: m[":gate"], ...patchOf(m[":patch"]), }; s.Name = name; }
@@ -1104,16 +1118,21 @@ function bedMark(type, label) { if (playing) marks.push({ t: now(), kind: "bed",
 // with the music silent, cached by the take's hash: an edit changes the hash.
 const shapes = new Map();
 function shotShape(name, d, gain) { takeShape(JSON.stringify([{ shot: name, degree: d, gain }])); }
+// The render takes 2.5 s of audio on the main thread, and every slider step is
+// a new hash, so a miss waits until the edits pause and draws only the last
+// take, at the time it fired.
+let shapeWait = 0;
 function takeShape(take) {
-  const key = U().hash(take, 2.5, 0);
-  let m = shapes.get(key);
-  if (!m) {
-    m = JSON.parse(U().measure(take, 2.5, 0));
+  const key = U().hash(take, 2.5, 0), t = now(), hit = shapes.get(key);
+  clearTimeout(shapeWait);
+  if (hit) return marks.push({ t, kind: "shape", env: hit.env, hop: hit.hop, a: 1 });
+  shapeWait = setTimeout(() => {
+    let m = JSON.parse(U().measure(take, 2.5, 0));
     const n = Math.max(1, Math.ceil(m.length / m.envHop));
     m = { env: m.envPeak.slice(0, n), hop: m.envHop };
     shapes.set(key, m); if (shapes.size > 64) shapes.delete(shapes.keys().next().value);
-  }
-  marks.push({ t: now(), kind: "shape", env: m.env, hop: m.hop, a: 1 });
+    if (now() - t < FADE) marks.push({ t, kind: "shape", env: m.env, hop: m.hop, a: 1 });
+  }, 300);
 }
 let lastSparkAt = 0, lastLevelAt = 0, lastPos = "", lastDrone = -1;
 function scope() {

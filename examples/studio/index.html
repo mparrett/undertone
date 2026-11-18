@@ -10,7 +10,8 @@
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 ui-monospace, Menlo, monospace; }
-  main { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; }
+  main { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
+  main > * { min-width: 0; }  /* a wide child scrolls inside its column instead of widening the page */
   @media (min-width: 900px) { main { grid-template-columns: 300px 1fr; align-items: start; } body { padding: 28px; }
                               aside { position: sticky; top: 28px; } }
   main.loading { opacity: .45; pointer-events: none; }
@@ -60,6 +61,12 @@
   .unit .args input[type=number] { padding: 2px 4px; width: 100%; text-align: right; font-size: 12px; }
   .unit .ops button { padding: 2px 7px; font-size: 12px; }
   .unit .doc { grid-column: 2 / -1; color: var(--mut); font-size: 11px; margin-top: -2px; }
+  /* phone: a unit's arguments take a full row under its name and buttons */
+  @media (max-width: 560px) {
+    .unit, #units.compact .unit { grid-template-columns: 2ch 5.5em 4.5em minmax(0, 1fr) auto; }
+    .unit .args { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    .unit .doc { grid-column: 1 / -1; grid-row: 3; }
+  }
   /* compact: a unit to a line, for long patches and palettes */
   #units.compact { gap: 3px; }
   #units.compact .unit { padding: 2px 6px; gap: 6px; grid-template-columns: 2ch 5em 3.5em 1fr auto; border-radius: 6px; }
@@ -86,7 +93,7 @@
   #takeedn { min-height: 6em; height: 9em; resize: vertical; }
   /* audition left, the EDN boxes right; stacked until the editor column is wide enough */
   .audrow { display: grid; gap: 4px 20px; }
-  @media (min-width: 1180px) { .audrow { grid-template-columns: 7fr 3fr; align-items: start; } }
+  @media (min-width: 1180px) { .audrow { grid-template-columns: 3fr 2fr; align-items: start; } }
   .audrow > * { min-width: 0; }
   .takerow button { min-width: 2.6em; transition: background .25s, color .25s; }
   .takerow button.hit { background: var(--src); color: var(--bg); transition: none; }
@@ -94,6 +101,8 @@
   #pads.sel, .takerow.sel { box-shadow: -3px 0 0 var(--src); padding-left: 6px; }
   .takerow.sel .tlabel { color: var(--src); }
   .takerow.sel .tlabel::before { content: "▸ "; }
+  .takerow button.aspasted { border-color: var(--mut); }
+  .takerow button.wide { flex-basis: 100%; max-width: 12em; }
   /* EDN boxes: a highlighted <pre> sits under a transparent textarea. Both
      share one grid cell, font, padding and border, and neither wraps, so
      their lines stay aligned; scroll is copied from the textarea. */
@@ -470,7 +479,7 @@ function renderAudition() {
   renderTakeRows();
   showKeyTake();
   $("audhint").innerHTML = shot
-    ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it. With takes pasted, the keys (and <kbd>9</kbd>) play the selected row (▸); a pad selects its row"
+    ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it. With takes pasted, the keys play the selected row (▸; <kbd>9</kbd> = as pasted); a pad selects its row"
     : kind === "lead"
       ? "keys <kbd>1</kbd>–<kbd>8</kbd> play this lead on that degree (it plays solo); ♫ plays the title theme with it. The bed also plays it in the generator's place"
       : "keys <kbd>1</kbd>–<kbd>8</kbd> play a lead note over this palette; ♫ plays the title theme through it. <b>solo</b> hears the track being edited alone";
@@ -700,7 +709,7 @@ function installTake() {
     takes = got; if (selRow < 0 || selRow >= takes.length) selRow = 0;
     h.textContent = `✓ ${takes.length} take${takes.length === 1 ? "" : "s"} installed` +
       (names.length ? `; registered ${names.join(", ")}` : "") +
-      ". Keys 1–8 put the take's first degree on that degree; 9 plays it as pasted; a :note stays put.";
+      ". Keys 1–8 put the take's first degree on that degree (the bordered pad is as pasted); a :note stays put.";
     h.classList.remove("err");
   } catch (e) {
     // a typo mid-edit keeps the last good takes (or the shot) playing
@@ -721,10 +730,21 @@ function renderTakeRows() {
     const row = el("div", "bar takerow"), lab = el("span", "tlabel", tk.label);
     lab.title = "select this row: keys 1–9 play it"; lab.onclick = () => selectRow(i);
     row.append(lab);
-    for (let d = 0; d < 9; d++) {
-      const b = el("button", null, d < 8 ? `${d + 1}` : "9 as pasted");
-      b.title = d < 8 ? `the take with its first degree on ${d + 1}, key ${d + 1}` : "the take as pasted, key 9";
+    // The pad that plays the take exactly as pasted gets a border: shift 0
+    // leaves every trigger as written, so degree is the only test. A take no
+    // pad reproduces (first degree outside 1-8, or notes only) gets an
+    // "as pasted" button on a line of its own.
+    const first = tk.trs.find((t) => t.degree != null), home = first && Number.isInteger(first.degree) ? first.degree : -1;
+    // notes only: nothing moves, so eight identical pads would mislead
+    for (let d = 0; d < (first ? 8 : 0); d++) {
+      const b = el("button", d === home ? "aspasted" : null, `${d + 1}`);
+      b.title = `the take with its first degree on ${d + 1}, key ${d + 1}` + (d === home ? " (as pasted)" : "");
       b.onclick = () => { selectRow(i); fireTakeRow(i, d); }; row.append(b);
+    }
+    if (home < 0 || home > 7) {
+      const b = el("button", "aspasted wide", "as pasted");
+      b.title = first ? `as pasted: its first degree is ${home + 1}, outside the pads; key 9` : "as pasted: notes only, no degree to move; key 9";
+      b.onclick = () => { selectRow(i); fireTakeRow(i, 8); }; row.append(b);
     }
     box.append(row);
   });
@@ -743,7 +763,8 @@ function fireTakeRow(i, d) {
   });
   const take = JSON.stringify(trs), r = JSON.parse(U().trigger(take) || "{}");
   if (r && r.error) return say(r.error, true);
-  flash($("takerows").children[i]?.querySelectorAll("button")[d]);
+  const pads = $("takerows").children[i]?.querySelectorAll("button");
+  flash(d === 8 ? $("takerows").children[i]?.querySelector(".wide") : pads?.[d]);
   scopeNote(SHOTS, 60 + (first ? first.degree + shift : d) * 2, 1); takeShape(take);
 }
 $("takeedn").oninput = () => {

@@ -98,11 +98,11 @@
   .takerow button { min-width: 2.6em; transition: background .25s, color .25s; }
   .takerow button.hit { background: var(--src); color: var(--bg); transition: none; }
   .takerow .tlabel { color: var(--mut); font-size: 12px; cursor: pointer; flex-basis: 100%; margin-top: 4px; }
-  #pads.sel, .takerow.sel { box-shadow: -3px 0 0 var(--src); padding-left: 6px; }
+  .takerow.sel { box-shadow: -3px 0 0 var(--src); padding-left: 6px; }
   .takerow.sel .tlabel { color: var(--src); }
   .takerow.sel .tlabel::before { content: "▸ "; }
-  .takerow button.aspasted { border-color: var(--mut); }
-  .takerow button.wide { flex-basis: 100%; max-width: 12em; }
+  .takerow .tsub { color: var(--mut); font-style: italic; }
+  .takerow button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
   /* EDN boxes: a highlighted <pre> sits under a transparent textarea. Both
      share one grid cell, font, padding and border, and neither wraps, so
      their lines stay aligned; scroll is copied from the textarea. */
@@ -466,12 +466,12 @@ function renderAudition() {
   const shot = kind === "shot";
   for (let d = 0; d < 8; d++) {
     const b = el("button", null, `${d + 1}`); b.title = `scale degree ${d + 1}, key ${d + 1}; shift-click repeats`;
-    b.onclick = (e) => { selectRow(-1); e.shiftKey ? loop(d) : (stopLoop(), fire(d)); }; $("pads").append(b);
+    b.onclick = (e) => e.shiftKey ? loop(d) : (stopLoop(), fire(d)); $("pads").append(b);
   }
   const mel = el("button", null, ""); mel.innerHTML = "&#9835;"; mel.id = "melody";
   mel.title = shot ? "play the xsofy title theme's melody on this shot (again to stop)"
     : `play the xsofy title theme through the bed's voices, with this ${kind} (again to stop)`;
-  mel.onclick = () => $("melody").classList.contains("loop") ? stopLoop() : melody(); $("pads").append(mel);
+  mel.onclick = () => mel.classList.contains("loop") ? stopLoop() : melody(); $("pads").append(mel);
   const x = el("button", null, ""); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat and all sound";
   x.onclick = () => { stopLoop(); setPlaying(false); }; $("pads").append(x);
   $("solo").hidden = shot;
@@ -479,7 +479,7 @@ function renderAudition() {
   renderTakeRows();
   showKeyTake();
   $("audhint").innerHTML = shot
-    ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it. With takes pasted, the keys play the selected row (▸; <kbd>9</kbd> = as pasted); a pad selects its row"
+    ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it. Paste takes in TAKE EDN and each gets a row like this one, plus <kbd>t</kbd>: the take as pasted. The keys play the selected row (▸); a click selects its row"
     : kind === "lead"
       ? "keys <kbd>1</kbd>–<kbd>8</kbd> play this lead on that degree (it plays solo); ♫ plays the title theme with it. The bed also plays it in the generator's place"
       : "keys <kbd>1</kbd>–<kbd>8</kbd> play a lead note over this palette; ♫ plays the title theme through it. <b>solo</b> hears the track being edited alone";
@@ -503,23 +503,24 @@ let melodyTimers = [];
 // A lead or palette plays the theme itself through the engine, voiced by the
 // bed (so by the lead or palette being edited), at the mood's tempo; a shot
 // has no voice in a theme, so its melody is fired note by note at 67 bpm.
-function melody() {
-  stopLoop(); $("melody").classList.add("loop");
+function melody(fireFn = fire, btn = $("melody")) {
+  stopLoop(); btn.classList.add("loop");
   if (kind !== "shot") {
     audible(); const err = U().theme(JSON.stringify(TITLE)); if (err) return say(err, true);
     themeWatch = setInterval(() => { if (!U().themePlaying()) stopLoop(); }, 250);
     return;
   }
-  [...TITLE.map((g) => g.lead).join("")].forEach((c, i) => { if (c !== "0") melodyTimers.push(setTimeout(() => fire(+c - 1), i * TITLE_ROW_MS)); });
+  [...TITLE.map((g) => g.lead).join("")].forEach((c, i) => { if (c !== "0") melodyTimers.push(setTimeout(() => fireFn(+c - 1), i * TITLE_ROW_MS)); });
   melodyTimers.push(setTimeout(stopLoop, TITLE.length * 16 * TITLE_ROW_MS));
 }
 function stopLoop() {
   if (themeWatch || themeNote) { clearInterval(themeWatch); themeWatch = 0; themeNote = false; U()?.theme(""); }
-  melodyTimers.forEach(clearTimeout); melodyTimers = []; clearInterval(loopTimer); loopDeg = -1; for (const b of $("pads").children) b.classList.remove("loop"); }
-function loop(d) {
-  const again = loopDeg === d; stopLoop(); if (again) return;
-  loopDeg = d; $("pads").children[d].classList.add("loop"); fire(d);
-  loopTimer = setInterval(() => kind === "shot" ? fire(d) : stopLoop(), LOOP_MS);
+  melodyTimers.forEach(clearTimeout); melodyTimers = []; clearInterval(loopTimer); loopDeg = -1;
+  for (const b of document.querySelectorAll("#pads .loop, #takerows .loop")) b.classList.remove("loop"); }
+function loop(d, fireFn = fire, btn = $("pads").children[d]) {
+  const again = loopDeg === d && btn.classList.contains("loop"); stopLoop(); if (again) return;
+  loopDeg = d; btn.classList.add("loop"); fireFn(d);
+  loopTimer = setInterval(() => kind === "shot" ? fireFn(d) : stopLoop(), LOOP_MS);
 }
 // flash lights a pad or a layer's label for a moment, as it sounds.
 function flash(e) { if (!e) return; e.classList.add("hit"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("hit"), 260); }
@@ -704,12 +705,12 @@ function installTake() {
     takeChunks($("takeedn").value).forEach((ch, i) => {
       const r = parseTake(ch);
       const lab = (/^\s*;+\s*(\S.*)$/m.exec(ch) || [])[1];
-      got.push({ label: lab || `take ${i + 1}`, trs: r.trs }); names.push(...r.names);
+      got.push({ name: r.names[0] || r.trs[0].shot, label: lab || "", trs: r.trs }); names.push(...r.names);
     });
     takes = got; if (selRow < 0 || selRow >= takes.length) selRow = 0;
     h.textContent = `✓ ${takes.length} take${takes.length === 1 ? "" : "s"} installed` +
       (names.length ? `; registered ${names.join(", ")}` : "") +
-      ". Keys 1–8 put the take's first degree on that degree (the bordered pad is as pasted); a :note stays put.";
+      ". Pads 1–8 put the take's first degree on that degree; t plays it as pasted; a :note stays put.";
     h.classList.remove("err");
   } catch (e) {
     // a typo mid-edit keeps the last good takes (or the shot) playing
@@ -718,43 +719,45 @@ function installTake() {
   }
   takeState(); renderTakeRows();
 }
+// Pasted takes replace the shot's row: each gets the same pads, then t (the
+// take as pasted), then the shot row's ♫ and stop. Pads step the take the way
+// they step a shot: its first :degree lands on the pad's degree and the rest
+// move with it (a :note stays put; a notes-only take sounds the same on every
+// pad, kept for a uniform row). Shift-click repeats a pad, as on the shot row.
+const TAKE = -1;  // fireTakeRow's "as pasted"
 function selectRow(i) {
   selRow = i;
-  $("pads").classList.toggle("sel", i < 0 && takes.length > 0);
   [...$("takerows").children].forEach((r, j) => r.classList.toggle("sel", j === i));
 }
 function renderTakeRows() {
   const box = $("takerows"); box.replaceChildren();
-  if (kind !== "shot") return;
+  const on = kind === "shot" && takes.length > 0;
+  $("pads").hidden = on;
+  if (!on) { selRow = -1; return; }
   takes.forEach((tk, i) => {
-    const row = el("div", "bar takerow"), lab = el("span", "tlabel", tk.label);
-    lab.title = "select this row: keys 1–9 play it"; lab.onclick = () => selectRow(i);
-    row.append(lab);
-    // The pad that plays the take exactly as pasted gets a border: shift 0
-    // leaves every trigger as written, so degree is the only test. A take no
-    // pad reproduces (first degree outside 1-8, or notes only) gets an
-    // "as pasted" button on a line of its own.
-    const first = tk.trs.find((t) => t.degree != null), home = first && Number.isInteger(first.degree) ? first.degree : -1;
-    // notes only: nothing moves, so eight identical pads would mislead
-    for (let d = 0; d < (first ? 8 : 0); d++) {
-      const b = el("button", d === home ? "aspasted" : null, `${d + 1}`);
-      b.title = `the take with its first degree on ${d + 1}, key ${d + 1}` + (d === home ? " (as pasted)" : "");
-      b.onclick = () => { selectRow(i); fireTakeRow(i, d); }; row.append(b);
-    }
-    if (home < 0 || home > 7) {
-      const b = el("button", "aspasted wide", "as pasted");
-      b.title = first ? `as pasted: its first degree is ${home + 1}, outside the pads; key 9` : "as pasted: notes only, no degree to move; key 9";
-      b.onclick = () => { selectRow(i); fireTakeRow(i, 8); }; row.append(b);
-    }
+    const row = el("div", "bar takerow"), fireFn = (d) => fireTakeRow(i, d);
+    const lab = el("span", "tlabel", `take ${i + 1}: ${tk.name}`);
+    if (tk.label) { lab.append(el("span", "tsub", ` ${tk.label}`)); }
+    lab.title = (tk.label ? tk.label + "\n" : "") + "click to select: the keys play this row";
+    lab.onclick = () => selectRow(i); row.append(lab);
+    const btn = (text, title, fn) => { const b = el("button", null, text); b.title = title; b.onclick = (e) => { selectRow(i); fn(e, b); }; row.append(b); return b; };
+    for (let d = 0; d < 8; d++)
+      btn(`${d + 1}`, `the take with its first degree on ${d + 1}, key ${d + 1}; shift-click repeats`,
+          (e, b) => e.shiftKey ? loop(d, fireFn, b) : (stopLoop(), fireFn(d)));
+    btn("t", "the take exactly as pasted, key t; shift-click repeats",
+        (e, b) => e.shiftKey ? loop(TAKE, fireFn, b) : (stopLoop(), fireFn(TAKE))).classList.add("tk");
+    const mel = btn("♫", "play the xsofy title theme's melody on this take (again to stop)",
+        (e, b) => b.classList.contains("loop") ? stopLoop() : melody(fireFn, b));
+    btn("■ stop", "stop the repeat and all sound", () => { stopLoop(); setPlaying(false); });
     box.append(row);
   });
-  selectRow(takes.length ? Math.min(Math.max(selRow, -1), takes.length - 1) : -1);
+  selectRow(Math.min(Math.max(selRow, 0), takes.length - 1));
 }
 function fireTakeRow(i, d) {
   const tk = takes[i]; if (!tk) return;
   if (!playing) setPlaying(true);
   const g = +$("sgain").value, first = tk.trs.find((t) => t.degree != null);
-  const shift = d === 8 || !first ? 0 : d - first.degree;
+  const shift = d === TAKE || !first ? 0 : d - first.degree;
   const trs = tk.trs.map((t) => {
     const o = { ...t };
     if (o.degree != null) o.degree += shift;
@@ -763,9 +766,9 @@ function fireTakeRow(i, d) {
   });
   const take = JSON.stringify(trs), r = JSON.parse(U().trigger(take) || "{}");
   if (r && r.error) return say(r.error, true);
-  const pads = $("takerows").children[i]?.querySelectorAll("button");
-  flash(d === 8 ? $("takerows").children[i]?.querySelector(".wide") : pads?.[d]);
-  scopeNote(SHOTS, 60 + (first ? first.degree + shift : d) * 2, 1); takeShape(take);
+  const bs = $("takerows").children[i]?.querySelectorAll("button");
+  flash(d === TAKE ? $("takerows").children[i]?.querySelector(".tk") : bs?.[d]);
+  scopeNote(SHOTS, 60 + (first ? first.degree + shift : 0) * 2, 1); takeShape(take);
 }
 $("takeedn").oninput = () => {
   takeDirty = true; takeState();
@@ -847,7 +850,10 @@ addEventListener("keydown", (e) => {
   if (e.key === " " && !typing) { e.preventDefault(); if (playing) { stopLoop(); setPlaying(false); } else setPlaying(true); return; }
   if (/input|textarea|select/i.test(document.activeElement.tagName)) return;
   const d = +e.key;
-  if (kind === "shot" && selRow >= 0 && takes[selRow] && d >= 1 && d <= 9) return fireTakeRow(selRow, d - 1);
+  if (kind === "shot" && takes[selRow]) {
+    if (e.key === "t") return fireTakeRow(selRow, TAKE);
+    if (d >= 1 && d <= 8) return fireTakeRow(selRow, d - 1);
+  }
   if (d >= 1 && d <= 8) fire(d - 1);
 });
 // meters

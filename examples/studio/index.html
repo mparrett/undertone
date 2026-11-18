@@ -254,7 +254,7 @@
     </ul>
   </details>
   <div class="head">
-    <label>name <input type="text" id="name" spellcheck="false"></label>
+    <label title="the name a game triggers it by; a new name asks before it makes a new sound">name <input type="text" id="name" spellcheck="false"></label>
     <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
       <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
     <span class="views">
@@ -433,6 +433,11 @@ function render() {
   if (kind === "shot") { $("gatelbl").textContent = "gate ms"; $("gate").value = spec.GateMS; $("gate").min = 1; $("gate").max = 10000; }
   if (kind === "lead") { $("gatelbl").textContent = "gate rows"; $("gate").value = spec.Gate; $("gate").min = 1; $("gate").max = 16; }
   gateToRange();
+  // the help line reads data-tip; the gate means something different per kind
+  $("gatebox").removeAttribute("title");
+  $("gatebox").dataset.tip = kind === "shot"
+    ? "gate ms: how long the shot's note is held before its envelopes release. With sustain 0 it only matters when it's shorter than the decay"
+    : "gate rows: how long each note of the lead is held, in sequencer rows";
   // A palette is a patch per bed layer and drum lane; the sidebar picks which
   // one the editor shows, as a second step under the palette list.
   $("tracks").replaceChildren(); $("trackbox").hidden = kind !== "palette";

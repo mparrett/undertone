@@ -12,8 +12,14 @@
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 ui-monospace, Menlo, monospace; }
   main { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
   main > * { min-width: 0; }  /* a wide child scrolls inside its column instead of widening the page */
-  @media (min-width: 900px) { main { grid-template-columns: 300px 1fr; align-items: start; } body { padding: 28px; }
-                              aside { position: sticky; top: 28px; } }
+  @media (min-width: 900px) { body { padding: 28px; } }
+  /* the header strip: what the sidebar held, side by side; it wraps to a column on a phone */
+  header.top { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-start; }
+  header.top > .brand { flex: 0 1 270px; }
+  header.top > .open { flex: 1 1 300px; min-width: 0; }
+  header.top > #trackbox { flex: 1 1 260px; min-width: 0; }
+  header.top > .stat { flex: 0 1 220px; }
+  header.top .lab:first-child { margin-top: 0; }
   main.loading { opacity: .45; pointer-events: none; }
   h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
   .sub { color: var(--mut); font-size: 12px; margin: 0 0 16px; }
@@ -58,12 +64,19 @@
   #scope.thin { height: 34px; }  /* full, it is the bed card's height */
   .scoperow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; }
   /* side by side only where the scope keeps most of the width; narrower, the same stacking point as audition and EDN */
-  @media (min-width: 1180px) { .scoperow { grid-template-columns: 320px minmax(0, 1fr); } }
-  #bed { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; height: 172px; }
+  @media (min-width: 900px) { .scoperow { grid-template-columns: minmax(0, 1fr) minmax(0, 560px); } }
+  #bed { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; height: 122px;
+         display: grid; grid-template-columns: minmax(0, 300px) minmax(150px, 1fr); column-gap: 14px; align-content: start; }
+  #bed > .bar, #bed > label.sl { grid-column: 1; }
+  #bed .meterbox { grid-column: 2; grid-row: 1 / span 4; display: flex; flex-direction: column; height: 108px; }
+  /* a phone: the meters go under the controls */
+  @media (max-width: 640px) { #bed { height: auto; grid-template-columns: minmax(0, 1fr); }
+                              #bed .meterbox { grid-column: 1; grid-row: auto; height: 64px; margin-top: 6px; } }
   #bed .num { display: none; }
-  #bed #meters { height: 30px; margin-top: 6px; }
+  #bed #meters { flex: 1; height: auto; gap: 3px; }
+  #bed #meterlbl { gap: 3px; }
   /* thin: one row, the sliders as number boxes and the meters as a mini strip; the scope takes what is left */
-  @media (min-width: 1180px) { .scoperow.thin { grid-template-columns: auto minmax(0, 1fr); } }
+  @media (min-width: 900px) { .scoperow.thin { grid-template-columns: minmax(0, 1fr) auto; } }
   .scoperow.thin #bed { height: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 6px; }
   .scoperow.thin #bed .bar { margin: 0; }
   .scoperow.thin #bed #mood { flex: 0 1 auto; width: 7em; }
@@ -75,14 +88,14 @@
   .scoperow.thin #bed .num[data-for=level] { width: 3.5ch; }
   .scoperow.thin #bed .num[data-for=tension] { width: 6ch; }
   .scoperow.thin #bed .num[data-for=seed] { width: 5ch; }
-  .scoperow.thin #bed .meterbox { width: 48px; }
-  .scoperow.thin #bed #meters { height: 20px; margin: 0; gap: 2px; }
+  .scoperow.thin #bed .meterbox { width: 48px; height: auto; }
+  .scoperow.thin #bed #meters { flex: none; height: 20px; margin: 0; gap: 2px; }
   .scoperow.thin #bed #meterlbl { display: none; }
   #bed .bar { flex-wrap: nowrap; gap: 6px; margin: 0 0 4px; }
   #bed #play { min-width: 5em; }
   #bed #mood { flex: 1; min-width: 0; }
   #bed label.sl { grid-template-columns: 4.5em 1fr 3ch; margin: 1px 0; font-size: 12px; }
-  #scope { cursor: pointer; display: block; margin: 0; width: 100%; height: 172px; background: #07090a; border: 1px solid var(--line); border-radius: 8px; }
+  #scope { cursor: pointer; display: block; margin: 0; width: 100%; height: 122px; background: #07090a; border: 1px solid var(--line); border-radius: 8px; }
   #play { min-width: 6.5em; border-color: #3d5a47; background: #18241d; }
   #play.on { border-color: var(--src); background: #2a2414; }
   #names { max-height: 220px; overflow: auto; }
@@ -190,27 +203,36 @@
 </head>
 <body>
 <main class="loading">
-<aside>
+<header class="top">
+  <div class="brand">
   <h1>UNDERTONE STUDIO</h1>
   <p class="sub">shape a one-shot, a lead or a palette; hear it; take it away as EDN</p>
   <div class="bar" id="kinds"></div>
   <div class="bar"><span class="chip guide" id="guidechip" title="show or hide the how-to">? guide</span></div>
+  </div>
+  <div class="open">
   <div class="lab">OPEN A <span id="openkind">SHOT</span> <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
   <p class="hint" id="openhelp" hidden><i>Dashed italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
   <div class="bar" id="names"></div>
+  </div>
   <div id="trackbox" hidden>
     <div class="lab">EDIT A TRACK OF <span id="trackof"></span> <span class="help" tabindex="0" title="what the tracks are" onclick="trackhelp.hidden = !trackhelp.hidden">[?]</span></div>
     <p class="hint" id="trackhelp" hidden>A bed layer (drone to pulse) or a drum lane (kick, clap, shaker, dashed): each is its own patch.</p>
     <div class="bar" id="tracks"></div>
   </div>
-
+  <div class="stat">
   <div class="lab">STATUS</div>
   <div id="status">loading the engine…</div>
-</aside>
+  </div>
+</header>
 
 <section>
-  <!-- the bed's controls sit beside the scope that draws it -->
+  <!-- the bed's controls sit beside the scope that draws it, its meters at the end -->
   <div class="scoperow" id="scoperow">
+  <div>
+  <canvas id="scope" title="each layer's notes and level, swept left to right; marks fade over a few seconds. Click for the thin strip."></canvas>
+  <div class="edgebar"><button id="thinscope" class="edge"></button></div>
+  </div>
   <div id="bed">
   <div class="bar"><button id="play" disabled>loading…</button>
     <select id="mood"></select>
@@ -220,10 +242,6 @@
   <label class="sl">tension <input type="range" id="tension" min="0" max="1" step="0.0625" value="0"><output></output><input type="number" class="num" data-for="tension" aria-label="tension"></label>
   <label class="sl">seed <input type="range" id="seed" min="1" max="64" step="1" value="1"><output></output><input type="number" class="num" data-for="seed" aria-label="seed"></label>
   <div class="meterbox"><div id="meters"></div><div id="meterlbl"></div></div>
-  </div>
-  <div>
-  <canvas id="scope" title="each layer's notes and level, swept left to right; marks fade over a few seconds. Click for the thin strip."></canvas>
-  <div class="edgebar"><button id="thinscope" class="edge"></button></div>
   </div>
   </div>
   <details id="guide">

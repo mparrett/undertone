@@ -19,7 +19,8 @@
   .sub { color: var(--mut); font-size: 12px; margin: 0 0 16px; }
   .head .views { margin-left: auto; display: flex; gap: 6px; align-items: center; }
   #names { align-content: flex-start; }
-  #tracks .chip.lane { border-style: dashed; }  /* drum lanes, after the bed layers */  /* rows packed at the top when it keeps a taller kind's height */
+  #tracks .chip.lane { border-style: dashed; }
+  #trackof { color: var(--fg); }  /* the open palette's name, a step brighter than the label */  /* drum lanes, after the bed layers */  /* rows packed at the top when it keeps a taller kind's height */
   .chip.guide { color: var(--fx); border-color: color-mix(in srgb, var(--fx) 55%, var(--line));
                 background: color-mix(in srgb, var(--fx) 10%, var(--panel)); cursor: pointer; }
   .chip.guide.on { color: var(--fg); background: color-mix(in srgb, var(--fx) 25%, var(--panel)); }
@@ -164,9 +165,9 @@
   <p class="hint" id="openhelp" hidden><i>Dashed italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
   <div class="bar" id="names"></div>
   <div id="trackbox" hidden>
-    <div class="lab">EDIT A TRACK OF <span id="trackof"></span></div>
+    <div class="lab">EDIT A TRACK OF <span id="trackof"></span> <span class="help" tabindex="0" title="what the tracks are" onclick="trackhelp.hidden = !trackhelp.hidden">[?]</span></div>
+    <p class="hint" id="trackhelp" hidden>A bed layer (drone to pulse) or a drum lane (kick, clap, shaker, dashed): each is its own patch.</p>
     <div class="bar" id="tracks"></div>
-    <p class="hint">a bed layer (drone to pulse) or a drum lane (kick, clap, shaker): each is its own patch</p>
   </div>
 
   <div class="lab">BED</div>

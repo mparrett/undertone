@@ -727,7 +727,12 @@ const unitsOf = (v) => {
   if (!Array.isArray(u) || typeof u[0] !== "string" || u[0][0] !== ":") throw new Error(`EDN: unit ${n} should be a vector starting with an op, like [:mul]`);
   let [op, ...rest] = u;
   op = kw(op); let shape = "";
-  if (op === "osc") { const si = rest.findIndex((x) => typeof x === "string"); shape = kw(rest[si]); rest.splice(si, 1); }
+  // as the engine's reader: an osc names its shape second, and only an osc names one
+  if (op === "osc") {
+    if (typeof rest[1] !== "string") throw new Error(`EDN: unit ${n} osc needs a shape second, like [:osc 0 :sine 0 1]`);
+    shape = kw(rest[1]); rest.splice(1, 1);
+  }
+  if (rest.some((x) => typeof x !== "number")) throw new Error(`EDN: unit ${n} ${op} takes numbers only`);
   return { Op: op, Shape: shape, Args: rest };
   });
 };

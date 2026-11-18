@@ -55,16 +55,34 @@
   .chip.on { color: var(--fg); border-color: var(--src); background: color-mix(in srgb, var(--src) 18%, var(--panel)); }
   /* registered this session: dashed and in the control colour, so it can't be read as selected (solid gold) */
   .chip.reg { font-style: italic; border-style: dashed; border-color: color-mix(in srgb, var(--mod) 70%, var(--line)); }
-  #scope.thin { height: 34px; }
+  #scope.thin { height: 34px; }  /* full, it is the bed card's height */
   .scoperow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; }
   /* side by side only where the scope keeps most of the width; narrower, the same stacking point as audition and EDN */
   @media (min-width: 1180px) { .scoperow { grid-template-columns: 320px minmax(0, 1fr); } }
-  #bed { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-height: 118px; }
+  #bed { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; height: 172px; }
+  #bed .num { display: none; }
+  #bed #meters { height: 30px; margin-top: 6px; }
+  /* thin: one row, the sliders as number boxes and the meters as a mini strip; the scope takes what is left */
+  @media (min-width: 1180px) { .scoperow.thin { grid-template-columns: auto minmax(0, 1fr); } }
+  .scoperow.thin #bed { height: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 6px; }
+  .scoperow.thin #bed .bar { margin: 0; }
+  .scoperow.thin #bed #mood { flex: 0 1 auto; width: 7em; }
+  .scoperow.thin #bed label.sl { display: flex; gap: 4px; margin: 0; white-space: nowrap; }
+  .scoperow.thin #bed label.sl input[type=range], .scoperow.thin #bed label.sl output { display: none; }
+  /* no spinner: arrow keys and typing still step it, and it saves a third of the box */
+  .scoperow.thin #bed .num { display: inline-block; padding: 1px 3px; height: 22px; font-size: 12px; text-align: right; appearance: textfield; -moz-appearance: textfield; }
+  .scoperow.thin #bed .num::-webkit-inner-spin-button, .scoperow.thin #bed .num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .scoperow.thin #bed .num[data-for=level] { width: 3.5ch; }
+  .scoperow.thin #bed .num[data-for=tension] { width: 6ch; }
+  .scoperow.thin #bed .num[data-for=seed] { width: 5ch; }
+  .scoperow.thin #bed .meterbox { width: 48px; }
+  .scoperow.thin #bed #meters { height: 20px; margin: 0; gap: 2px; }
+  .scoperow.thin #bed #meterlbl { display: none; }
   #bed .bar { flex-wrap: nowrap; gap: 6px; margin: 0 0 4px; }
   #bed #play { min-width: 5em; }
   #bed #mood { flex: 1; min-width: 0; }
   #bed label.sl { grid-template-columns: 4.5em 1fr 3ch; margin: 1px 0; font-size: 12px; }
-  #scope { cursor: pointer; display: block; margin: 0; width: 100%; height: 118px; background: #07090a; border: 1px solid var(--line); border-radius: 8px; }
+  #scope { cursor: pointer; display: block; margin: 0; width: 100%; height: 172px; background: #07090a; border: 1px solid var(--line); border-radius: 8px; }
   #play { min-width: 6.5em; border-color: #3d5a47; background: #18241d; }
   #play.on { border-color: var(--src); background: #2a2414; }
   #names { max-height: 220px; overflow: auto; }
@@ -72,6 +90,7 @@
   label.sl output { color: var(--fg); text-align: right; }
   input[type=range] { width: 100%; accent-color: var(--src); }
   #meters { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; height: 54px; align-items: end; }
+  #meters div[title] { cursor: default; }
   #meters div { background: var(--line); border-radius: 3px; position: relative; height: 100%; }
   #meters div i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--out); border-radius: 3px; }
   #meterlbl { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; font-size: 10px; color: var(--mut); text-align: center; }
@@ -185,23 +204,22 @@
     <div class="bar" id="tracks"></div>
   </div>
 
-  <div class="lab">BED LAYERS</div>
-  <div id="meters"></div><div id="meterlbl"></div>
   <div class="lab">STATUS</div>
   <div id="status">loading the engine…</div>
 </aside>
 
 <section>
   <!-- the bed's controls sit beside the scope that draws it -->
-  <div class="scoperow">
+  <div class="scoperow" id="scoperow">
   <div id="bed">
   <div class="bar"><button id="play" disabled>loading…</button>
     <select id="mood"></select>
     <span class="chip" id="solo" title="hear only the layer being edited">solo</span>
     <span class="chip on" id="silent" title="(m) mute the whole bed: a shot alone, still pitched in the mood's scale">mute</span></div>
-  <label class="sl">level <input type="range" id="level" min="0" max="10" step="1" value="1"><output></output></label>
-  <label class="sl">tension <input type="range" id="tension" min="0" max="1" step="0.0625" value="0"><output></output></label>
-  <label class="sl">seed <input type="range" id="seed" min="1" max="64" step="1" value="1"><output></output></label>
+  <label class="sl">level <input type="range" id="level" min="0" max="10" step="1" value="1"><output></output><input type="number" class="num" data-for="level" aria-label="level"></label>
+  <label class="sl">tension <input type="range" id="tension" min="0" max="1" step="0.0625" value="0"><output></output><input type="number" class="num" data-for="tension" aria-label="tension"></label>
+  <label class="sl">seed <input type="range" id="seed" min="1" max="64" step="1" value="1"><output></output><input type="number" class="num" data-for="seed" aria-label="seed"></label>
+  <div class="meterbox"><div id="meters"></div><div id="meterlbl"></div></div>
   </div>
   <div>
   <canvas id="scope" title="each layer's notes and level, swept left to right; marks fade over a few seconds. Click for the thin strip."></canvas>
@@ -1074,8 +1092,12 @@ $("solo").onclick = () => { solo = !solo; if (solo) bedOn = true; bedChips(); };
 // still read in the mood's scale; shots sit above the mute.
 $("silent").onclick = () => { bedOn = !bedOn; if (!bedOn) solo = false; bedChips(); };
 for (const id of ["level", "tension", "seed", "sgain"]) {
-  const r = $(id), o = r.nextElementSibling; o.value = r.value;
-  r.oninput = () => { o.value = r.value; if (id !== "sgain") applyBed(); else showKeyTake(); };
+  const r = $(id), o = r.nextElementSibling, n = document.querySelector(`.num[data-for=${id}]`); o.value = r.value;
+  if (n) { n.min = r.min; n.max = r.max; n.step = r.step; n.value = r.value;
+    // the thin card's number box drives the same slider
+    n.oninput = () => { if (n.value === "" || isNaN(+n.value)) return; r.value = n.value; r.oninput(); };
+    n.onchange = () => { n.value = r.value; r.onchange?.(); }; }
+  r.oninput = () => { o.value = r.value; if (n && document.activeElement !== n) n.value = r.value; if (id !== "sgain") applyBed(); else showKeyTake(); };
   if (id === "seed") r.onchange = () => bedMark("seed", `seed ${r.value}`);  // level and tension are traced instead
 }
 $("mood").onchange = () => { applyBed(); bedMark("mood", $("mood").value); lastDrone = -1; };
@@ -1098,7 +1120,7 @@ addEventListener("keydown", (e) => {
   if (d >= 1 && d <= 8) fire(d - 1);
 });
 // meters
-for (const l of LAYERS) { $("meters").append(el("div")); $("meters").lastChild.append(el("i")); $("meterlbl").append(el("span", null, l)); }
+for (const l of LAYERS) { $("meters").append(el("div")); $("meters").lastChild.title = l; $("meters").lastChild.append(el("i")); $("meterlbl").append(el("span", null, l)); }
 function meters() {
   // The engine meters a layer before the mix mutes it, so the page drops muted ones itself.
   if (U() && playing) {
@@ -1229,7 +1251,7 @@ function scope() {
 }
 
 // The thin scope is a viewer's preference, kept across visits like compact units.
-const setThin = (on) => { $("scope").classList.toggle("thin", on);
+const setThin = (on) => { $("scope").classList.toggle("thin", on); $("scoperow").classList.toggle("thin", on);
   $("thinscope").textContent = on ? "▾ expand scope" : "▴ thin scope";
   $("thinscope").title = on ? "the full scope, with lane labels" : "the scope as a thin strip without labels (or click the scope)";
   try { localStorage.setItem("studio-thin-scope", on ? "1" : ""); } catch {} };

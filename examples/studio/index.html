@@ -177,6 +177,8 @@
   #mood.quiet { animation: breathe 2.4s ease-in-out infinite; }
   @keyframes breathe { 50% { border-color: var(--src); box-shadow: 0 0 6px -1px var(--src); } }
   #pads button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
+  @keyframes loaded { from { box-shadow: 0 0 0 2px var(--src); background-color: color-mix(in srgb, var(--src) 16%, var(--panel)); } }
+  .loaded { animation: loaded .9s ease-out; }
   /* looping for good: filled, and marked ↻ */
   #pads button.forever, .takerow button.forever { background: color-mix(in srgb, var(--src) 28%, var(--panel)); }
   #pads button.forever::after, .takerow button.forever::after { content: " ↻"; }
@@ -235,8 +237,8 @@
   <div class="bar" id="kinds"></div>
   </div>
   <div class="open">
-  <div class="lab">OPEN A <span id="openkind">SHOT</span> <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
-  <p class="hint" id="openhelp" hidden><i>Dashed italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
+  <div class="lab">LOAD A <span id="openkind">SHOT</span> <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
+  <p class="hint" id="openhelp" hidden><i>Dashed italic</i> = registered this session. Click loads it into the editor below; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
   <div class="bar" id="names"></div>
   </div>
   <div id="trackbox" hidden>
@@ -316,7 +318,7 @@
       <li>A lead or palette you edit replaces the bed's own, so you hear it in the music. <b>solo</b> mutes the rest.</li>
       <li><b>mute</b> (on at first) silences the bed (music gain 0) for a shot on its own: the room and delay still ring, and the mood still sets the key its degrees land in. Click it off to hear the music; leads and palettes need it off.</li>
       <li>Change <b>mood, level, tension, seed</b> to hear it in other keys, tempos and densities. The meters show each layer (not shots).</li>
-      <li>Clicking a name opens it. A built-in plays as it is; your first edit makes it your own copy (<code>name-2</code>), since built-in names can't be replaced. <b>Shift-click</b> makes a copy straight away. Sounds you registered are in <i>italic</i>.</li>
+      <li>Clicking a name loads it into the editor. A built-in plays as it is; your first edit makes it your own copy (<code>name-2</code>), since built-in names can't be replaced. <b>Shift-click</b> makes a copy straight away. Sounds you registered are in <i>italic</i>.</li>
     </ul>
 
     <h3>TAKING IT TO A GAME</h3>
@@ -446,7 +448,7 @@ function buildKinds() {
     const c = el("span", "chip", k === "palette" ? "bed palette" : k); c.dataset.k = k;  // a palette is the bed's band, all but the lead
     // each kind keeps what was being edited, so switching back resumes it
     // rather than opening another copy
-    c.onclick = () => { if (spec) last[kind] = { spec, track, builtin }; kind = k; last[k] ? resume(last[k]) : openFirst(); };
+    c.onclick = () => { if (spec) last[kind] = { spec, track, builtin }; kind = k; last[k] ? resume(last[k]) : openFirst(); flashLoaded(); };
     $("kinds").append(c);
   }
 }
@@ -472,11 +474,16 @@ function buildNames() {
     if (retired[kind].has(n)) continue;
     const c = el("span", "chip" + (registered[kind].has(n) ? " reg" : ""), n);
     c.classList.toggle("on", spec && spec.Name === n);
-    c.onclick = (e) => open(n, e.shiftKey);
+    c.onclick = (e) => { open(n, e.shiftKey); flashLoaded(); };
     $("names").append(c);
   }
   for (const c of $("kinds").children) c.classList.toggle("on", c.dataset.k === kind);
   $("openkind").textContent = kind === "palette" ? "BED PALETTE" : kind.toUpperCase();
+}
+// A click above loads a sound into the editor below, often out of view or
+// looking much like the last one, so the name and the units flash once.
+function flashLoaded() {
+  for (const e of [$("name"), ...$("units").children]) { e.classList.remove("loaded"); void e.offsetWidth; e.classList.add("loaded"); }
 }
 function openFirst() {
   const first = { shot: "chime", lead: "chime", palette: "village" }[kind];
@@ -530,7 +537,7 @@ function render() {
   if (kind === "palette") {
     for (const t of [...TRACKS, ...LANES]) {
       const c = el("span", "chip" + (t === track ? " on" : "") + (LANES.includes(t) ? " lane" : ""), t);
-      c.onclick = () => { track = t; render(); };
+      c.onclick = () => { track = t; render(); flashLoaded(); };
       $("tracks").append(c);
     }
     if (LANES.includes(track)) {

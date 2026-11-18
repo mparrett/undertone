@@ -83,7 +83,17 @@
   #pads button.hit, #meterlbl span.hit { background: var(--src); color: var(--bg); transition: none; }
   #meterlbl span { transition: background .3s, color .3s; border-radius: 3px; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
-  #takeedn { min-height: 4.5em; height: 4.5em; resize: vertical; }
+  #takeedn { min-height: 6em; height: 9em; resize: vertical; }
+  /* audition left, the EDN boxes right; stacked until the editor column is wide enough */
+  .audrow { display: grid; gap: 4px 20px; }
+  @media (min-width: 1180px) { .audrow { grid-template-columns: 7fr 3fr; align-items: start; } }
+  .audrow > * { min-width: 0; }
+  .takerow button { min-width: 2.6em; transition: background .25s, color .25s; }
+  .takerow button.hit { background: var(--src); color: var(--bg); transition: none; }
+  .takerow .tlabel { color: var(--mut); font-size: 12px; cursor: pointer; flex-basis: 100%; margin-top: 4px; }
+  #pads.sel, .takerow.sel { box-shadow: -3px 0 0 var(--src); padding-left: 6px; }
+  .takerow.sel .tlabel { color: var(--src); }
+  .takerow.sel .tlabel::before { content: "▸ "; }
   /* EDN boxes: a highlighted <pre> sits under a transparent textarea. Both
      share one grid cell, font, padding and border, and neither wraps, so
      their lines stay aligned; scroll is copied from the textarea. */
@@ -212,13 +222,17 @@
   <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select>
     <span class="hint">the bars after each unit are its stack: <b style="color:var(--src)">signal</b>, <b style="color:var(--mod)">control</b></span></div>
 
+  <div class="audrow"><div class="audcol">
   <div class="lab" id="audlab">AUDITION</div>
   <div class="bar" id="pads"></div>
+  <div id="takerows"></div>
   <div class="bar" id="takebox" hidden><button id="playtake"></button><span class="hint" id="takehint"></span></div>
   <label class="sl" id="gainbox">gain <input type="range" id="sgain" min="0" max="2" step="0.05" value="1"><output></output></label>
   <p class="hint" id="audhint"></p>
+  </div><div class="edncol">
   <div id="takeednbox">
-    <div class="bar"><span class="hint">edn: the take keys <kbd>1</kbd>–<kbd>8</kbd> fire; edit it to change them</span>
+    <div class="lab">TAKE EDN</div>
+    <div class="bar"><span class="hint">key <kbd>1</kbd>'s take; paste takes or sfx-board blocks for a row each</span>
       <span class="chip" id="takestate" title="default: the open shot on each key. edited: keys play the take in the box">default</span>
       <button id="copytake">copy</button><button id="resettake" hidden>reset</button></div>
     <textarea id="takeedn" spellcheck="false"></textarea>
@@ -230,6 +244,7 @@
     <button id="import">import pasted EDN</button>
     <span class="hint">the map undertone/register-<span id="regkind">shot</span> takes</span></div>
   <textarea id="edn" spellcheck="false"></textarea>
+  </div></div>
 </section>
 </main>
 
@@ -442,7 +457,7 @@ function renderAudition() {
   const shot = kind === "shot";
   for (let d = 0; d < 8; d++) {
     const b = el("button", null, `${d + 1}`); b.title = `scale degree ${d + 1}, key ${d + 1}; shift-click repeats`;
-    b.onclick = (e) => e.shiftKey ? loop(d) : (stopLoop(), fire(d)); $("pads").append(b);
+    b.onclick = (e) => { selectRow(-1); e.shiftKey ? loop(d) : (stopLoop(), fire(d)); }; $("pads").append(b);
   }
   const mel = el("button", null, ""); mel.innerHTML = "&#9835;"; mel.id = "melody";
   mel.title = shot ? "play the xsofy title theme's melody on this shot (again to stop)"
@@ -452,9 +467,10 @@ function renderAudition() {
   x.onclick = () => { stopLoop(); setPlaying(false); }; $("pads").append(x);
   $("solo").hidden = shot;
   $("takeednbox").hidden = !shot;
+  renderTakeRows();
   showKeyTake();
   $("audhint").innerHTML = shot
-    ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it"
+    ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it. With takes pasted, the keys (and <kbd>9</kbd>) play the selected row (▸); a pad selects its row"
     : kind === "lead"
       ? "keys <kbd>1</kbd>–<kbd>8</kbd> play this lead on that degree (it plays solo); ♫ plays the title theme with it. The bed also plays it in the generator's place"
       : "keys <kbd>1</kbd>–<kbd>8</kbd> play a lead note over this palette; ♫ plays the title theme through it. <b>solo</b> hears the track being edited alone";
@@ -514,7 +530,6 @@ function fire(d) {
     flash($("pads").children[d]); return;
   }
   if (!playing) setPlaying(true);
-  if (overrideTake) return fireTake(d);
   U().shot(spec.Name, d, +$("sgain").value);
   flash($("pads").children[d]); scopeNote(SHOTS, 60 + d * 2, 1); shotShape(spec.Name, d, +$("sgain").value);
 }
@@ -619,19 +634,22 @@ function importEDN() {
   say(`imported ${k} ${name}`);
 }
 
-// ---- the take the keys fire, as EDN; edit it and they fire that instead ----
+// ---- takes: the take box, and an audition row per pasted take ----
 // By default the box shows key 1's take and follows the shot and gain. An
-// edit installs itself 400 ms after typing stops, and keys 1-8 play it: key N
-// shifts each :degree by N-1, so key 1 plays it as pasted; a :note stays put
-// (a note is absolute, and the page has no scale); the gain slider scales
-// every trigger (at 1, as pasted). Its shot maps are registered first, so a
-// whole sfx-board block works. An edited take survives opening another shot;
-// reset goes back to the open shot.
-let takeDirty = false, overrideTake = null, takeTimer = 0;
+// edit installs itself 400 ms after typing stops: each top-level vector in
+// it is a take (so several sfx-board blocks paste at once), labelled by the
+// first comment line before it, with a row of pads under the shot's.
+// Keys 1-8 set the take's base degree: the whole take moves so its first
+// :degree trigger lands on degree N (a :note stays put; a note is absolute).
+// 9 plays it as pasted. The gain slider scales every trigger (at 1, as
+// pasted). Shot maps in the paste are registered first. The keyboard plays
+// the selected row; clicking a row's pad selects it. Takes survive opening
+// another shot; reset clears them.
+let takeDirty = false, takes = [], selRow = -1, takeTimer = 0;
 function takeState() {
-  const c = $("takestate"), ed = !!overrideTake;
-  c.textContent = ed ? (spec && !overrideTake.some((t) => t.shot === spec.Name) ? `edited, not ${spec.Name}` : "edited") : "default";
-  c.classList.toggle("on", ed); $("resettake").hidden = !takeDirty;
+  const c = $("takestate"), n = takes.length;
+  c.textContent = n ? `edited: ${n} take${n === 1 ? "" : "s"}` : "default";
+  c.classList.toggle("on", n > 0); $("resettake").hidden = !takeDirty;
 }
 function showKeyTake() {
   takeState();
@@ -655,40 +673,85 @@ function parseTake(text) {
   const trs = tk.map((m) => Object.fromEntries(Object.entries(m).map(([k, v]) => [kw(k), kw(v)])));
   return { trs, names };
 }
+// Cut the text after each top-level vector, skipping strings and comments;
+// anything after the last vector (say, shot maps) joins the last piece.
+function takeChunks(text) {
+  const out = []; let depth = 0, prev = 0, top = "";
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === ";") { while (i < text.length && text[i] !== "\n") i++; continue; }
+    if (c === '"') { i++; while (i < text.length && text[i] !== '"') { if (text[i] === "\\") i++; i++; } continue; }
+    if ("[{(".includes(c)) { if (depth === 0) top = c; depth++; }
+    else if ("]})".includes(c)) { depth--; if (depth === 0 && top === "[") { out.push(text.slice(prev, i + 1)); prev = i + 1; } }
+  }
+  const rest = text.slice(prev);
+  if (/^[^;]*\S/m.test(rest.replace(/;.*$/gm, ""))) { if (out.length) out[out.length - 1] += rest; else out.push(rest); }
+  return out.length ? out : [text];
+}
 function installTake() {
   const h = $("takeednhint");
   try {
-    const { trs, names } = parseTake($("takeedn").value);
-    overrideTake = trs;
-    h.textContent = `✓ take installed (${trs.length} trigger${trs.length === 1 ? "" : "s"})` +
+    const got = [], names = [];
+    takeChunks($("takeedn").value).forEach((ch, i) => {
+      const r = parseTake(ch);
+      const lab = (/^\s*;+\s*(\S.*)$/m.exec(ch) || [])[1];
+      got.push({ label: lab || `take ${i + 1}`, trs: r.trs }); names.push(...r.names);
+    });
+    takes = got; if (selRow < 0 || selRow >= takes.length) selRow = 0;
+    h.textContent = `✓ ${takes.length} take${takes.length === 1 ? "" : "s"} installed` +
       (names.length ? `; registered ${names.join(", ")}` : "") +
-      ". Key N shifts each :degree by N−1 (key 1 as pasted); a :note stays put; gain scales them all.";
+      ". Keys 1–8 put the take's first degree on that degree; 9 plays it as pasted; a :note stays put.";
     h.classList.remove("err");
   } catch (e) {
-    // a typo mid-edit keeps the last good take (or the default keys) playing
-    h.textContent = e.message + (overrideTake ? " (keys still play the last good take)" : " (keys still play the shot)");
+    // a typo mid-edit keeps the last good takes (or the shot) playing
+    h.textContent = e.message + (takes.length ? " (rows still play the last good takes)" : " (keys still play the shot)");
     h.classList.add("err");
   }
-  takeState();
+  takeState(); renderTakeRows();
 }
-function fireTake(d) {
-  const g = +$("sgain").value;
-  const trs = overrideTake.map((t) => {
+function selectRow(i) {
+  selRow = i;
+  $("pads").classList.toggle("sel", i < 0 && takes.length > 0);
+  [...$("takerows").children].forEach((r, j) => r.classList.toggle("sel", j === i));
+}
+function renderTakeRows() {
+  const box = $("takerows"); box.replaceChildren();
+  if (kind !== "shot") return;
+  takes.forEach((tk, i) => {
+    const row = el("div", "bar takerow"), lab = el("span", "tlabel", tk.label);
+    lab.title = "select this row: keys 1–9 play it"; lab.onclick = () => selectRow(i);
+    row.append(lab);
+    for (let d = 0; d < 9; d++) {
+      const b = el("button", null, d < 8 ? `${d + 1}` : "9 as pasted");
+      b.title = d < 8 ? `the take with its first degree on ${d + 1}, key ${d + 1}` : "the take as pasted, key 9";
+      b.onclick = () => { selectRow(i); fireTakeRow(i, d); }; row.append(b);
+    }
+    box.append(row);
+  });
+  selectRow(takes.length ? Math.min(Math.max(selRow, -1), takes.length - 1) : -1);
+}
+function fireTakeRow(i, d) {
+  const tk = takes[i]; if (!tk) return;
+  if (!playing) setPlaying(true);
+  const g = +$("sgain").value, first = tk.trs.find((t) => t.degree != null);
+  const shift = d === 8 || !first ? 0 : d - first.degree;
+  const trs = tk.trs.map((t) => {
     const o = { ...t };
-    if (o.degree != null) o.degree += d;
+    if (o.degree != null) o.degree += shift;
     o.gain = (o.gain ?? 1) * g;
     return o;
   });
   const take = JSON.stringify(trs), r = JSON.parse(U().trigger(take) || "{}");
   if (r && r.error) return say(r.error, true);
-  flash($("pads").children[d]); scopeNote(SHOTS, 60 + d * 2, 1); takeShape(take);
+  flash($("takerows").children[i]?.querySelectorAll("button")[d]);
+  scopeNote(SHOTS, 60 + (first ? first.degree + shift : d) * 2, 1); takeShape(take);
 }
 $("takeedn").oninput = () => {
   takeDirty = true; takeState();
   clearTimeout(takeTimer); takeTimer = setTimeout(installTake, 400);
 };
 $("resettake").onclick = () => {
-  takeDirty = false; overrideTake = null; clearTimeout(takeTimer);
+  takeDirty = false; takes = []; selRow = -1; clearTimeout(takeTimer); renderTakeRows();
   $("takeednhint").textContent = ""; $("takeednhint").classList.remove("err");
   showKeyTake();
 };
@@ -762,7 +825,9 @@ addEventListener("keydown", (e) => {
   if (e.key === "m" && !typing && !e.metaKey && !e.ctrlKey) { $("silent").click(); return; }  // m mutes or unmutes the bed
   if (e.key === " " && !typing) { e.preventDefault(); if (playing) { stopLoop(); setPlaying(false); } else setPlaying(true); return; }
   if (/input|textarea|select/i.test(document.activeElement.tagName)) return;
-  const d = +e.key; if (d >= 1 && d <= 8) fire(d - 1);
+  const d = +e.key;
+  if (kind === "shot" && selRow >= 0 && takes[selRow] && d >= 1 && d <= 9) return fireTakeRow(selRow, d - 1);
+  if (d >= 1 && d <= 8) fire(d - 1);
 });
 // meters
 for (const l of LAYERS) { $("meters").append(el("div")); $("meters").lastChild.append(el("i")); $("meterlbl").append(el("span", null, l)); }

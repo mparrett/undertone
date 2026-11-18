@@ -29,8 +29,11 @@
   .edgebar .edge { font-size: 11px; color: var(--mut); padding: 1px 12px 2px; border-radius: 0 0 8px 8px; border-top: none; }
   .edgebar .edge:hover { color: var(--fg); }
   /* the units' size toggle sits on their top edge instead */
-  .edgebar.top { margin: 4px 0 -1px; }
-  .edgebar.top .edge { border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; }
+  /* zero height: the tab overlays the space above and sits flush on the first unit's top edge */
+  .edgebar.top { height: 0; margin: 10px 0 0; position: relative; z-index: 1; }
+  .edgebar.top + #units { margin-top: 0; }  /* the gap above the units is the anchor's, so the tab lands on the edge */
+  .edgebar.top .edge { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); white-space: nowrap;
+                       border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; }
   .head .views label.fade input { width: 70px; }
   .head .views label.fade output { min-width: 5ch; font-size: 12px; white-space: nowrap; }
   .help { cursor: help; color: var(--src); font-weight: 400; letter-spacing: 0; }

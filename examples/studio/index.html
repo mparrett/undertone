@@ -6,7 +6,7 @@
 <title>Undertone Studio</title>
 <style>
   :root { --bg: #0d0d10; --panel: #15151a; --line: #26262e; --fg: #d6d1c2; --mut: #8a8576; --err: #c96a5f;
-          --src: #e0b84f; --mod: #b48ad6; --fx: #5fa8c9; --out: #9cc46a; }
+          --src: #e0b84f; --mod: #b48ad6; --fx: #5fa8c9; --out: #9cc46a; --amber: #f0962e; }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 ui-monospace, Menlo, monospace; }
@@ -187,6 +187,11 @@
   #mood.quiet { animation: breathe 2.4s ease-in-out infinite; }
   @keyframes breathe { 50% { border-color: var(--src); box-shadow: 0 0 6px -1px var(--src); } }
   #pads button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
+  /* a muted bed is easy to forget, so its chip pulses in amber (a warning, not an error's red) */
+  @keyframes mutedpulse { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 35%, transparent); } }
+  #silent.on { color: var(--amber); border-color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, var(--panel));
+               animation: mutedpulse 1.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { #silent.on { animation: none; } }
   @keyframes loaded { from { box-shadow: 0 0 0 2px var(--src); background-color: color-mix(in srgb, var(--src) 16%, var(--panel)); } }
   .loaded { animation: loaded .9s ease-out; }
   /* looping for good: filled, and marked ↻ */
@@ -572,6 +577,9 @@ function render() {
 // stack depth and which slots carry signal after each unit, as buildPatch counts them
 // What each unit reads off the stack, as buildPatch counts it (shotspec.go);
 // an svf with a depth reads two, its modulator on top of the signal.
+// The engine is the authority here and its ops change from time to time: when
+// one is added or its stack use changes, check buildPatch and the VM's switch
+// in engine.go and update NEED and stacks() to match, or the bars mislead.
 const NEED = { mul: 2, out: 1, lpf: 1, hpf: 1, send: 1, drive: 1, crush: 1, verb: 1, scale: 1, pitch: 1, svf: 1 };
 // The stack after each unit, true for signal and false for control; null
 // where the engine would refuse it (too few values, or more than eight).

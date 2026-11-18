@@ -177,6 +177,9 @@
   #mood.quiet { animation: breathe 2.4s ease-in-out infinite; }
   @keyframes breathe { 50% { border-color: var(--src); box-shadow: 0 0 6px -1px var(--src); } }
   #pads button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
+  /* looping for good: filled, and marked ↻ */
+  #pads button.forever, .takerow button.forever { background: color-mix(in srgb, var(--src) 28%, var(--panel)); }
+  #pads button.forever::after, .takerow button.forever::after { content: " ↻"; }
   #pads button.hit, #meterlbl span.hit { background: var(--src); color: var(--bg); transition: none; }
   #meterlbl span { transition: background .3s, color .3s; border-radius: 3px; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
@@ -645,9 +648,9 @@ function renderAudition() {
   }
   if (shot) { const t = el("button", null, "t"); t.disabled = true; t.title = "the take as pasted: paste takes in TAKE EDN to use it"; $("pads").append(t); }
   const mel = el("button", null, ""); mel.innerHTML = "&#9835;"; mel.id = "melody";
-  mel.title = shot ? "play the xsofy title theme's melody on this shot (again to stop)"
-    : `play the xsofy title theme through the bed's voices, with this ${kind} (again to stop)`;
-  mel.onclick = () => mel.classList.contains("loop") ? stopLoop() : melody(); $("pads").append(mel);
+  mel.title = (shot ? "play the xsofy title theme's melody on this shot"
+    : `play the xsofy title theme through the bed's voices, with this ${kind}`) + ": once; click again while it plays to loop it, again to stop";
+  mel.onclick = () => melodyClick(fire, mel); $("pads").append(mel);
   const x = el("button", null, ""); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat and all sound";
   x.onclick = () => { stopLoop(); setPlaying(false); }; $("pads").append(x);
   $("solo").hidden = shot;
@@ -679,20 +682,25 @@ let melodyTimers = [];
 // A lead or palette plays the theme itself through the engine, voiced by the
 // bed (so by the lead or palette being edited), at the mood's tempo; a shot
 // has no voice in a theme, so its melody is fired note by note at 67 bpm.
-function melody(fireFn = fire, btn = $("melody")) {
-  stopLoop(); btn.classList.add("loop");
+// ♫ cycles: a click plays the theme once; a click while it plays makes it loop
+// (the button turns "forever"); a click then stops it.
+const melodyClick = (fireFn, btn) => btn.classList.contains("forever") ? stopLoop()
+  : btn.classList.contains("loop") ? btn.classList.add("forever") : melody(fireFn, btn);
+function melody(fireFn = fire, btn = $("melody"), again = false) {
+  if (again) { clearInterval(themeWatch); themeWatch = 0; melodyTimers = []; } else { stopLoop(); btn.classList.add("loop"); }
+  const end = () => btn.classList.contains("forever") ? melody(fireFn, btn, true) : stopLoop();
   if (kind !== "shot") {
     audible(); const err = U().theme(JSON.stringify(TITLE)); if (err) return say(err, true);
-    themeWatch = setInterval(() => { if (!U().themePlaying()) stopLoop(); }, 250);
+    themeWatch = setInterval(() => { if (!U().themePlaying()) end(); }, 250);
     return;
   }
   [...TITLE.map((g) => g.lead).join("")].forEach((c, i) => { if (c !== "0") melodyTimers.push(setTimeout(() => fireFn(+c - 1), i * TITLE_ROW_MS)); });
-  melodyTimers.push(setTimeout(stopLoop, TITLE.length * 16 * TITLE_ROW_MS));
+  melodyTimers.push(setTimeout(end, TITLE.length * 16 * TITLE_ROW_MS));
 }
 function stopLoop() {
   if (themeWatch || themeNote) { clearInterval(themeWatch); themeWatch = 0; themeNote = false; U()?.theme(""); }
   melodyTimers.forEach(clearTimeout); melodyTimers = []; clearInterval(loopTimer); loopDeg = -1;
-  for (const b of document.querySelectorAll("#pads .loop, #takerows .loop")) b.classList.remove("loop"); }
+  for (const b of document.querySelectorAll("#pads .loop, #takerows .loop")) b.classList.remove("loop", "forever"); }
 function loop(d, fireFn = fire, btn = $("pads").children[d]) {
   const again = loopDeg === d && btn.classList.contains("loop"); stopLoop(); if (again) return;
   loopDeg = d; btn.classList.add("loop"); fireFn(d);
@@ -1005,8 +1013,8 @@ function renderTakeRows() {
           (e, b) => e.shiftKey ? loop(d, fireFn, b) : (stopLoop(), fireFn(d)));
     btn("t", "the take exactly as pasted, key t; shift-click repeats",
         (e, b) => e.shiftKey ? loop(TAKE, fireFn, b) : (stopLoop(), fireFn(TAKE))).classList.add("tk");
-    const mel = btn("♫", "play the xsofy title theme's melody on this take (again to stop)",
-        (e, b) => b.classList.contains("loop") ? stopLoop() : melody(fireFn, b));
+    const mel = btn("♫", "play the xsofy title theme's melody on this take: once; click again while it plays to loop it, again to stop",
+        (e, b) => melodyClick(fireFn, b));
     btn("■ stop", "stop the repeat and all sound", () => { stopLoop(); setPlaying(false); });
     box.append(row);
   });

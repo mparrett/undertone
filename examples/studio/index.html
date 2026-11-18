@@ -84,6 +84,18 @@
   #meterlbl span { transition: background .3s, color .3s; border-radius: 3px; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
   #takeedn { min-height: 4.5em; height: 4.5em; resize: vertical; }
+  /* EDN boxes: a highlighted <pre> sits under a transparent textarea. Both
+     share one grid cell, font, padding and border, and neither wraps, so
+     their lines stay aligned; scroll is copied from the textarea. */
+  .hl { display: grid; }
+  .hl > * { grid-area: 1 / 1; margin: 0; font: 12px/1.45 ui-monospace, Menlo, monospace; padding: 5px 9px;
+            border: 1px solid var(--line); border-radius: 8px; white-space: pre; overflow-wrap: normal; tab-size: 2;
+            box-sizing: border-box; width: 100%; min-width: 0; }
+  .hl > pre { background: var(--panel); color: var(--fg); overflow: hidden; pointer-events: none; contain: size; }  /* the textarea sets the height */
+  .hl > textarea { background: transparent; color: transparent; caret-color: var(--fg); overflow: auto; position: relative; }
+  .hl > textarea::selection { background: color-mix(in srgb, var(--fx) 35%, transparent); color: transparent; }
+  .e-kw { color: var(--mod); } .e-num { color: var(--fx); } .e-str { color: var(--src); } .e-br { color: var(--mut); }
+  .e-cm { color: var(--mut); font-style: italic; } .e-off { opacity: .6; }
   .hint { color: var(--mut); font-size: 12px; }
   #guide { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px 16px; margin: 0 0 16px; font-size: 13px; }
   #guide summary { cursor: pointer; color: var(--src); padding: 8px 0; font-weight: 600; letter-spacing: .05em; }
@@ -681,6 +693,39 @@ $("resettake").onclick = () => {
   showKeyTake();
 };
 $("copytake").onclick = async () => { try { await navigator.clipboard.writeText($("takeedn").value); say("take copied"); } catch { $("takeedn").select(); say("select the take to copy it"); } };
+
+// ---- EDN highlighting (the sfx board's tokenizer) ----
+// Explanatory comments dim; commented-out code keeps its colours, faded.
+const TOK = /("(?:\\.|[^"\\])*")|(:[^\s\[\]{}()",;]+)|(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)(?![\w.])|([\[\]{}()])|([^"\[\]{}():\-\d;]+|[\s\S])/g;
+const escH = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const tokensH = (code) => code.replace(TOK, (m, str, k, num, br) => {
+  const c = str ? "e-str" : k ? "e-kw" : num ? "e-num" : br ? "e-br" : null;
+  return c ? `<span class="${c}">${escH(m)}</span>` : escH(m);
+});
+function highlightEDN(block) {
+  return block.split("\n").map((line) => {
+    const m = /^(\s*;+\s?)(.*)$/.exec(line);
+    if (!m) return tokensH(line);
+    return /^\s*[\[{(:]/.test(m[2])
+      ? `<span class="e-cm">${escH(m[1])}</span><span class="e-off">${tokensH(m[2])}</span>`
+      : `<span class="e-cm">${escH(line)}</span>`;
+  }).join("\n");
+}
+// Wrap a textarea in the highlight layer. Its value is set from code in many
+// places, so the instance's value setter repaints too; copy and parse read
+// the textarea, so they stay plain text.
+function highlightBox(ta) {
+  const wrap = el("div", "hl"), pre = el("pre"); pre.setAttribute("aria-hidden", "true");
+  ta.replaceWith(wrap); wrap.append(pre, ta); ta.wrap = "off";
+  const d = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
+  // a trailing space keeps a final empty line, and the extra lines the room a scrollbar takes
+  const paint = () => { pre.innerHTML = highlightEDN(d.get.call(ta)) + " \n\n"; sync(); };
+  const sync = () => { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; };
+  Object.defineProperty(ta, "value", { get() { return d.get.call(ta); }, set(v) { d.set.call(ta, v); paint(); } });
+  ta.addEventListener("input", paint); ta.addEventListener("scroll", sync);
+  paint();
+}
+highlightBox($("edn")); highlightBox($("takeedn"));
 
 // ---- wiring ----
 $("name").onchange = () => { spec.Name = $("name").value.trim(); commit(); };

@@ -333,7 +333,7 @@
 
   <div class="edgebar top">
   <div class="head">
-    <label title="the name a game triggers it by; a new name asks before it makes a new sound">name <input type="text" id="name" spellcheck="false"></label>
+    <label title="the name a game triggers it by; a new name asks before it makes a new sound"><span id="namelbl">name</span> <input type="text" id="name" spellcheck="false"></label>
     <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
       <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
   </div>
@@ -501,6 +501,7 @@ function render() {
   $("name").value = spec.Name;
   $("regkind").textContent = kind;
   $("gatebox").hidden = kind === "palette";
+  $("namelbl").textContent = `${kind} name`;
   if (kind === "shot") { $("gatelbl").textContent = "gate ms"; $("gate").value = spec.GateMS; $("gate").min = 1; $("gate").max = 10000; }
   if (kind === "lead") { $("gatelbl").textContent = "gate rows"; $("gate").value = spec.Gate; $("gate").min = 1; $("gate").max = 16; }
   gateToRange();

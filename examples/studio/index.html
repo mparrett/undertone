@@ -18,7 +18,8 @@
   h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
   .sub { color: var(--mut); font-size: 12px; margin: 0 0 16px; }
   .head .views { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-  #names { align-content: flex-start; }  /* rows packed at the top when it keeps a taller kind's height */
+  #names { align-content: flex-start; }
+  #tracks .chip.lane { border-style: dashed; }  /* drum lanes, after the bed layers */  /* rows packed at the top when it keeps a taller kind's height */
   .chip.guide { color: var(--fx); border-color: color-mix(in srgb, var(--fx) 55%, var(--line));
                 background: color-mix(in srgb, var(--fx) 10%, var(--panel)); cursor: pointer; }
   .chip.guide.on { color: var(--fg); background: color-mix(in srgb, var(--fx) 25%, var(--panel)); }
@@ -162,6 +163,11 @@
   <div class="lab">OPEN A <span id="openkind">SHOT</span> <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
   <p class="hint" id="openhelp" hidden><i>Dashed italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
   <div class="bar" id="names"></div>
+  <div id="trackbox" hidden>
+    <div class="lab">EDIT A TRACK OF <span id="trackof"></span></div>
+    <div class="bar" id="tracks"></div>
+    <p class="hint">a bed layer (drone to pulse) or a drum lane (kick, clap, shaker): each is its own patch</p>
+  </div>
 
   <div class="lab">BED</div>
   <div class="bar"><button id="play" disabled>loading…</button>
@@ -248,7 +254,6 @@
       <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label></span>
   </div>
   <div class="bar namebar" id="namebar" hidden></div>
-  <div class="bar" id="tracks"></div>
   <div class="bar" id="kitbox" hidden>
     <label class="hint">note <input type="number" id="kitnote" min="0" max="127" style="width:5em"></label>
     <span class="chip" id="kitdef" title="leave this lane to the default kit">default kit</span>
@@ -370,7 +375,8 @@ function measureNames() {
 }
 addEventListener("resize", () => { if (U()) measureNames(); });
 function buildNames() {
-  $("names").style.minHeight = namesMin ? namesMin + "px" : "";
+  // a palette adds its track section below anyway, so it doesn't hold the space
+  $("names").style.minHeight = namesMin && kind !== "palette" ? namesMin + "px" : "";
   $("names").replaceChildren();
   for (const n of JSON.parse(U().names(kind))) {
     if (retired[kind].has(n)) continue;
@@ -419,11 +425,14 @@ function render() {
   $("gatebox").hidden = kind === "palette";
   if (kind === "shot") { $("gatelbl").textContent = "gate ms"; $("gate").value = spec.GateMS; $("gate").min = 1; $("gate").max = 10000; }
   if (kind === "lead") { $("gatelbl").textContent = "gate rows"; $("gate").value = spec.Gate; $("gate").min = 1; $("gate").max = 16; }
-  $("tracks").replaceChildren();
+  // A palette is a patch per bed layer and drum lane; the sidebar picks which
+  // one the editor shows, as a second step under the palette list.
+  $("tracks").replaceChildren(); $("trackbox").hidden = kind !== "palette";
+  $("trackof").textContent = kind === "palette" ? spec.Name.toUpperCase() : "";
   $("kitbox").hidden = !(kind === "palette" && LANES.includes(track));
   if (kind === "palette") {
     for (const t of [...TRACKS, ...LANES]) {
-      const c = el("span", "chip" + (t === track ? " on" : ""), t);
+      const c = el("span", "chip" + (t === track ? " on" : "") + (LANES.includes(t) ? " lane" : ""), t);
       c.onclick = () => { track = t; render(); };
       $("tracks").append(c);
     }

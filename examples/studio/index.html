@@ -45,7 +45,7 @@
   /* the units' tab row: scope fade, then the tab, which sits on the first unit's top edge */
   .edgebar.top { margin: 12px 0 -1px; flex-wrap: wrap; align-items: flex-end; row-gap: 8px; }
   .edgebar.top .head { margin-right: auto; padding-bottom: 9px; }  /* name and gate left; fade and the tab right, the tab on the units' edge */
-  .edgebar.top label.fade { padding-bottom: 15px; }  /* centred on the name and gate boxes beside it */
+  .scoperow.thin label.fade { display: none; }  /* the thin strip draws no fading marks worth tuning */
   .edgebar.top + #units { margin-top: 0; }
   .edgebar.top .edge { border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; white-space: nowrap; }
   .edgebar label.fade { display: flex; gap: 6px; align-items: center; color: var(--mut); font-size: 12px; }
@@ -70,9 +70,13 @@
   /* registered this session: dashed and in the control colour, so it can't be read as selected (solid gold) */
   .chip.reg { font-style: italic; border-style: dashed; border-color: color-mix(in srgb, var(--mod) 70%, var(--line)); }
   #scope.thin { height: 34px; }  /* full, it is the bed card's height */
-  .scoperow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; }
+  /* the tab sits on the scope's top edge and fade under it; the bed card lines up with the scope itself */
+  .scoperow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 10px; align-items: start;
+              grid-template-areas: "tab" "scope" "fade" "bed"; }
+  .scoperow > .scopetab { grid-area: tab; margin: 0 0 -1px; } .scoperow > #scope { grid-area: scope; }
+  .scoperow > .scopefade { grid-area: fade; margin: 4px 0 8px; } .scoperow > #bed { grid-area: bed; }
   /* side by side only where the scope keeps most of the width; narrower, the same stacking point as audition and EDN */
-  @media (min-width: 900px) { .scoperow { grid-template-columns: minmax(0, 1fr) minmax(0, 560px); } }
+  @media (min-width: 900px) { .scoperow { grid-template-columns: minmax(0, 1fr) minmax(0, 560px); grid-template-areas: "tab ." "scope bed" "fade ."; } }
   #bed { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; height: 122px;
          display: grid; grid-template-columns: minmax(0, 300px) minmax(150px, 1fr); column-gap: 14px; align-content: start; }
   #bed > .bar, #bed > label.sl { grid-column: 1; }
@@ -240,10 +244,9 @@
 <section>
   <!-- the bed's controls sit beside the scope that draws it, its meters at the end -->
   <div class="scoperow" id="scoperow">
-  <div>
+  <div class="edgebar top scopetab"><button id="thinscope" class="edge"></button></div>
   <canvas id="scope" title="each layer's notes and level, swept left to right; marks fade over a few seconds. Click for the thin strip."></canvas>
-  <div class="edgebar"><button id="thinscope" class="edge"></button></div>
-  </div>
+  <div class="edgebar scopefade"><label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label></div>
   <div id="bed">
   <div class="bar"><button id="play" disabled>loading…</button>
     <select id="mood"></select>
@@ -329,7 +332,6 @@
     <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
       <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
   </div>
-    <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label>
     <button id="compact" class="edge"></button></div>
   <div id="units"></div>
 

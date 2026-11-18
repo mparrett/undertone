@@ -30,8 +30,8 @@
   /* the units' size toggle sits on their top edge instead */
   /* the units' tab row: scope fade, then the tab, which sits on the first unit's top edge */
   .edgebar.top { margin: 12px 0 -1px; flex-wrap: wrap; align-items: flex-end; row-gap: 8px; }
-  .edgebar.top .head { margin-right: auto; padding-bottom: 4px; }  /* name and gate left; fade and the tab right, the tab on the units' edge */
-  .edgebar.top label.fade { padding-bottom: 10px; }  /* centred on the name and gate boxes beside it */
+  .edgebar.top .head { margin-right: auto; padding-bottom: 9px; }  /* name and gate left; fade and the tab right, the tab on the units' edge */
+  .edgebar.top label.fade { padding-bottom: 15px; }  /* centred on the name and gate boxes beside it */
   .edgebar.top + #units { margin-top: 0; }
   .edgebar.top .edge { border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; white-space: nowrap; }
   .edgebar label.fade { display: flex; gap: 6px; align-items: center; color: var(--mut); font-size: 12px; }
@@ -75,7 +75,7 @@
   .head input[type=number] { width: 6.5em; }
   #units { display: grid; gap: 6px; margin-top: 10px; }
   .unit { display: grid; grid-template-columns: 3.5ch 5.5em 4.5em 1fr auto; gap: 8px; align-items: center;
-          background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--k, var(--line)); border-radius: 8px; padding: 6px 8px 11px; }
+          background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--k, var(--line)); border-radius: 8px; padding: 6px 8px; }
   .unit.bad { border-color: var(--err); }
   .unit .ix { color: var(--mut); font-size: 12px; }
   .unit .grip { cursor: grab; touch-action: none; user-select: none; white-space: nowrap; }

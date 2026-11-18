@@ -206,9 +206,9 @@
   <label class="sl" id="gainbox">gain <input type="range" id="sgain" min="0" max="2" step="0.05" value="1"><output></output></label>
   <p class="hint" id="audhint"></p>
   <div id="takeednbox">
-    <div class="bar"><span class="hint">edn: the take key <kbd>1</kbd> fires</span>
-      <button id="copytake">copy</button><button id="resettake" hidden>reset</button>
-      <label class="hint" title="Paste a take (a vector of trigger maps) or a whole board block; its shot maps are registered"><input type="checkbox" id="override"> override: keys play this take</label></div>
+    <div class="bar"><span class="hint">edn: the take keys <kbd>1</kbd>–<kbd>8</kbd> fire; edit it to change them</span>
+      <span class="chip" id="takestate" title="default: the open shot on each key. edited: keys play the take in the box">default</span>
+      <button id="copytake">copy</button><button id="resettake" hidden>reset</button></div>
     <textarea id="takeedn" spellcheck="false"></textarea>
     <p class="hint" id="takeednhint"></p>
   </div>
@@ -607,16 +607,23 @@ function importEDN() {
   say(`imported ${k} ${name}`);
 }
 
-// ---- the take the keys fire, as EDN; or a pasted take they fire instead ----
-// Unticked, the box shows key 1's take and follows the shot and gain, until
-// it is edited (reset brings it back). Ticked, keys 1-8 play the pasted take:
-// key N shifts each trigger's :degree by N-1, so key 1 plays it as pasted; a
-// :note trigger stays put (a note is absolute, and the page has no scale);
-// the gain slider scales every trigger. Its shot maps are registered first,
-// so a whole sfx-board block works.
-let takeDirty = false, overrideTake = null;
+// ---- the take the keys fire, as EDN; edit it and they fire that instead ----
+// By default the box shows key 1's take and follows the shot and gain. An
+// edit installs itself 400 ms after typing stops, and keys 1-8 play it: key N
+// shifts each :degree by N-1, so key 1 plays it as pasted; a :note stays put
+// (a note is absolute, and the page has no scale); the gain slider scales
+// every trigger (at 1, as pasted). Its shot maps are registered first, so a
+// whole sfx-board block works. An edited take survives opening another shot;
+// reset goes back to the open shot.
+let takeDirty = false, overrideTake = null, takeTimer = 0;
+function takeState() {
+  const c = $("takestate"), ed = !!overrideTake;
+  c.textContent = ed ? (spec && !overrideTake.some((t) => t.shot === spec.Name) ? `edited, not ${spec.Name}` : "edited") : "default";
+  c.classList.toggle("on", ed); $("resettake").hidden = !takeDirty;
+}
 function showKeyTake() {
-  if (!spec || takeDirty || $("override").checked) return;
+  takeState();
+  if (!spec || takeDirty) return;
   $("takeedn").value = `[{:shot :${spec.Name} :degree 0 :gain ${+$("sgain").value}}]`;
 }
 function parseTake(text) {
@@ -636,20 +643,21 @@ function parseTake(text) {
   const trs = tk.map((m) => Object.fromEntries(Object.entries(m).map(([k, v]) => [kw(k), kw(v)])));
   return { trs, names };
 }
-function useTake(edited) {
-  if (!$("override").checked) { overrideTake = null; $("takeednhint").textContent = ""; showKeyTake(); return; }
+function installTake() {
+  const h = $("takeednhint");
   try {
     const { trs, names } = parseTake($("takeedn").value);
     overrideTake = trs;
-    $("takeednhint").textContent = (edited ? "✓ take installed: " : "") + `keys play this take (${trs.length} trigger${trs.length === 1 ? "" : "s"})` +
+    h.textContent = `✓ take installed (${trs.length} trigger${trs.length === 1 ? "" : "s"})` +
       (names.length ? `; registered ${names.join(", ")}` : "") +
       ". Key N shifts each :degree by N−1 (key 1 as pasted); a :note stays put; gain scales them all.";
-    $("takeednhint").classList.remove("err"); say("override on");
+    h.classList.remove("err");
   } catch (e) {
-    // mid-edit, a typo shouldn't drop override: the last good take keeps playing
-    if (!(edited && overrideTake)) { overrideTake = null; $("override").checked = false; }
-    $("takeednhint").textContent = e.message + (edited && overrideTake ? " (keys still play the last good take)" : ""); $("takeednhint").classList.add("err"); say(e.message, true);
+    // a typo mid-edit keeps the last good take (or the default keys) playing
+    h.textContent = e.message + (overrideTake ? " (keys still play the last good take)" : " (keys still play the shot)");
+    h.classList.add("err");
   }
+  takeState();
 }
 function fireTake(d) {
   const g = +$("sgain").value;
@@ -663,23 +671,14 @@ function fireTake(d) {
   if (r && r.error) return say(r.error, true);
   flash($("pads").children[d]); scopeNote(SHOTS, 60 + d * 2, 1); takeShape(take);
 }
-$("override").onchange = () => { clearTimeout(takeTimer); useTake(); };
-// An edit installs itself once typing stops, and the hint says what became
-// of it: installed, a parse error, or held until override is ticked.
-let takeTimer = 0;
 $("takeedn").oninput = () => {
-  takeDirty = true; $("resettake").hidden = false;
-  clearTimeout(takeTimer);
-  takeTimer = setTimeout(() => {
-    if ($("override").checked) return useTake(true);
-    $("takeednhint").classList.remove("err");
-    $("takeednhint").textContent = "edited; tick override to play it";
-  }, 400);
+  takeDirty = true; takeState();
+  clearTimeout(takeTimer); takeTimer = setTimeout(installTake, 400);
 };
 $("resettake").onclick = () => {
-  takeDirty = false; $("resettake").hidden = true; clearTimeout(takeTimer);
+  takeDirty = false; overrideTake = null; clearTimeout(takeTimer);
   $("takeednhint").textContent = ""; $("takeednhint").classList.remove("err");
-  if ($("override").checked) { $("override").checked = false; useTake(); } else showKeyTake();
+  showKeyTake();
 };
 $("copytake").onclick = async () => { try { await navigator.clipboard.writeText($("takeedn").value); say("take copied"); } catch { $("takeedn").select(); say("select the take to copy it"); } };
 

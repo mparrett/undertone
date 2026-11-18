@@ -102,6 +102,8 @@
   .takerow.sel .tlabel { color: var(--src); }
   .takerow.sel .tlabel::after { content: "  · keys"; color: var(--mut); font-style: normal; }
   .takerow .tsub { color: var(--mut); font-style: italic; }
+  .namebar { padding: 6px 8px; border: 1px solid var(--src); border-radius: 8px; background: color-mix(in srgb, var(--src) 10%, var(--panel)); }
+  .namebar .q { flex-basis: 100%; font-size: 13px; }
   #pads button:disabled { opacity: .35; cursor: default; }
   .takerow button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
   /* EDN boxes: a highlighted <pre> sits under a transparent textarea. Both
@@ -222,6 +224,7 @@
       <label class="fade" title="how long the scope's marks take to fade">fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label>
       <span class="chip" id="guidechip" title="show or hide the how-to">guide</span></span>
   </div>
+  <div class="bar namebar" id="namebar" hidden></div>
   <div class="bar" id="tracks"></div>
   <div class="bar" id="kitbox" hidden>
     <label class="hint">note <input type="number" id="kitnote" min="0" max="127" style="width:5em"></label>
@@ -302,6 +305,9 @@ function resume(st) { spec = st.spec; track = st.track; builtin = st.builtin; re
 let builtin = false;  // spec is a built-in, unedited: shown and played, not registered
 let kind = "shot", spec = null, track = "drone", playing = false, solo = false, bedOn = false;  // the bed starts silent: shots are most of the work
 const registered = { shot: new Set(), lead: new Set(), palette: new Set() };
+// Names renamed away. The engine can't unregister a name, so a renamed sound
+// stays playable under its old name but leaves the list.
+const retired = { shot: new Set(), lead: new Set(), palette: new Set() };
 const U = () => window.undertoneStudio;
 
 // The patch being edited: a shot's or lead's units, or one track of a palette.
@@ -326,6 +332,7 @@ function buildKinds() {
 function buildNames() {
   $("names").replaceChildren();
   for (const n of JSON.parse(U().names(kind))) {
+    if (retired[kind].has(n)) continue;
     const c = el("span", "chip" + (registered[kind].has(n) ? " reg" : ""), n);
     c.classList.toggle("on", spec && spec.Name === n);
     c.onclick = (e) => open(n, e.shiftKey);
@@ -640,10 +647,37 @@ function importEDN() {
     s.Kit = (m[":kit"] || [":default", ":default", ":default"]).map((d) => d === ":default" ? { Name: "", Units: [], Note: 0, Default: true }
       : { ...patchOf(d[":patch"]), Note: d[":note"], Default: false });
   } else return say("EDN: not a shot (:gate-ms), lead (:gate) or palette (:kit)", true);
-  const err = U().register(k, JSON.stringify(s));
-  if (err) return say(err, true);
-  registered[k].add(name); kind = k; open(name);  // read back: built-in patch names come back with their units
-  say(`imported ${k} ${name}`);
+  const go = (how) => {
+    const err = U().register(k, JSON.stringify(s));
+    if (err) return say(err, true);
+    if (how === "rename") retire(k, spec.Name);
+    retired[k].delete(name);
+    registered[k].add(name); kind = k; open(name);  // read back: built-in patch names come back with their units
+    say(`imported ${k} ${name}`);
+  };
+  if (spec && k === kind && name === spec.Name) return go();
+  // a built-in name is refused by register below; ask only about names that would register
+  if (JSON.parse(U().names(k)).includes(name) && !registered[k].has(name) && !retired[k].has(name)) return go();
+  askName(k, k === kind && spec ? spec.Name : null, name, $("import"), go);
+}
+
+// A name change creates a sound, so the page asks first: create it beside the
+// open one, rename the open one (it leaves the list), or replace one of yours
+// that already has the name. Built-ins can't be renamed, only copied.
+function retire(k, n) { registered[k].delete(n); retired[k].add(n); }
+function askName(k, from, to, near, onOk, onCancel) {
+  const bar = $("namebar"); bar.replaceChildren(); bar.dataset.to = to;
+  const btn = (t, fn) => { const b = el("button", null, t); b.onclick = () => { bar.hidden = true; fn(); }; bar.append(b); return b; };
+  const mine = registered[k].has(to) && !retired[k].has(to);
+  const canRename = from && registered[k].has(from) && !mine;
+  bar.append(el("span", "q", mine ? `${to} is already one of your ${k}s: replace it?`
+    : from ? `the name changed from ${from} to ${to}:` : `this makes a new ${k}, ${to}:`));
+  mine ? btn(`replace ${to}`, () => onOk("replace")) : btn(`create ${to}`, () => onOk("create"));
+  if (canRename) btn(`rename ${from} → ${to}`, () => onOk("rename"));
+  btn("cancel", () => onCancel && onCancel());
+  if (!canRename && from && !mine) bar.append(el("span", "hint", `${from} is a built-in: it can be copied, not renamed`));
+  near.closest(".bar, .head").after(bar);  // by the name field, or by the EDN box
+  bar.hidden = false; bar.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
 // ---- takes: the take box, and an audition row per pasted take ----
@@ -831,7 +865,20 @@ function highlightBox(ta) {
 highlightBox($("edn")); highlightBox($("takeedn"));
 
 // ---- wiring ----
-$("name").onchange = () => { spec.Name = $("name").value.trim(); commit(); };
+$("name").onchange = () => {
+  const to = $("name").value.trim(), from = spec.Name;
+  // a blur after an edit fires change again; one question per name is enough
+  if (!$("namebar").hidden && $("namebar").dataset.to === to) return;
+  if (!to || to === from) { $("name").value = from; return; }
+  if (JSON.parse(U().names(kind)).includes(to) && !registered[kind].has(to) && !retired[kind].has(to)) {
+    $("name").value = from; return say(`${to} is a built-in ${kind}: pick another name`, true);
+  }
+  askName(kind, from, to, $("name"), (how) => {
+    if (how === "rename") retire(kind, from);
+    retired[kind].delete(to);
+    spec.Name = to; builtin = false; commit(); buildNames();
+  }, () => { $("name").value = from; });
+};
 $("gate").onchange = () => { if (kind === "shot") spec.GateMS = +$("gate").value; else spec.Gate = +$("gate").value; commit(true); };
 $("kitnote").onchange = () => { patch().Note = +$("kitnote").value; patch().Default = false; render(); commit(); };
 $("kitdef").onclick = () => { const d = patch(); d.Default = !d.Default; if (d.Default) { d.Name = ""; d.Units = []; d.Note = 0; } open2(); };

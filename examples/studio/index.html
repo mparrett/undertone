@@ -16,19 +16,25 @@
                               aside { position: sticky; top: 28px; } }
   main.loading { opacity: .45; pointer-events: none; }
   h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
-  .sub { color: var(--mut); font-size: 12px; margin: 0 0 12px; }
+  .sub { color: var(--mut); font-size: 12px; margin: 0 0 16px; }
   .head .views { margin-left: auto; display: flex; gap: 6px; align-items: center; }
   .head .views label.fade input { width: 70px; }
   .head .views label.fade output { min-width: 5ch; font-size: 12px; white-space: nowrap; }
   .help { cursor: help; color: var(--src); font-weight: 400; letter-spacing: 0; }
-  .lab { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 16px 0 6px; font-weight: 600; }
+  .lab { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 22px 0 8px; font-weight: 600; }
   #status { color: var(--mut); min-height: 1.45em; font-size: 13px; white-space: pre-wrap; }
-  #status.err, #takeednhint.err { color: var(--err); }
+  #status.err, #takeednhint.err, #ednhint.err { color: var(--err); }
+  /* the hovered control's description, in place of the browser's tooltips */
+  #helpline { position: fixed; left: 0; right: 0; bottom: 0; padding: 5px 16px; font-size: 12px; color: var(--fg);
+              background: color-mix(in srgb, var(--panel) 92%, transparent); border-top: 1px solid var(--line);
+              pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 5; }
+  #helpline:empty { display: none; }
+  body { padding-bottom: 44px; }  /* the last line can scroll clear of the help line */
   .bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
   button, .chip, select, input[type=number], input[type=text], textarea {
     font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; }
   button, .chip { cursor: pointer; user-select: none; -webkit-user-select: none; }
-  .chip { font-size: 13px; color: var(--mut); padding: 3px 9px; }
+  .chip { font-size: 13px; color: var(--mut); padding: 3px 9px; white-space: nowrap; }
   .chip.on { color: var(--fg); border-color: var(--src); background: color-mix(in srgb, var(--src) 18%, var(--panel)); }
   /* registered this session: dashed and in the control colour, so it can't be read as selected (solid gold) */
   .chip.reg { font-style: italic; border-style: dashed; border-color: color-mix(in srgb, var(--mod) 70%, var(--line)); }
@@ -45,7 +51,7 @@
   #meters div i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--out); border-radius: 3px; }
   #meterlbl { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; font-size: 10px; color: var(--mut); text-align: center; }
   .head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  .head input[type=text] { width: 16em; }
+  .head input[type=text] { width: 12em; }
   .head label { color: var(--mut); font-size: 13px; display: flex; gap: 6px; align-items: center; }
   .head input[type=number] { width: 6.5em; }
   #units { display: grid; gap: 6px; margin-top: 10px; }
@@ -63,14 +69,14 @@
   .unit .stack b { width: 6px; height: 12px; border-radius: 2px; background: var(--mod); }
   .unit .stack b.sig { background: var(--src); }
   .unit .args { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 14px; }
-  .unit .args label.sl { grid-template-columns: 4.6em 1fr 7ch; margin: 0; }
+  .unit .args label.sl { grid-template-columns: 5.6em 1fr 8.5ch; margin: 0; }  /* fits "transpose" and "0.001" */
   .unit .args input[type=number] { padding: 2px 4px; width: 100%; text-align: right; font-size: 12px; }
   .unit .ops button { padding: 2px 7px; font-size: 12px; }
   .unit .doc { grid-column: 2 / -1; color: var(--mut); font-size: 11px; margin-top: -2px; }
   /* phone: a unit's arguments take a full row under its name and buttons */
   @media (max-width: 560px) {
     .unit, #units.compact .unit { grid-template-columns: 3.5ch 5.5em 4.5em minmax(0, 1fr) auto; }
-    .unit .args { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    .unit .args { grid-column: 1 / -1; grid-row: 2; grid-template-columns: 1fr; }  /* one argument a line, so each slider has room */
     .unit .doc { grid-column: 1 / -1; grid-row: 3; }
   }
   /* compact: a unit to a line, for long patches and palettes */
@@ -141,7 +147,7 @@
   <h1>UNDERTONE STUDIO</h1>
   <p class="sub">shape a one-shot, a lead or a palette; hear it; take it away as EDN</p>
   <div class="bar" id="kinds"></div>
-  <div class="lab">OPEN <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
+  <div class="lab">OPEN A <span id="openkind">SHOT</span> <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
   <p class="hint" id="openhelp" hidden><i>Dashed italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
   <div class="bar" id="names"></div>
 
@@ -179,7 +185,7 @@
       <li>Press <b>play</b> (or <kbd>space</kbd>; <kbd>m</kbd> mutes and unmutes) to start the bed (dungeon is a good quiet one).</li>
       <li>Pick <b>shot</b>, open <b>tink</b>, and press <kbd>1</kbd>–<kbd>8</kbd>: the shot plays on that degree of the bed's scale.</li>
       <li>Drag the <b>env</b> unit's decay: every edit fires the shot, so you hear it change as you drag. <b>Shift-click</b> a pad to repeat it while you work; shift-click again (or click any pad) to stop.</li>
-      <li><b>+ add a unit… → svf</b>, then move it with ↑ to just before <code>out</code>: a resonant filter. Turn up <i>res</i>.</li>
+      <li><b>+ add a unit… → svf</b>, then drag it by its <b>⠿</b> grip to just before <code>out</code>: a resonant filter. Turn up <i>res</i>.</li>
       <li>Rename it, then <b>download</b> the EDN.</li>
     </ol>
 
@@ -212,7 +218,7 @@
 (undertone/register-lead    (read-string (slurp "music/glass.edn")))
 (undertone/register-palette (read-string (slurp "music/cavern.edn")))
 ;; a mood names them with :lead and :palette, or set-parameters does</pre>
-    <p><b>import pasted EDN</b> takes one back: paste a shot, lead or palette map into the box and press it.</p>
+    <p>The box takes one back too: edit it, or paste a shot, lead or palette map into it, and it applies after a pause. A new <code>:name</code> asks first: create it, rename the open sound, or cancel.</p>
 
     <h3>LIMITS</h3>
     <ul>
@@ -227,7 +233,7 @@
     <label id="gatebox"><span id="gatelbl">gate</span> <input type="number" id="gate"></label>
     <span class="views"><span class="chip" id="compact" title="a unit to a line">compact rows</span>
       <span class="chip" id="thinscope" title="the scope as a thin strip without labels (or click the scope)">thin scope</span>
-      <label class="fade" title="how long the scope's marks take to fade">fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label>
+      <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label>
       <span class="chip" id="guidechip" title="show or hide the how-to">guide</span></span>
   </div>
   <div class="bar namebar" id="namebar" hidden></div>
@@ -260,13 +266,14 @@
 
   <div class="lab">EDN</div>
   <div class="bar"><button id="copy">copy</button><button id="save">download</button>
-    <button id="import">import pasted EDN</button>
     <span class="hint">the map undertone/register-<span id="regkind">shot</span> takes</span></div>
   <textarea id="edn" spellcheck="false"></textarea>
+  <p class="hint" id="ednhint">edit or paste here: it applies after a pause, and asks before it makes a new name</p>
   </div></div>
 </section>
 </main>
 
+<div id="helpline"></div>
 <script src="wasm_exec.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -345,6 +352,7 @@ function buildNames() {
     $("names").append(c);
   }
   for (const c of $("kinds").children) c.classList.toggle("on", c.dataset.k === kind);
+  $("openkind").textContent = kind === "palette" ? "BED PALETTE" : kind.toUpperCase();
 }
 function openFirst() {
   const first = { shot: "chime", lead: "chime", palette: "village" }[kind];
@@ -662,10 +670,9 @@ const unitsOf = (v) => v.map(([op, ...rest]) => {
 const patchOf = (p) => typeof p === "string" ? { Name: kw(p), Units: [] }
   : Array.isArray(p) ? { Name: "", Units: unitsOf(p) } : { Name: kw(p[":name"] || ""), Units: unitsOf(p[":patch"]) };
 
-function importEDN() {
-  let m;
-  try { m = readEDN($("edn").value); } catch (e) { return say(e.message, true); }
-  const name = kw(m[":name"]);
+// Read a shot, lead or palette map; throws on bad EDN or an unknown shape.
+function soundOf(text) {
+  const m = readEDN(text), name = kw(m[":name"]);
   let k, s;
   if (":gate-ms" in m) { k = "shot"; s = { Name: name, GateMS: m[":gate-ms"], Units: unitsOf(m[":patch"]) }; }
   else if (":gate" in m) { k = "lead"; s = { Name: name, Gate: m[":gate"], ...patchOf(m[":patch"]), }; s.Name = name; }
@@ -674,19 +681,43 @@ function importEDN() {
     for (const t of TRACKS) if (m[":" + t]) s[cap(t)] = patchOf(m[":" + t]);
     s.Kit = (m[":kit"] || [":default", ":default", ":default"]).map((d) => d === ":default" ? { Name: "", Units: [], Note: 0, Default: true }
       : { ...patchOf(d[":patch"]), Note: d[":note"], Default: false });
-  } else return say("EDN: not a shot (:gate-ms), lead (:gate) or palette (:kit)", true);
+  } else throw new Error("EDN: not a shot (:gate-ms), lead (:gate) or palette (:kit)");
+  return { k, s, name };
+}
+// Apply the EDN box. From a link (keep=false) the box is then rewritten from
+// the sound; while typing (keep=true) the text and caret stay as typed.
+function importEDN(keep) {
+  const box = $("edn"), hint = $("ednhint");
+  let k, s, name;
+  try { ({ k, s, name } = soundOf(box.value)); }
+  catch (e) { hint.textContent = e.message; hint.classList.add("err"); return say(e.message, true); }
   const go = (how) => {
     const err = U().register(k, JSON.stringify(s));
-    if (err) return say(err, true);
+    if (err) { hint.textContent = `${err} (the last good version keeps playing)`; hint.classList.add("err"); return say(err, true); }
     if (how === "rename") retire(k, spec.Name);
     retired[k].delete(name);
+    const text = box.value, a = box.selectionStart, b = box.selectionEnd, typing = document.activeElement === box;
     registered[k].add(name); kind = k; open(name);  // read back: built-in patch names come back with their units
-    say(`imported ${k} ${name}`);
+    if (keep) { box.value = text; if (typing) box.setSelectionRange(a, b); }
+    hint.textContent = `✓ applied: ${k} ${name}`; hint.classList.remove("err");
+    say(`applied ${k} ${name}`);
   };
-  if (spec && k === kind && name === spec.Name) return go();
+  if (spec && k === kind && name === spec.Name) {
+    if (builtin || (!registered[k].has(name) && JSON.parse(U().names(k)).includes(name))) {
+      // an edit of a built-in becomes a copy, as in the editor; the box's
+      // :name follows so the next pause applies to the copy
+      const to = freeName(name), d = to.length - name.length, a = box.selectionStart, b = box.selectionEnd;
+      const at = box.value.search(new RegExp(":name\\s+:" + name.replace(/[.*+?^$()|[\]\\{}]/g, "\\$&") + "(?![\\w-])"));
+      box.value = box.value.replace(new RegExp("(:name\\s+):" + name.replace(/[.*+?^$()|[\]\\{}]/g, "\\$&") + "(?![\\w-])"), `$1:${to}`);
+      if (at >= 0 && document.activeElement === box) box.setSelectionRange(a + (a > at ? d : 0), b + (b > at ? d : 0));
+      s.Name = name = to;
+    }
+    return go();
+  }
   // a built-in name is refused by register below; ask only about names that would register
   if (JSON.parse(U().names(k)).includes(name) && !registered[k].has(name) && !retired[k].has(name)) return go();
-  askName(k, k === kind && spec ? spec.Name : null, name, $("import"), go);
+  hint.textContent = `${name} is a new name: choose below`; hint.classList.remove("err");
+  askName(k, k === kind && spec ? spec.Name : null, name, $("edn"), go, () => { hint.textContent = "not applied: the name is unchanged in the editor"; });
 }
 
 // A name change creates a sound, so the page asks first: create it beside the
@@ -704,7 +735,7 @@ function askName(k, from, to, near, onOk, onCancel) {
   if (canRename) btn(`rename ${from} → ${to}`, () => onOk("rename"));
   btn("cancel", () => onCancel && onCancel());
   if (!canRename && from && !mine) bar.append(el("span", "hint", `${from} is a built-in: it can be copied, not renamed`));
-  near.closest(".bar, .head").after(bar);  // by the name field, or by the EDN box
+  (near.closest(".hl") || near.closest(".bar, .head")).after(bar);  // by the name field, or under the EDN box
   bar.hidden = false; bar.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
@@ -892,6 +923,23 @@ function highlightBox(ta) {
 }
 highlightBox($("edn")); highlightBox($("takeedn"));
 
+// ---- help line ----
+// The browser's tooltips cover the controls they describe, so each title
+// moves to data-tip the first time the pointer reaches it (before the
+// tooltip's delay) and shows in a line along the bottom instead. Titles set
+// later, on rebuilt rows, are caught the same way.
+function tipOf(t) {
+  const e = t && t.closest && t.closest("[title], [data-tip]");
+  if (!e) return "";
+  if (e.hasAttribute("title")) { e.dataset.tip = e.title; e.removeAttribute("title"); }
+  return e.dataset.tip;
+}
+document.addEventListener("pointerover", (e) => { if (e.pointerType === "mouse") $("helpline").textContent = tipOf(e.target); });
+// keyboard focus too, but only where there's a pointer to hover: on a touch
+// screen the line would just cover the page
+if (matchMedia("(hover: hover)").matches) document.addEventListener("focusin", (e) => { $("helpline").textContent = tipOf(e.target); });
+document.addEventListener("pointerleave", () => { $("helpline").textContent = ""; });
+
 // ---- wiring ----
 $("name").onchange = () => {
   const to = $("name").value.trim(), from = spec.Name;
@@ -933,7 +981,8 @@ $("mood").onchange = () => { applyBed(); bedMark("mood", $("mood").value); lastD
 const NOTE = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
 $("copy").onclick = async () => { try { await navigator.clipboard.writeText($("edn").value); say("EDN copied"); } catch { $("edn").select(); say("select the EDN to copy it"); } };
 $("save").onclick = () => { const a = el("a"); a.href = URL.createObjectURL(new Blob([$("edn").value + "\n"], { type: "application/edn" })); a.download = `${spec.Name}.edn`; a.click(); };
-$("import").onclick = importEDN;
+let ednTimer = 0;
+$("edn").addEventListener("input", () => { clearTimeout(ednTimer); ednTimer = setTimeout(() => importEDN(true), 400); });
 addEventListener("keydown", (e) => {
   const typing = /textarea|select/i.test(document.activeElement.tagName) || (document.activeElement.tagName === "INPUT" && !/range|checkbox/.test(document.activeElement.type));
   // space plays or stops the bed (and ends a repeat) rather than scrolling the page

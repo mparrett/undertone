@@ -22,7 +22,7 @@
   .help { cursor: help; color: var(--src); font-weight: 400; letter-spacing: 0; }
   .lab { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 16px 0 6px; font-weight: 600; }
   #status { color: var(--mut); min-height: 1.45em; font-size: 13px; white-space: pre-wrap; }
-  #status.err { color: var(--err); }
+  #status.err, #takeednhint.err { color: var(--err); }
   .bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
   button, .chip, select, input[type=number], input[type=text], textarea {
     font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; }
@@ -83,6 +83,7 @@
   #pads button.hit, #meterlbl span.hit { background: var(--src); color: var(--bg); transition: none; }
   #meterlbl span { transition: background .3s, color .3s; border-radius: 3px; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
+  #takeedn { min-height: 4.5em; height: 4.5em; resize: vertical; }
   .hint { color: var(--mut); font-size: 12px; }
   #guide { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px 16px; margin: 0 0 16px; font-size: 13px; }
   #guide summary { cursor: pointer; color: var(--src); padding: 8px 0; font-weight: 600; letter-spacing: .05em; }
@@ -204,6 +205,13 @@
   <div class="bar" id="takebox" hidden><button id="playtake"></button><span class="hint" id="takehint"></span></div>
   <label class="sl" id="gainbox">gain <input type="range" id="sgain" min="0" max="2" step="0.05" value="1"><output></output></label>
   <p class="hint" id="audhint"></p>
+  <div id="takeednbox">
+    <div class="bar"><span class="hint">edn: the take key <kbd>1</kbd> fires</span>
+      <button id="copytake">copy</button><button id="resettake" hidden>reset</button>
+      <label class="hint" title="Paste a take (a vector of trigger maps) or a whole board block; its shot maps are registered"><input type="checkbox" id="override"> override: keys play this take</label></div>
+    <textarea id="takeedn" spellcheck="false"></textarea>
+    <p class="hint" id="takeednhint"></p>
+  </div>
 
   <div class="lab">EDN</div>
   <div class="bar"><button id="copy">copy</button><button id="save">download</button>
@@ -431,6 +439,8 @@ function renderAudition() {
   const x = el("button", null, ""); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat and all sound";
   x.onclick = () => { stopLoop(); setPlaying(false); }; $("pads").append(x);
   $("solo").hidden = shot;
+  $("takeednbox").hidden = !shot;
+  showKeyTake();
   $("audhint").innerHTML = shot
     ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it"
     : kind === "lead"
@@ -492,12 +502,14 @@ function fire(d) {
     flash($("pads").children[d]); return;
   }
   if (!playing) setPlaying(true);
+  if (overrideTake) return fireTake(d);
   U().shot(spec.Name, d, +$("sgain").value);
   flash($("pads").children[d]); scopeNote(SHOTS, 60 + d * 2, 1); shotShape(spec.Name, d, +$("sgain").value);
 }
 
 // Register what is on screen, then retune the bed to it. Every edit runs this.
 function commit(refire) {
+  showKeyTake();
   if (builtin) {  // the first edit of a built-in: it becomes a copy
     builtin = false;
     if (JSON.parse(U().names(kind)).includes(spec.Name) && !registered[kind].has(spec.Name)) spec.Name = freeName(spec.Name);
@@ -595,6 +607,73 @@ function importEDN() {
   say(`imported ${k} ${name}`);
 }
 
+// ---- the take the keys fire, as EDN; or a pasted take they fire instead ----
+// Unticked, the box shows key 1's take and follows the shot and gain, until
+// it is edited (reset brings it back). Ticked, keys 1-8 play the pasted take:
+// key N shifts each trigger's :degree by N-1, so key 1 plays it as pasted; a
+// :note trigger stays put (a note is absolute, and the page has no scale);
+// the gain slider scales every trigger. Its shot maps are registered first,
+// so a whole sfx-board block works.
+let takeDirty = false, overrideTake = null;
+function showKeyTake() {
+  if (!spec || takeDirty || $("override").checked) return;
+  $("takeedn").value = `[{:shot :${spec.Name} :degree 0 :gain ${+$("sgain").value}}]`;
+}
+function parseTake(text) {
+  // readEDN reads numbers as JS numbers; a 64-bit seed must stay whole
+  const forms = readEDN("[" + text.replace(/(:seed\s+)(-?\d+)/g, '$1"$2"') + "\n]");
+  let tk = null; const names = [];
+  for (const f of forms) {
+    if (Array.isArray(f)) tk = f;
+    else if (f && typeof f === "object" && ":gate-ms" in f) {
+      const n = kw(f[":name"]);
+      const err = U().register("shot", JSON.stringify({ Name: n, GateMS: f[":gate-ms"], Units: unitsOf(f[":patch"]) }));
+      if (err) throw new Error(`${n}: ${err}`);
+      registered.shot.add(n); names.push(n);
+    } else if (f && typeof f === "object" && ":shot" in f) tk = [f];
+  }
+  if (!tk || !tk.length) throw new Error("no take: paste a vector of trigger maps, [{:shot :tink :degree 0} …]");
+  const trs = tk.map((m) => Object.fromEntries(Object.entries(m).map(([k, v]) => [kw(k), kw(v)])));
+  return { trs, names };
+}
+function useTake() {
+  if (!$("override").checked) { overrideTake = null; $("takeednhint").textContent = ""; showKeyTake(); return; }
+  try {
+    const { trs, names } = parseTake($("takeedn").value);
+    overrideTake = trs;
+    $("takeednhint").textContent = `keys play this take (${trs.length} trigger${trs.length === 1 ? "" : "s"})` +
+      (names.length ? `; registered ${names.join(", ")}` : "") +
+      ". Key N shifts each :degree by N−1 (key 1 as pasted); a :note stays put; gain scales them all.";
+    $("takeednhint").classList.remove("err"); say("override on");
+  } catch (e) {
+    overrideTake = null; $("override").checked = false;
+    $("takeednhint").textContent = e.message; $("takeednhint").classList.add("err"); say(e.message, true);
+  }
+}
+function fireTake(d) {
+  const g = +$("sgain").value;
+  const trs = overrideTake.map((t) => {
+    const o = { ...t };
+    if (o.degree != null) o.degree += d;
+    o.gain = (o.gain ?? 1) * g;
+    return o;
+  });
+  const take = JSON.stringify(trs), r = JSON.parse(U().trigger(take) || "{}");
+  if (r && r.error) return say(r.error, true);
+  flash($("pads").children[d]); scopeNote(SHOTS, 60 + d * 2, 1); takeShape(take);
+}
+$("override").onchange = useTake;
+$("takeedn").oninput = () => {
+  takeDirty = true; $("resettake").hidden = false;
+  if ($("override").checked) useTake();
+};
+$("resettake").onclick = () => {
+  takeDirty = false; $("resettake").hidden = true;
+  $("takeednhint").textContent = ""; $("takeednhint").classList.remove("err");
+  if ($("override").checked) { $("override").checked = false; useTake(); } else showKeyTake();
+};
+$("copytake").onclick = async () => { try { await navigator.clipboard.writeText($("takeedn").value); say("take copied"); } catch { $("takeedn").select(); say("select the take to copy it"); } };
+
 // ---- wiring ----
 $("name").onchange = () => { spec.Name = $("name").value.trim(); commit(); };
 $("gate").onchange = () => { if (kind === "shot") spec.GateMS = +$("gate").value; else spec.Gate = +$("gate").value; commit(true); };
@@ -616,7 +695,7 @@ $("solo").onclick = () => { solo = !solo; if (solo) bedOn = true; bedChips(); };
 $("silent").onclick = () => { bedOn = !bedOn; if (!bedOn) solo = false; bedChips(); };
 for (const id of ["level", "tension", "seed", "sgain"]) {
   const r = $(id), o = r.nextElementSibling; o.value = r.value;
-  r.oninput = () => { o.value = r.value; if (id !== "sgain") applyBed(); };
+  r.oninput = () => { o.value = r.value; if (id !== "sgain") applyBed(); else showKeyTake(); };
   if (id === "seed") r.onchange = () => bedMark("seed", `seed ${r.value}`);  // level and tension are traced instead
 }
 $("mood").onchange = () => { applyBed(); bedMark("mood", $("mood").value); lastDrone = -1; };
@@ -672,8 +751,9 @@ function bedMark(type, label) { if (playing) marks.push({ t: now(), kind: "bed",
 // A fired shot's loudness envelope, from the same render measure() uses but
 // with the music silent, cached by the take's hash: an edit changes the hash.
 const shapes = new Map();
-function shotShape(name, d, gain) {
-  const take = JSON.stringify([{ shot: name, degree: d, gain }]), key = U().hash(take, 2.5, 0);
+function shotShape(name, d, gain) { takeShape(JSON.stringify([{ shot: name, degree: d, gain }])); }
+function takeShape(take) {
+  const key = U().hash(take, 2.5, 0);
   let m = shapes.get(key);
   if (!m) {
     m = JSON.parse(U().measure(take, 2.5, 0));

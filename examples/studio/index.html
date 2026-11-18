@@ -29,7 +29,9 @@
   .edgebar .edge:hover { color: var(--fg); }
   /* the units' size toggle sits on their top edge instead */
   /* the units' tab row: scope fade, then the tab, which sits on the first unit's top edge */
-  .edgebar.top { margin: 12px 0 -1px; }
+  .edgebar.top { margin: 12px 0 -1px; flex-wrap: wrap; align-items: flex-end; row-gap: 8px; }
+  .edgebar.top .head { margin-right: auto; padding-bottom: 4px; }  /* name and gate left; fade and the tab right, the tab on the units' edge */
+  .edgebar.top label.fade { padding-bottom: 10px; }  /* centred on the name and gate boxes beside it */
   .edgebar.top + #units { margin-top: 0; }
   .edgebar.top .edge { border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; white-space: nowrap; }
   .edgebar label.fade { display: flex; gap: 6px; align-items: center; color: var(--mut); font-size: 12px; }
@@ -252,11 +254,6 @@
       <li>This is a spike: nothing is saved in the page. Download what you want to keep.</li>
     </ul>
   </details>
-  <div class="head">
-    <label title="the name a game triggers it by; a new name asks before it makes a new sound">name <input type="text" id="name" spellcheck="false"></label>
-    <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
-      <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
-  </div>
   <div class="bar namebar" id="namebar" hidden></div>
   <div class="bar" id="kitbox" hidden>
     <label class="hint">note <input type="number" id="kitnote" min="0" max="127" style="width:5em"></label>
@@ -264,6 +261,11 @@
   </div>
 
   <div class="edgebar top">
+  <div class="head">
+    <label title="the name a game triggers it by; a new name asks before it makes a new sound">name <input type="text" id="name" spellcheck="false"></label>
+    <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
+      <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
+  </div>
     <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label>
     <button id="compact" class="edge"></button></div>
   <div id="units"></div>
@@ -784,7 +786,7 @@ function askName(k, from, to, near, onOk, onCancel) {
   if (canRename) btn(`rename ${from} → ${to}`, () => onOk("rename"));
   btn("cancel", () => onCancel && onCancel());
   if (!canRename && from && !mine) bar.append(el("span", "hint", `${from} is a built-in: it can be copied, not renamed`));
-  (near.closest(".hl") || near.closest(".bar, .head")).after(bar);  // by the name field, or under the EDN box
+  if (near.closest(".hl")) near.closest(".hl").after(bar); else (near.closest(".edgebar") || near.closest(".bar, .head")).before(bar);  // by the name field, or under the EDN box
   bar.hidden = false; bar.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 

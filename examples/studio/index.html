@@ -46,7 +46,9 @@
   /* the units' size toggle sits on their top edge instead */
   /* the units' tab row: scope fade, then the tab, which sits on the first unit's top edge */
   .edgebar.top { margin: 12px 0 -1px; flex-wrap: wrap; align-items: flex-end; row-gap: 8px; }
-  .edgebar.top .head { margin-right: auto; padding-bottom: 9px; }  /* name and gate left; fade and the tab right, the tab on the units' edge */
+  /* name and gate on their own line; under them UNITS and the tab, on the units' top edge, as SCOPE has */
+  .edgebar.top .head { flex-basis: 100%; margin-bottom: 8px; }
+  .edgebar.top > .lab { margin: 0 auto 4px 0; }
   .scoperow.thin label.fade { display: none; }  /* the thin strip draws no fading marks worth tuning */
   .edgebar.top + #units { margin-top: 0; }
   .edgebar.top .edge { border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; white-space: nowrap; }
@@ -335,7 +337,7 @@
     <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
       <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
   </div>
-    <button id="compact" class="edge"></button></div>
+    <span class="lab">UNITS</span><button id="compact" class="edge"></button></div>
   <div id="units"></div>
 
   <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select>
@@ -1299,7 +1301,7 @@ $("fade").oninput = () => setFade(0.3 * 100 ** +$("fade").value);
 window.undertoneStudioFailed = (msg) => say("audio failed: " + msg, true);
 // Compact rows are a viewer's preference, kept across visits.
 const setCompact = (on) => { $("units").classList.toggle("compact", on); if (spec) renderUnits();
-  $("compact").textContent = on ? "▾ expand units" : "▴ compact units";
+  $("compact").textContent = on ? "▾ expand" : "▴ shrink";
   $("compact").title = on ? "full units: each argument with its name and slider" : "compact units: one line each";
   try { localStorage.setItem("studio-compact", on ? "1" : ""); } catch {} };
 try { setCompact(localStorage.getItem("studio-compact") === "1"); } catch { setCompact(false); }

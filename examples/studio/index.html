@@ -100,8 +100,9 @@
   .takerow .tlabel { color: var(--mut); font-size: 12px; cursor: pointer; flex-basis: 100%; margin-top: 4px; }
   .takerow.sel { box-shadow: -3px 0 0 var(--src); padding-left: 6px; }
   .takerow.sel .tlabel { color: var(--src); }
-  .takerow.sel .tlabel::before { content: "▸ "; }
+  .takerow.sel .tlabel::after { content: "  · keys"; color: var(--mut); font-style: normal; }
   .takerow .tsub { color: var(--mut); font-style: italic; }
+  #pads button:disabled { opacity: .35; cursor: default; }
   .takerow button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
   /* EDN boxes: a highlighted <pre> sits under a transparent textarea. Both
      share one grid cell, font, padding and border, and neither wraps, so
@@ -468,6 +469,7 @@ function renderAudition() {
     const b = el("button", null, `${d + 1}`); b.title = `scale degree ${d + 1}, key ${d + 1}; shift-click repeats`;
     b.onclick = (e) => e.shiftKey ? loop(d) : (stopLoop(), fire(d)); $("pads").append(b);
   }
+  if (shot) { const t = el("button", null, "t"); t.disabled = true; t.title = "the take as pasted: paste takes in TAKE EDN to use it"; $("pads").append(t); }
   const mel = el("button", null, ""); mel.innerHTML = "&#9835;"; mel.id = "melody";
   mel.title = shot ? "play the xsofy title theme's melody on this shot (again to stop)"
     : `play the xsofy title theme through the bed's voices, with this ${kind} (again to stop)`;
@@ -479,7 +481,7 @@ function renderAudition() {
   renderTakeRows();
   showKeyTake();
   $("audhint").innerHTML = shot
-    ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it. Paste takes in TAKE EDN and each gets a row like this one, plus <kbd>t</kbd>: the take as pasted. The keys play the selected row (▸); a click selects its row"
+    ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it. Paste takes in TAKE EDN and each gets a row like this one, plus <kbd>t</kbd>: the take as pasted. The keyboard plays the row marked · keys; a click selects a row"
     : kind === "lead"
       ? "keys <kbd>1</kbd>–<kbd>8</kbd> play this lead on that degree (it plays solo); ♫ plays the title theme with it. The bed also plays it in the generator's place"
       : "keys <kbd>1</kbd>–<kbd>8</kbd> play a lead note over this palette; ♫ plays the title theme through it. <b>solo</b> hears the track being edited alone";
@@ -661,8 +663,19 @@ function takeState() {
   c.textContent = n ? `edited: ${n} take${n === 1 ? "" : "s"}` : "default";
   c.classList.toggle("on", n > 0); $("resettake").hidden = !takeDirty;
 }
+// The shot an edited take follows: set when every trigger in it plays the
+// shot that was open, so it is a tweak of that shot's take rather than a
+// pasted one. Opening or renaming a shot then points it at the new name and
+// keeps the tweak; pasted takes stay put while shots are browsed.
+let followShot = null;
 function showKeyTake() {
   takeState();
+  if (spec && takeDirty && followShot && followShot !== spec.Name) {
+    const esc = followShot.replace(/[.*+?^$()|[\]\\{}]/g, "\\$&");
+    const re = new RegExp("(:shot\\s+):" + esc + "(?![\\w*+!?'<>=/.-])", "g");
+    $("takeedn").value = $("takeedn").value.replace(re, `$1:${spec.Name}`);
+    installTake(); return;
+  }
   if (!spec || takeDirty) return;
   $("takeedn").value = `[{:shot :${spec.Name} :degree 0 :gain ${+$("sgain").value}}]`;
 }
@@ -705,9 +718,12 @@ function installTake() {
     takeChunks($("takeedn").value).forEach((ch, i) => {
       const r = parseTake(ch);
       const lab = (/^\s*;+\s*(\S.*)$/m.exec(ch) || [])[1];
-      got.push({ name: r.names[0] || r.trs[0].shot, label: lab || "", trs: r.trs }); names.push(...r.names);
+      // name the shot that plays; a map the block registers may not be it
+      // (a board block of a built-in registers :x-copy but triggers :x)
+      got.push({ name: r.trs[0].shot, label: lab || "", trs: r.trs }); names.push(...r.names);
     });
     takes = got; if (selRow < 0 || selRow >= takes.length) selRow = 0;
+    followShot = spec && takes.length === 1 && takes[0].trs.every((t) => t.shot === spec.Name) ? spec.Name : null;
     h.textContent = `✓ ${takes.length} take${takes.length === 1 ? "" : "s"} installed` +
       (names.length ? `; registered ${names.join(", ")}` : "") +
       ". Pads 1–8 put the take's first degree on that degree; t plays it as pasted; a :note stays put.";
@@ -775,7 +791,7 @@ $("takeedn").oninput = () => {
   clearTimeout(takeTimer); takeTimer = setTimeout(installTake, 400);
 };
 $("resettake").onclick = () => {
-  takeDirty = false; takes = []; selRow = -1; clearTimeout(takeTimer); renderTakeRows();
+  takeDirty = false; takes = []; selRow = -1; followShot = null; clearTimeout(takeTimer); renderTakeRows();
   $("takeednhint").textContent = ""; $("takeednhint").classList.remove("err");
   showKeyTake();
 };

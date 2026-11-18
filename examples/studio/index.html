@@ -18,9 +18,7 @@
   h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
   .sub { color: var(--mut); font-size: 12px; margin: 0 0 16px; }
   .head .views { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-  .titlebar { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-  .titlebar h1 { margin: 0; }
-  .chip.guide { margin-left: auto; color: var(--fx); border-color: color-mix(in srgb, var(--fx) 55%, var(--line));
+  .chip.guide { color: var(--fx); border-color: color-mix(in srgb, var(--fx) 55%, var(--line));
                 background: color-mix(in srgb, var(--fx) 10%, var(--panel)); cursor: pointer; }
   .chip.guide.on { color: var(--fg); background: color-mix(in srgb, var(--fx) 25%, var(--panel)); }
   /* the rows' size toggle: a small tab hanging from the units' bottom edge */
@@ -153,10 +151,10 @@
 <body>
 <main class="loading">
 <aside>
-  <div class="titlebar"><h1>UNDERTONE STUDIO</h1>
-    <span class="chip guide" id="guidechip" title="show or hide the how-to">? guide</span></div>
+  <h1>UNDERTONE STUDIO</h1>
   <p class="sub">shape a one-shot, a lead or a palette; hear it; take it away as EDN</p>
   <div class="bar" id="kinds"></div>
+  <div class="bar"><span class="chip guide" id="guidechip" title="show or hide the how-to">? guide</span></div>
   <div class="lab">OPEN A <span id="openkind">SHOT</span> <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
   <p class="hint" id="openhelp" hidden><i>Dashed italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
   <div class="bar" id="names"></div>

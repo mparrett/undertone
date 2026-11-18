@@ -15,10 +15,18 @@
   @media (min-width: 900px) { body { padding: 28px; } }
   /* the header strip: what the sidebar held, side by side; it wraps to a column on a phone */
   header.top { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-start; }
-  header.top > .brand { flex: 0 1 270px; }
+  header.top > .brand { flex: 0 1 250px; }
+  header.top > .kindcol { flex: 0 1 170px; }
   header.top > .open { flex: 1 1 300px; min-width: 0; }
   header.top > #trackbox { flex: 1 1 260px; min-width: 0; }
   header.top > .stat { flex: 0 1 220px; }
+  /* full width: fixed columns, so a palette's track picker doesn't push status onto a second line;
+     without it, the names take its column too */
+  @media (min-width: 1180px) {
+    header.top { display: grid; grid-template-columns: 200px 140px minmax(0, 1fr) minmax(0, 1fr) 190px; gap: 0 24px; }
+    header.top > .brand { grid-column: 1; } header.top > .kindcol { grid-column: 2; } header.top > .open { grid-column: 3; }
+    header.top > #trackbox { grid-column: 4; } header.top > .stat { grid-column: 5; }
+    header.top:has(#trackbox[hidden]) > .open { grid-column: 3 / 5; } }
   header.top .lab:first-child { margin-top: 0; }
   main.loading { opacity: .45; pointer-events: none; }
   h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
@@ -207,8 +215,11 @@
   <div class="brand">
   <h1>UNDERTONE STUDIO</h1>
   <p class="sub">shape a one-shot, a lead or a palette; hear it; take it away as EDN</p>
-  <div class="bar" id="kinds"></div>
   <div class="bar"><span class="chip guide" id="guidechip" title="show or hide the how-to">? guide</span></div>
+  </div>
+  <div class="kindcol">
+  <div class="lab">KIND</div>
+  <div class="bar" id="kinds"></div>
   </div>
   <div class="open">
   <div class="lab">OPEN A <span id="openkind">SHOT</span> <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>

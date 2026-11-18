@@ -17,7 +17,6 @@
   main.loading { opacity: .45; pointer-events: none; }
   h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
   .sub { color: var(--mut); font-size: 12px; margin: 0 0 16px; }
-  .head .views { margin-left: auto; display: flex; gap: 6px; align-items: center; }
   #names { align-content: flex-start; }
   #tracks .chip.lane { border-style: dashed; }
   #trackof { color: var(--fg); }  /* the open palette's name, a step brighter than the label */  /* drum lanes, after the bed layers */  /* rows packed at the top when it keeps a taller kind's height */
@@ -25,17 +24,17 @@
                 background: color-mix(in srgb, var(--fx) 10%, var(--panel)); cursor: pointer; }
   .chip.guide.on { color: var(--fg); background: color-mix(in srgb, var(--fx) 25%, var(--panel)); }
   /* the scope's size toggle: a small tab hanging from its bottom edge */
-  .edgebar { display: flex; justify-content: center; margin: -1px 0 12px; }
+  .edgebar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin: -1px 0 12px; }
   .edgebar .edge { font-size: 11px; color: var(--mut); padding: 1px 12px 2px; border-radius: 0 0 8px 8px; border-top: none; }
   .edgebar .edge:hover { color: var(--fg); }
   /* the units' size toggle sits on their top edge instead */
-  /* zero height: the tab overlays the space above and sits flush on the first unit's top edge */
-  .edgebar.top { height: 0; margin: 10px 0 0; position: relative; z-index: 1; }
-  .edgebar.top + #units { margin-top: 0; }  /* the gap above the units is the anchor's, so the tab lands on the edge */
-  .edgebar.top .edge { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); white-space: nowrap;
-                       border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; }
-  .head .views label.fade input { width: 70px; }
-  .head .views label.fade output { min-width: 5ch; font-size: 12px; white-space: nowrap; }
+  /* the units' tab row: scope fade, then the tab, which sits on the first unit's top edge */
+  .edgebar.top { margin: 12px 0 -1px; }
+  .edgebar.top + #units { margin-top: 0; }
+  .edgebar.top .edge { border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; white-space: nowrap; }
+  .edgebar label.fade { display: flex; gap: 6px; align-items: center; color: var(--mut); font-size: 12px; }
+  .edgebar label.fade input { width: 70px; }
+  .edgebar label.fade output { min-width: 5ch; white-space: nowrap; }
   .help { cursor: help; color: var(--src); font-weight: 400; letter-spacing: 0; }
   .lab { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 22px 0 8px; font-weight: 600; }
   #status { color: var(--mut); min-height: 1.45em; font-size: 13px; white-space: pre-wrap; }
@@ -257,8 +256,6 @@
     <label title="the name a game triggers it by; a new name asks before it makes a new sound">name <input type="text" id="name" spellcheck="false"></label>
     <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
       <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
-    <span class="views">
-      <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label></span>
   </div>
   <div class="bar namebar" id="namebar" hidden></div>
   <div class="bar" id="kitbox" hidden>
@@ -266,7 +263,9 @@
     <span class="chip" id="kitdef" title="leave this lane to the default kit">default kit</span>
   </div>
 
-  <div class="edgebar top"><button id="compact" class="edge"></button></div>
+  <div class="edgebar top">
+    <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label>
+    <button id="compact" class="edge"></button></div>
   <div id="units"></div>
 
   <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select>

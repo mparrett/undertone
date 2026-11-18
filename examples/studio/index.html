@@ -570,18 +570,24 @@ function render() {
 }
 
 // stack depth and which slots carry signal after each unit, as buildPatch counts them
+// What each unit reads off the stack, as buildPatch counts it (shotspec.go);
+// an svf with a depth reads two, its modulator on top of the signal.
+const NEED = { mul: 2, out: 1, lpf: 1, hpf: 1, send: 1, drive: 1, crush: 1, verb: 1, scale: 1, pitch: 1, svf: 1 };
+// The stack after each unit, true for signal and false for control; null
+// where the engine would refuse it (too few values, or more than eight).
 function stacks(units) {
   const out = []; let st = [];
   for (const u of units) {
-    const a = u.Args || [];
+    const a = u.Args || [], need = u.Op === "svf" && a[3] ? 2 : NEED[u.Op] || 0;
+    if (st.length < need) { out.push(null); continue; }
     switch (u.Op) {
       case "env": case "lfo": st.push(false); break;
       case "osc": case "pluck": st.push(true); break;
-      case "mul": { const b = st.pop(), x = st.pop(); if (x === undefined) { out.push(null); continue; } st.push(x || b); break; }
+      case "mul": { const b = st.pop(), x = st.pop(); st.push(x || b); break; }
       case "out": case "pitch": st.pop(); break;
-      case "svf": if (a[3]) st.splice(st.length - 2, 1); break;
+      case "svf": if (a[3]) st.pop(); break;  // the modulator, off the top; the filtered signal stays
     }
-    out.push(st.length > 8 || st.includes(undefined) ? null : [...st]);
+    out.push(st.length > 8 ? null : [...st]);
   }
   return out;
 }

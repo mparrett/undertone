@@ -636,18 +636,19 @@ function parseTake(text) {
   const trs = tk.map((m) => Object.fromEntries(Object.entries(m).map(([k, v]) => [kw(k), kw(v)])));
   return { trs, names };
 }
-function useTake() {
+function useTake(edited) {
   if (!$("override").checked) { overrideTake = null; $("takeednhint").textContent = ""; showKeyTake(); return; }
   try {
     const { trs, names } = parseTake($("takeedn").value);
     overrideTake = trs;
-    $("takeednhint").textContent = `keys play this take (${trs.length} trigger${trs.length === 1 ? "" : "s"})` +
+    $("takeednhint").textContent = (edited ? "✓ take installed: " : "") + `keys play this take (${trs.length} trigger${trs.length === 1 ? "" : "s"})` +
       (names.length ? `; registered ${names.join(", ")}` : "") +
       ". Key N shifts each :degree by N−1 (key 1 as pasted); a :note stays put; gain scales them all.";
     $("takeednhint").classList.remove("err"); say("override on");
   } catch (e) {
-    overrideTake = null; $("override").checked = false;
-    $("takeednhint").textContent = e.message; $("takeednhint").classList.add("err"); say(e.message, true);
+    // mid-edit, a typo shouldn't drop override: the last good take keeps playing
+    if (!(edited && overrideTake)) { overrideTake = null; $("override").checked = false; }
+    $("takeednhint").textContent = e.message + (edited && overrideTake ? " (keys still play the last good take)" : ""); $("takeednhint").classList.add("err"); say(e.message, true);
   }
 }
 function fireTake(d) {
@@ -662,13 +663,21 @@ function fireTake(d) {
   if (r && r.error) return say(r.error, true);
   flash($("pads").children[d]); scopeNote(SHOTS, 60 + d * 2, 1); takeShape(take);
 }
-$("override").onchange = useTake;
+$("override").onchange = () => { clearTimeout(takeTimer); useTake(); };
+// An edit installs itself once typing stops, and the hint says what became
+// of it: installed, a parse error, or held until override is ticked.
+let takeTimer = 0;
 $("takeedn").oninput = () => {
   takeDirty = true; $("resettake").hidden = false;
-  if ($("override").checked) useTake();
+  clearTimeout(takeTimer);
+  takeTimer = setTimeout(() => {
+    if ($("override").checked) return useTake(true);
+    $("takeednhint").classList.remove("err");
+    $("takeednhint").textContent = "edited; tick override to play it";
+  }, 400);
 };
 $("resettake").onclick = () => {
-  takeDirty = false; $("resettake").hidden = true;
+  takeDirty = false; $("resettake").hidden = true; clearTimeout(takeTimer);
   $("takeednhint").textContent = ""; $("takeednhint").classList.remove("err");
   if ($("override").checked) { $("override").checked = false; useTake(); } else showKeyTake();
 };

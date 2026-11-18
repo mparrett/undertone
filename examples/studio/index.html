@@ -49,10 +49,16 @@
   .head label { color: var(--mut); font-size: 13px; display: flex; gap: 6px; align-items: center; }
   .head input[type=number] { width: 6.5em; }
   #units { display: grid; gap: 6px; margin-top: 10px; }
-  .unit { display: grid; grid-template-columns: 2ch 5.5em 4.5em 1fr auto; gap: 8px; align-items: center;
+  .unit { display: grid; grid-template-columns: 3.5ch 5.5em 4.5em 1fr auto; gap: 8px; align-items: center;
           background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--k, var(--line)); border-radius: 8px; padding: 6px 8px; }
   .unit.bad { border-color: var(--err); }
   .unit .ix { color: var(--mut); font-size: 12px; }
+  .unit .grip { cursor: grab; touch-action: none; user-select: none; white-space: nowrap; }
+  .unit .grip:hover { color: var(--fg); }
+  .unit.dragging { opacity: .5; }
+  .unit.dragging .grip { cursor: grabbing; }
+  .unit.drop-before { box-shadow: 0 -3px 0 var(--src); }
+  .unit.drop-after { box-shadow: 0 3px 0 var(--src); }
   .unit .stack { display: flex; gap: 2px; align-items: center; }
   .unit .stack b { width: 6px; height: 12px; border-radius: 2px; background: var(--mod); }
   .unit .stack b.sig { background: var(--src); }
@@ -63,13 +69,13 @@
   .unit .doc { grid-column: 2 / -1; color: var(--mut); font-size: 11px; margin-top: -2px; }
   /* phone: a unit's arguments take a full row under its name and buttons */
   @media (max-width: 560px) {
-    .unit, #units.compact .unit { grid-template-columns: 2ch 5.5em 4.5em minmax(0, 1fr) auto; }
+    .unit, #units.compact .unit { grid-template-columns: 3.5ch 5.5em 4.5em minmax(0, 1fr) auto; }
     .unit .args { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
     .unit .doc { grid-column: 1 / -1; grid-row: 3; }
   }
   /* compact: a unit to a line, for long patches and palettes */
   #units.compact { gap: 3px; }
-  #units.compact .unit { padding: 2px 6px; gap: 6px; grid-template-columns: 2ch 5em 3.5em 1fr auto; border-radius: 6px; }
+  #units.compact .unit { padding: 2px 6px; gap: 6px; grid-template-columns: 3.5ch 5em 3.5em 1fr auto; border-radius: 6px; }
   #units.compact .unit .doc { display: none; }
   #units.compact .unit select { padding: 1px 4px; font-size: 12px; }
   #units.compact .unit .args { display: flex; flex-wrap: wrap; gap: 0 12px; }
@@ -419,7 +425,9 @@ function renderUnits() {
   units.forEach((u, i) => {
     const op = OPS[u.Op], row = el("div", "unit");
     row.style.setProperty("--k", `var(--${op ? op.k : "line"})`);
-    row.append(el("span", "ix", i));
+    const grip = el("span", "ix grip", `⠿${i}`); grip.title = `unit ${i}: drag to move`;
+    grip.addEventListener("pointerdown", (e) => dragUnit(e, i, row));
+    row.append(grip);
     const sel = el("select");
     for (const o of Object.keys(OPS)) { const opt = el("option", null, o); opt.selected = o === u.Op; sel.append(opt); }
     sel.onchange = () => { u.Op = sel.value; u.Args = [...DEFAULT_ARGS[u.Op]]; u.Shape = u.Op === "osc" ? "sine" : ""; edited(); };
@@ -439,8 +447,6 @@ function renderUnits() {
     row.append(args);
     const ops = el("span", "ops");
     const mk = (t, f, tip) => { const b = el("button", null, t); b.title = tip; b.onclick = f; ops.append(b); };
-    mk("↑", () => { if (i) { [units[i - 1], units[i]] = [units[i], units[i - 1]]; edited(); } }, "move up");
-    mk("↓", () => { if (i < units.length - 1) { [units[i + 1], units[i]] = [units[i], units[i + 1]]; edited(); } }, "move down");
     mk("⧉", () => { units.splice(i + 1, 0, JSON.parse(JSON.stringify(u))); edited(); }, "duplicate");
     mk("×", () => { units.splice(i, 1); edited(); }, "remove");
     row.append(ops);
@@ -449,6 +455,28 @@ function renderUnits() {
   });
 }
 
+// Drag a unit by its grip to reorder. Pointer events rather than HTML drag
+// and drop, which touch screens don't fire. A line marks where it will land.
+function dragUnit(e, from, row) {
+  if (e.button) return;
+  e.preventDefault();
+  const grip = e.currentTarget, rows = [...$("units").children];
+  grip.setPointerCapture(e.pointerId); row.classList.add("dragging");
+  let to = from;
+  const mark = () => rows.forEach((r, j) => { r.classList.toggle("drop-before", j === to && to < from); r.classList.toggle("drop-after", j === to && to > from); });
+  const move = (ev) => {
+    to = rows.findIndex((r) => ev.clientY < r.getBoundingClientRect().bottom);
+    if (to < 0) to = rows.length - 1;
+    mark();
+  };
+  const up = () => {
+    grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); grip.removeEventListener("pointercancel", up);
+    rows.forEach((r) => r.classList.remove("dragging", "drop-before", "drop-after"));
+    if (to === from) return;
+    const units = patch().Units; units.splice(to, 0, units.splice(from, 1)[0]); edited();
+  };
+  grip.addEventListener("pointermove", move); grip.addEventListener("pointerup", up); grip.addEventListener("pointercancel", up);
+}
 function argControl(box, u, j, label, lo, hi, mode, unit) {
   const l = el("label", "sl"), r = el("input"), n = el("input");
   r.type = "range"; n.type = "number";

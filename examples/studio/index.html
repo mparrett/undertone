@@ -16,7 +16,8 @@
   /* the header strip: what the sidebar held, side by side; it wraps to a column on a phone */
   header.top { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-start; position: relative; padding-right: 40px; }
   /* the guide's [?] in the page's top right corner, out of the columns' way */
-  header.top > #guidechip { position: absolute; top: -4px; right: 0; padding: 2px 7px; }
+  header.top > #guidechip { position: absolute; top: -4px; right: 0; width: 28px; height: 28px; padding: 0; border-radius: 50%;
+                           display: grid; place-items: center; font-weight: 600; }
   header.top > .brand { flex: 0 1 250px; }
   header.top > .kindcol { flex: 0 1 170px; }
   header.top > .open { flex: 1 1 300px; min-width: 0; }
@@ -221,7 +222,7 @@
 <body>
 <main class="loading">
 <header class="top">
-  <span class="chip guide" id="guidechip" title="the guide: how to use the studio">[?]</span>
+  <span class="chip guide" id="guidechip" title="the guide: how to use the studio">?</span>
   <div class="brand">
   <h1>UNDERTONE STUDIO</h1>
   <p class="sub">shape a one-shot, a lead or a palette; hear it; take it away as EDN</p>

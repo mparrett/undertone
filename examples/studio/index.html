@@ -18,6 +18,15 @@
   h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
   .sub { color: var(--mut); font-size: 12px; margin: 0 0 16px; }
   .head .views { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .titlebar { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .titlebar h1 { margin: 0; }
+  .chip.guide { margin-left: auto; color: var(--fx); border-color: color-mix(in srgb, var(--fx) 55%, var(--line));
+                background: color-mix(in srgb, var(--fx) 10%, var(--panel)); cursor: pointer; }
+  .chip.guide.on { color: var(--fg); background: color-mix(in srgb, var(--fx) 25%, var(--panel)); }
+  /* the rows' size toggle: a small tab hanging from the units' bottom edge */
+  .edgebar { display: flex; justify-content: center; margin: -4px 0 6px; }
+  .edgebar .edge { font-size: 11px; color: var(--mut); padding: 1px 12px 2px; border-radius: 0 0 8px 8px; border-top: none; }
+  .edgebar .edge:hover { color: var(--fg); }
   .head .views label.fade input { width: 70px; }
   .head .views label.fade output { min-width: 5ch; font-size: 12px; white-space: nowrap; }
   .help { cursor: help; color: var(--src); font-weight: 400; letter-spacing: 0; }
@@ -144,7 +153,8 @@
 <body>
 <main class="loading">
 <aside>
-  <h1>UNDERTONE STUDIO</h1>
+  <div class="titlebar"><h1>UNDERTONE STUDIO</h1>
+    <span class="chip guide" id="guidechip" title="show or hide the how-to">? guide</span></div>
   <p class="sub">shape a one-shot, a lead or a palette; hear it; take it away as EDN</p>
   <div class="bar" id="kinds"></div>
   <div class="lab">OPEN A <span id="openkind">SHOT</span> <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
@@ -231,10 +241,9 @@
   <div class="head">
     <label>name <input type="text" id="name" spellcheck="false"></label>
     <label id="gatebox"><span id="gatelbl">gate</span> <input type="number" id="gate"></label>
-    <span class="views"><span class="chip" id="compact" title="a unit to a line">compact rows</span>
+    <span class="views">
       <span class="chip" id="thinscope" title="the scope as a thin strip without labels (or click the scope)">thin scope</span>
-      <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label>
-      <span class="chip" id="guidechip" title="show or hide the how-to">guide</span></span>
+      <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label></span>
   </div>
   <div class="bar namebar" id="namebar" hidden></div>
   <div class="bar" id="tracks"></div>
@@ -244,6 +253,7 @@
   </div>
 
   <div id="units"></div>
+  <div class="edgebar"><button id="compact" class="edge"></button></div>
   <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select>
     <span class="hint">the bars after each unit are its stack: <b style="color:var(--src)">signal</b>, <b style="color:var(--mod)">control</b></span></div>
 
@@ -342,7 +352,22 @@ function buildKinds() {
     $("kinds").append(c);
   }
 }
+// The name list keeps the height of the longest kind's, so switching kinds
+// doesn't move everything below it. Measured once the engine is up, and on
+// a resize (the chips rewrap).
+let namesMin = 0;
+function measureNames() {
+  const box = $("names"); box.style.minHeight = "";
+  let h = 0;
+  for (const k of ["shot", "lead", "palette"]) {
+    box.replaceChildren(...JSON.parse(U().names(k)).map((n) => el("span", "chip", n)));
+    h = Math.max(h, box.offsetHeight);
+  }
+  namesMin = h; buildNames();
+}
+addEventListener("resize", () => { if (U()) measureNames(); });
 function buildNames() {
+  $("names").style.minHeight = namesMin ? namesMin + "px" : "";
   $("names").replaceChildren();
   for (const n of JSON.parse(U().names(kind))) {
     if (retired[kind].has(n)) continue;
@@ -1133,8 +1158,11 @@ $("fade").oninput = () => setFade(0.3 * 100 ** +$("fade").value);
 
 window.undertoneStudioFailed = (msg) => say("audio failed: " + msg, true);
 // Compact rows are a viewer's preference, kept across visits.
-const setCompact = (on) => { $("units").classList.toggle("compact", on); if (spec) renderUnits(); $("compact").classList.toggle("on", on); try { localStorage.setItem("studio-compact", on ? "1" : ""); } catch {} };
-try { setCompact(localStorage.getItem("studio-compact") === "1"); } catch {}
+const setCompact = (on) => { $("units").classList.toggle("compact", on); if (spec) renderUnits();
+  $("compact").textContent = on ? "▾ expand rows" : "▴ compact rows";
+  $("compact").title = on ? "full rows: each argument with its name and slider" : "compact rows: a unit to a line";
+  try { localStorage.setItem("studio-compact", on ? "1" : ""); } catch {} };
+try { setCompact(localStorage.getItem("studio-compact") === "1"); } catch { setCompact(false); }
 $("compact").onclick = () => setCompact(!$("units").classList.contains("compact"));
 // The guide is out of the way until the guide chip shows it; closing it
 // hides it again.
@@ -1159,7 +1187,7 @@ function openFromHash() {
 $("playtake").onclick = () => { if (!playing) setPlaying(true); U().trigger(JSON.stringify(take)); };
 window.undertoneStudioReady = () => {
   for (const m of JSON.parse(U().names("mood"))) { const o = el("option", null, m); o.selected = m === "dungeon"; $("mood").append(o); }
-  buildKinds(); openFirst();
+  buildKinds(); openFirst(); measureNames();
   $("play").disabled = false; setPlaying(false);
   document.querySelector("main").classList.remove("loading");
   requestAnimationFrame(meters);

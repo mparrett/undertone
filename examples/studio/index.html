@@ -21,8 +21,8 @@
   .chip.guide { color: var(--fx); border-color: color-mix(in srgb, var(--fx) 55%, var(--line));
                 background: color-mix(in srgb, var(--fx) 10%, var(--panel)); cursor: pointer; }
   .chip.guide.on { color: var(--fg); background: color-mix(in srgb, var(--fx) 25%, var(--panel)); }
-  /* the rows' size toggle: a small tab hanging from the units' bottom edge */
-  .edgebar { display: flex; justify-content: center; margin: -4px 0 6px; }
+  /* the scope's size toggle: a small tab hanging from its bottom edge */
+  .edgebar { display: flex; justify-content: center; margin: -1px 0 12px; }
   .edgebar .edge { font-size: 11px; color: var(--mut); padding: 1px 12px 2px; border-radius: 0 0 8px 8px; border-top: none; }
   .edgebar .edge:hover { color: var(--fg); }
   .head .views label.fade input { width: 70px; }
@@ -46,7 +46,7 @@
   /* registered this session: dashed and in the control colour, so it can't be read as selected (solid gold) */
   .chip.reg { font-style: italic; border-style: dashed; border-color: color-mix(in srgb, var(--mod) 70%, var(--line)); }
   #scope.thin { height: 34px; }
-  #scope { cursor: pointer; display: block; margin: 0 0 16px; width: 100%; height: 118px; background: #07090a; border: 1px solid var(--line); border-radius: 8px; }
+  #scope { cursor: pointer; display: block; margin: 0; width: 100%; height: 118px; background: #07090a; border: 1px solid var(--line); border-radius: 8px; }
   #play { min-width: 6.5em; border-color: #3d5a47; background: #18241d; }
   #play.on { border-color: var(--src); background: #2a2414; }
   #names { max-height: 220px; overflow: auto; }
@@ -174,6 +174,7 @@
 
 <section>
   <canvas id="scope" title="each layer's notes and level, swept left to right; marks fade over a few seconds. Click for the thin strip."></canvas>
+  <div class="edgebar"><button id="thinscope" class="edge"></button></div>
   <details id="guide">
     <summary>HOW TO USE THE STUDIO</summary>
     <p>Every sound undertone plays is a <b>patch</b>: a short list of units run once per sample, left to right, on a
@@ -239,8 +240,7 @@
   <div class="head">
     <label>name <input type="text" id="name" spellcheck="false"></label>
     <label id="gatebox"><span id="gatelbl">gate</span> <input type="number" id="gate"></label>
-    <span class="views">
-      <span class="chip" id="thinscope" title="the scope as a thin strip without labels (or click the scope)">thin scope</span>
+    <span class="views"><span class="chip" id="compact" title="a unit to a line">compact rows</span>
       <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label></span>
   </div>
   <div class="bar namebar" id="namebar" hidden></div>
@@ -251,7 +251,7 @@
   </div>
 
   <div id="units"></div>
-  <div class="edgebar"><button id="compact" class="edge"></button></div>
+
   <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select>
     <span class="hint">the bars after each unit are its stack: <b style="color:var(--src)">signal</b>, <b style="color:var(--mod)">control</b></span></div>
 
@@ -1146,9 +1146,12 @@ function scope() {
 }
 
 // The thin scope is a viewer's preference, kept across visits like compact rows.
-const setThin = (on) => { $("scope").classList.toggle("thin", on); $("thinscope").classList.toggle("on", on); try { localStorage.setItem("studio-thin-scope", on ? "1" : ""); } catch {} };
+const setThin = (on) => { $("scope").classList.toggle("thin", on);
+  $("thinscope").textContent = on ? "▾ expand scope" : "▴ thin scope";
+  $("thinscope").title = on ? "the full scope, with lane labels" : "the scope as a thin strip without labels (or click the scope)";
+  try { localStorage.setItem("studio-thin-scope", on ? "1" : ""); } catch {} };
 $("thinscope").onclick = $("scope").onclick = () => setThin(!$("scope").classList.contains("thin"));
-try { setThin(localStorage.getItem("studio-thin-scope") === "1"); } catch {}
+try { setThin(localStorage.getItem("studio-thin-scope") === "1"); } catch { setThin(false); }
 // fade runs 0.3 s to 30 s on a log scale, kept across visits
 const setFade = (s) => { FADE = s; $("fadeout").value = s < 10 ? `${s.toFixed(1)} s` : `${Math.round(s)} s`; try { localStorage.setItem("studio-fade", s); } catch {} };
 $("fade").oninput = () => setFade(0.3 * 100 ** +$("fade").value);
@@ -1156,11 +1159,8 @@ $("fade").oninput = () => setFade(0.3 * 100 ** +$("fade").value);
 
 window.undertoneStudioFailed = (msg) => say("audio failed: " + msg, true);
 // Compact rows are a viewer's preference, kept across visits.
-const setCompact = (on) => { $("units").classList.toggle("compact", on); if (spec) renderUnits();
-  $("compact").textContent = on ? "▾ expand rows" : "▴ compact rows";
-  $("compact").title = on ? "full rows: each argument with its name and slider" : "compact rows: a unit to a line";
-  try { localStorage.setItem("studio-compact", on ? "1" : ""); } catch {} };
-try { setCompact(localStorage.getItem("studio-compact") === "1"); } catch { setCompact(false); }
+const setCompact = (on) => { $("units").classList.toggle("compact", on); if (spec) renderUnits(); $("compact").classList.toggle("on", on); try { localStorage.setItem("studio-compact", on ? "1" : ""); } catch {} };
+try { setCompact(localStorage.getItem("studio-compact") === "1"); } catch {}
 $("compact").onclick = () => setCompact(!$("units").classList.contains("compact"));
 // The guide is out of the way until the guide chip shows it; closing it
 // hides it again.

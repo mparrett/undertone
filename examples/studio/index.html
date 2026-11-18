@@ -53,7 +53,11 @@
   .unitsbar > .lab { flex-basis: 100%; margin: 0; }
   .ukey { margin: 0 auto 4px 0; font-size: 11px; color: var(--mut); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
   .ukey i { display: inline-block; width: 3px; height: 12px; border-radius: 1px; background: var(--k); margin-left: 6px; }
-  .ukey i:first-child { margin-left: 0; }
+  /* the stack key draws the bars as the units do, wider than the edge strips; the colours match on purpose:
+     a source pushes a signal, a modulator pushes control */
+  .ukey.skey { margin: 0 14px 4px 0; }
+  .ukey.skey b { display: inline-block; width: 6px; height: 12px; border-radius: 2px; background: var(--mod); margin-left: 6px; }
+  .ukey.skey b.sig { background: var(--src); }
   .scoperow.thin label.fade { display: none; }  /* the thin strip draws no fading marks worth tuning */
   .edgebar.top + #units { margin-top: 0; }
   .edgebar.top .edge { border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; white-space: nowrap; }
@@ -363,12 +367,12 @@
     <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
       <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
   </div>
-    <span class="ukey" title="a unit's left edge: what kind of unit it is"><i style="--k:var(--src)"></i>source <i style="--k:var(--mod)"></i>modulator <i style="--k:var(--fx)"></i>effect <i style="--k:var(--out)"></i>output</span>
+    <span class="ukey" title="a unit's left edge: what kind of unit it is">edge: <i style="--k:var(--src)"></i>source <i style="--k:var(--mod)"></i>modulator <i style="--k:var(--fx)"></i>effect <i style="--k:var(--out)"></i>output</span>
+    <span class="ukey skey" title="the bars after each unit: the stack after it runs; a source pushes a signal, a modulator pushes control">stack after each unit: <b class="sig"></b>signal <b></b>control</span>
     <button id="compact" class="edge"></button></div>
   <div id="units"></div>
 
-  <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select>
-    <span class="hint">the bars after each unit are its stack: <b style="color:var(--src)">signal</b>, <b style="color:var(--mod)">control</b></span></div>
+  <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select></div>
 
   <div class="audrow"><div class="audcol">
   <div class="lab" id="audlab">AUDITION</div>

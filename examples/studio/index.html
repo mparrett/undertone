@@ -49,7 +49,11 @@
   .edgebar.top { margin: 12px 0 -1px; flex-wrap: wrap; align-items: flex-end; row-gap: 8px; }
   /* name and gate on their own line; under them UNITS and the tab, on the units' top edge, as SCOPE has */
   .edgebar.top .head { flex-basis: 100%; margin-bottom: 8px; }
-  .edgebar.top > .lab { margin: 0 auto 4px 0; }
+  /* UNITS heads the editor: its own line, then name and gate, then the edge key left of the tab */
+  .unitsbar > .lab { flex-basis: 100%; margin: 0; }
+  .ukey { margin: 0 auto 4px 0; font-size: 11px; color: var(--mut); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+  .ukey i { display: inline-block; width: 3px; height: 12px; border-radius: 1px; background: var(--k); margin-left: 6px; }
+  .ukey i:first-child { margin-left: 0; }
   .scoperow.thin label.fade { display: none; }  /* the thin strip draws no fading marks worth tuning */
   .edgebar.top + #units { margin-top: 0; }
   .edgebar.top .edge { border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; white-space: nowrap; }
@@ -305,6 +309,13 @@
     (the envelope shapes the tone), <code>out</code> mixes it. Two such chains in one patch are two layers. The coloured bars after a unit
     are the stack after it runs: <b style="color:var(--src)">signal</b> (from an osc or pluck) or <b style="color:var(--mod)">control</b>
     (from an env or lfo). A <b>!</b> means the stack runs dry or overflows there.</p>
+    <p>The strip on a unit's left edge says what kind of unit it is:</p>
+    <ul>
+      <li><b style="color:var(--src)">source</b>, which makes a sound: <code>osc</code>, <code>pluck</code>.</li>
+      <li><b style="color:var(--mod)">modulator</b>, which shapes something over time: <code>env</code>, <code>lfo</code>, <code>scale</code>, <code>pitch</code>.</li>
+      <li><b style="color:var(--fx)">effect</b>, which changes the signal: <code>mul</code>, <code>lpf</code>, <code>hpf</code>, <code>svf</code>, <code>drive</code>, <code>crush</code>.</li>
+      <li><b style="color:var(--out)">output</b>, which sends it on: <code>out</code>, <code>send</code>, <code>verb</code>.</li>
+    </ul>
     <ul>
       <li><b>modulate</b>: push an <code>lfo</code> or <code>env</code>, then an <code>svf</code> with a nonzero <i>depth</i> pops it to sweep the cutoff;
         <code>pitch</code> pops it to bend the oscillators after it; <code>scale</code> turns it into a range for a tremolo with <code>mul</code>.</li>
@@ -345,13 +356,15 @@
     <span class="chip" id="kitdef" title="leave this lane to the default kit">default kit</span>
   </div>
 
-  <div class="edgebar top">
+  <div class="edgebar top unitsbar">
+  <span class="lab">UNITS</span>
   <div class="head">
     <label title="the name a game triggers it by; a new name asks before it makes a new sound"><span id="namelbl">name</span> <input type="text" id="name" spellcheck="false"></label>
     <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
       <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
   </div>
-    <span class="lab">UNITS</span><button id="compact" class="edge"></button></div>
+    <span class="ukey" title="a unit's left edge: what kind of unit it is"><i style="--k:var(--src)"></i>source <i style="--k:var(--mod)"></i>modulator <i style="--k:var(--fx)"></i>effect <i style="--k:var(--out)"></i>output</span>
+    <button id="compact" class="edge"></button></div>
   <div id="units"></div>
 
   <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select>

@@ -26,6 +26,9 @@
   .edgebar { display: flex; justify-content: center; margin: -1px 0 12px; }
   .edgebar .edge { font-size: 11px; color: var(--mut); padding: 1px 12px 2px; border-radius: 0 0 8px 8px; border-top: none; }
   .edgebar .edge:hover { color: var(--fg); }
+  /* the units' size toggle sits on their top edge instead */
+  .edgebar.top { margin: 4px 0 -1px; }
+  .edgebar.top .edge { border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; }
   .head .views label.fade input { width: 70px; }
   .head .views label.fade output { min-width: 5ch; font-size: 12px; white-space: nowrap; }
   .help { cursor: help; color: var(--src); font-weight: 400; letter-spacing: 0; }
@@ -241,7 +244,7 @@
   <div class="head">
     <label>name <input type="text" id="name" spellcheck="false"></label>
     <label id="gatebox"><span id="gatelbl">gate</span> <input type="number" id="gate"></label>
-    <span class="views"><span class="chip" id="compact" title="a unit to a line">compact rows</span>
+    <span class="views">
       <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label></span>
   </div>
   <div class="bar namebar" id="namebar" hidden></div>
@@ -251,6 +254,7 @@
     <span class="chip" id="kitdef" title="leave this lane to the default kit">default kit</span>
   </div>
 
+  <div class="edgebar top"><button id="compact" class="edge"></button></div>
   <div id="units"></div>
 
   <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select>
@@ -312,7 +316,7 @@ const OPS = {
 };
 const DEFAULT_ARGS = { env: [.005, .3, 0, .2], osc: [0, 0, 0], pluck: [0, .99], lfo: [2, 0], mul: [], lpf: [2000], hpf: [80],
   svf: [1200, .3, 0, 0], drive: [2, 0], crush: [8000, 8], scale: [.5, .5], pitch: [.3], send: [.2], verb: [.2], out: [.5, .5] };
-// compact rows label arguments short; the full name is the hover title
+// compact units label arguments short; the full name is in the help line
 const SHORT = { attack: "atk", decay: "dec", sustain: "sus", release: "rel", transpose: "tr", sweep: "sw", "sweep dec": "sw.d",
   feedback: "fb", cutoff: "cut", depth: "dep", amount: "amt", offset: "off" };
 const compact = () => $("units").classList.contains("compact");
@@ -1146,7 +1150,7 @@ function scope() {
   g.fillStyle = "rgba(190,255,170,0.8)"; g.fillRect(cx, 2, 1, h - 4);
 }
 
-// The thin scope is a viewer's preference, kept across visits like compact rows.
+// The thin scope is a viewer's preference, kept across visits like compact units.
 const setThin = (on) => { $("scope").classList.toggle("thin", on);
   $("thinscope").textContent = on ? "▾ expand scope" : "▴ thin scope";
   $("thinscope").title = on ? "the full scope, with lane labels" : "the scope as a thin strip without labels (or click the scope)";
@@ -1160,8 +1164,11 @@ $("fade").oninput = () => setFade(0.3 * 100 ** +$("fade").value);
 
 window.undertoneStudioFailed = (msg) => say("audio failed: " + msg, true);
 // Compact rows are a viewer's preference, kept across visits.
-const setCompact = (on) => { $("units").classList.toggle("compact", on); if (spec) renderUnits(); $("compact").classList.toggle("on", on); try { localStorage.setItem("studio-compact", on ? "1" : ""); } catch {} };
-try { setCompact(localStorage.getItem("studio-compact") === "1"); } catch {}
+const setCompact = (on) => { $("units").classList.toggle("compact", on); if (spec) renderUnits();
+  $("compact").textContent = on ? "▾ expand units" : "▴ compact units";
+  $("compact").title = on ? "full units: each argument with its name and slider" : "compact units: one line each";
+  try { localStorage.setItem("studio-compact", on ? "1" : ""); } catch {} };
+try { setCompact(localStorage.getItem("studio-compact") === "1"); } catch { setCompact(false); }
 $("compact").onclick = () => setCompact(!$("units").classList.contains("compact"));
 // The guide is out of the way until the guide chip shows it; closing it
 // hides it again.

@@ -14,7 +14,9 @@
   main > * { min-width: 0; }  /* a wide child scrolls inside its column instead of widening the page */
   @media (min-width: 900px) { body { padding: 28px; } }
   /* the header strip: what the sidebar held, side by side; it wraps to a column on a phone */
-  header.top { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-start; }
+  header.top { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-start; position: relative; padding-right: 40px; }
+  /* the guide's [?] in the page's top right corner, out of the columns' way */
+  header.top > #guidechip { position: absolute; top: -4px; right: 0; padding: 2px 7px; }
   header.top > .brand { flex: 0 1 250px; }
   header.top > .kindcol { flex: 0 1 170px; }
   header.top > .open { flex: 1 1 300px; min-width: 0; }
@@ -37,7 +39,7 @@
   .chip.guide { color: var(--fx); border-color: color-mix(in srgb, var(--fx) 55%, var(--line));
                 background: color-mix(in srgb, var(--fx) 10%, var(--panel)); cursor: pointer; }
   .chip.guide.on { color: var(--fg); background: color-mix(in srgb, var(--fx) 25%, var(--panel)); }
-  /* the scope's size toggle: a small tab hanging from its bottom edge */
+  /* the size toggles: small tabs on the scope's and the units' top edges */
   .edgebar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin: -1px 0 12px; }
   .edgebar .edge { font-size: 11px; color: var(--mut); padding: 1px 12px 2px; border-radius: 0 0 8px 8px; border-top: none; }
   .edgebar .edge:hover { color: var(--fg); }
@@ -73,7 +75,8 @@
   /* the tab sits on the scope's top edge and fade under it; the bed card lines up with the scope itself */
   .scoperow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 10px; align-items: start;
               grid-template-areas: "tab" "scope" "fade" "bed"; }
-  .scoperow > .scopetab { grid-area: tab; margin: 0 0 -1px; } .scoperow > #scope { grid-area: scope; }
+  .scoperow > .scopetab { grid-area: tab; margin: 0 0 -1px; }
+  .scopetab .lab { margin: 0 auto 4px 0; } .scoperow > #scope { grid-area: scope; }
   .scoperow > .scopefade { grid-area: fade; margin: 4px 0 8px; } .scoperow > #bed { grid-area: bed; }
   /* side by side only where the scope keeps most of the width; narrower, the same stacking point as audition and EDN */
   @media (min-width: 900px) { .scoperow { grid-template-columns: minmax(0, 1fr) minmax(0, 560px); grid-template-areas: "tab ." "scope bed" "fade ."; } }
@@ -216,10 +219,10 @@
 <body>
 <main class="loading">
 <header class="top">
+  <span class="chip guide" id="guidechip" title="the guide: how to use the studio">[?]</span>
   <div class="brand">
   <h1>UNDERTONE STUDIO</h1>
   <p class="sub">shape a one-shot, a lead or a palette; hear it; take it away as EDN</p>
-  <div class="bar"><span class="chip guide" id="guidechip" title="show or hide the how-to">? guide</span></div>
   </div>
   <div class="kindcol">
   <div class="lab">KIND</div>
@@ -244,7 +247,7 @@
 <section>
   <!-- the bed's controls sit beside the scope that draws it, its meters at the end -->
   <div class="scoperow" id="scoperow">
-  <div class="edgebar top scopetab"><button id="thinscope" class="edge"></button></div>
+  <div class="edgebar top scopetab"><span class="lab">SCOPE</span><button id="thinscope" class="edge"></button></div>
   <canvas id="scope" title="each layer's notes and level, swept left to right; marks fade over a few seconds. Click for the thin strip."></canvas>
   <div class="edgebar scopefade"><label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label></div>
   <div id="bed">
@@ -1283,7 +1286,7 @@ function scope() {
 
 // The thin scope is a viewer's preference, kept across visits like compact units.
 const setThin = (on) => { $("scope").classList.toggle("thin", on); $("scoperow").classList.toggle("thin", on);
-  $("thinscope").textContent = on ? "▾ expand scope" : "▴ thin scope";
+  $("thinscope").textContent = on ? "▾ expand" : "▴ thin";
   $("thinscope").title = on ? "the full scope, with lane labels" : "the scope as a thin strip without labels (or click the scope)";
   try { localStorage.setItem("studio-thin-scope", on ? "1" : ""); } catch {} };
 $("thinscope").onclick = $("scope").onclick = () => setThin(!$("scope").classList.contains("thin"));

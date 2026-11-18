@@ -68,6 +68,8 @@
   #meterlbl { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; font-size: 10px; color: var(--mut); text-align: center; }
   .head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   .head input[type=text] { width: 12em; }
+  #gatebox input[type=range] { width: 130px; accent-color: var(--src); }
+  #gatebox input[type=number] { width: 6.5em; }
   .head label { color: var(--mut); font-size: 13px; display: flex; gap: 6px; align-items: center; }
   .head input[type=number] { width: 6.5em; }
   #units { display: grid; gap: 6px; margin-top: 10px; }
@@ -253,7 +255,8 @@
   </details>
   <div class="head">
     <label>name <input type="text" id="name" spellcheck="false"></label>
-    <label id="gatebox"><span id="gatelbl">gate</span> <input type="number" id="gate"></label>
+    <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
+      <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
     <span class="views">
       <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label></span>
   </div>
@@ -429,6 +432,7 @@ function render() {
   $("gatebox").hidden = kind === "palette";
   if (kind === "shot") { $("gatelbl").textContent = "gate ms"; $("gate").value = spec.GateMS; $("gate").min = 1; $("gate").max = 10000; }
   if (kind === "lead") { $("gatelbl").textContent = "gate rows"; $("gate").value = spec.Gate; $("gate").min = 1; $("gate").max = 16; }
+  gateToRange();
   // A palette is a patch per bed layer and drum lane; the sidebar picks which
   // one the editor shows, as a second step under the palette list.
   $("tracks").replaceChildren(); $("trackbox").hidden = kind !== "palette";
@@ -996,7 +1000,22 @@ $("name").onchange = () => {
     spec.Name = to; builtin = false; commit(); buildNames();
   }, () => { $("name").value = from; });
 };
-$("gate").onchange = () => { if (kind === "shot") spec.GateMS = +$("gate").value; else spec.Gate = +$("gate").value; commit(true); };
+$("gate").onchange = () => { if (kind === "shot") spec.GateMS = +$("gate").value; else spec.Gate = +$("gate").value; gateToRange(); commit(true); };
+// The slider beside the gate: log-scaled over a shot's 1-10000 ms, so the
+// short gates most shots use get most of its travel; whole rows for a lead.
+// It sets the number and commits as it moves, like a unit's sliders.
+const gateMs = (r) => Math.round(Math.exp(Math.log(10000) * r / 1000));
+function gateToRange() {
+  const g = +$("gate").value || 1;
+  if (kind === "shot") { $("gaterange").min = 0; $("gaterange").max = 1000; $("gaterange").step = 1; $("gaterange").value = Math.round(1000 * Math.log(g) / Math.log(10000)); }
+  else { $("gaterange").max = 16; $("gaterange").min = 1; $("gaterange").step = 1; $("gaterange").value = g; }
+}
+$("gaterange").oninput = () => {
+  const r = +$("gaterange").value, g = kind === "shot" ? gateMs(r) : r;
+  $("gate").value = g;
+  if (kind === "shot") spec.GateMS = g; else spec.Gate = g;
+  clearTimeout(refireTimer); refireTimer = setTimeout(() => commit(true), 60);
+};
 $("kitnote").onchange = () => { patch().Note = +$("kitnote").value; patch().Default = false; render(); commit(); };
 $("kitdef").onclick = () => { const d = patch(); d.Default = !d.Default; if (d.Default) { d.Name = ""; d.Units = []; d.Note = 0; } open2(); };
 function open2() { commit(); if (kind === "palette" && registered.palette.has(spec.Name)) { const t = track; spec = JSON.parse(U().get("palette", spec.Name)); for (const x of TRACKS) spec[cap(x)] ||= { Name: "", Units: [] }; track = t; render(); } }

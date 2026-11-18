@@ -111,7 +111,7 @@ type Shade struct {
 	Fill bool    // the pattern before this section ends in a drum fill
 }
 
-// temperaments are the spike's two, chosen by reasoning, not yet by ear. The
+// temperaments are chosen by reasoning, not yet by ear. The
 // dungeon is patient: long phrases, a line that changes rarely, quiet that
 // comes seldom; it has no filters of its own and no reverb, so its sections
 // colour with Dark and Wash. Rust is restless: short phrases that break
@@ -135,6 +135,67 @@ var temperaments = map[string]Temperament{
 			secThin:   {Open: -0.25, Wash: 0.2, Echo: 0.6, Lift: -1, Busy: -0.2, Pad: -1},
 			secBreak:  {Open: -0.6, Grit: 0.2, Wash: 0.35, Room: 0.4}, // the machine idling in a hall
 			secReturn: {Open: 0.35, Grit: 0.1, Wash: -0.4, Echo: -0.4, Busy: 0.3, Pad: 1, Fill: true},
+		}},
+	// The other moods' are first guesses by character, for hearing the arc
+	// across the range; not tuned by ear. Their colour is bolder than the
+	// dungeon's, whose measured under 1 dB against no colour at all. Each
+	// moves both Open (for patches with svf filters) and Dark (for those
+	// without), since which a mood's patches have isn't checked here.
+	"aurora": {Restlessness: 0.25, PhraseMin: 10, PhraseMax: 16, BreakChance: 0.3, // slow, shimmering
+		Drop: []Layers{LayerLead, LayerFifth, LayerPad},
+		Shade: [nSections]Shade{
+			secBuild:  {Dark: 0.3, Wash: 0.35},
+			secThin:   {Wash: 0.45, Echo: 0.8, Room: 0.3, Pad: -1},
+			secBreak:  {Open: -0.4, Dark: 0.55, Wash: 0.6, Room: 0.5},
+			secReturn: {Open: 0.3, Wash: -0.2, Echo: -0.3, Lift: 1, Pad: 1},
+		}},
+	"meadow": {Restlessness: 0.4, PhraseMin: 8, PhraseMax: 12, BreakChance: 0.4, // light, open air
+		Drop: []Layers{LayerLead, LayerPad, LayerDrums, LayerFifth},
+		Shade: [nSections]Shade{
+			secBuild:  {Open: -0.3, Dark: 0.25},
+			secThin:   {Wash: 0.3, Echo: 0.6, Busy: -0.3, Pad: -1},
+			secBreak:  {Open: -0.45, Dark: 0.45, Wash: 0.35},
+			secReturn: {Open: 0.35, Wash: -0.2, Busy: 0.25, Pad: 1, Fill: true},
+		}},
+	"forge": {Restlessness: 0.5, PhraseMin: 8, PhraseMax: 12, BreakChance: 0.6, // heavy, hammering
+		Drop: []Layers{LayerPad, LayerLead, LayerFifth, LayerDrums},
+		Shade: [nSections]Shade{
+			secBuild:  {Open: -0.4, Dark: 0.3},
+			secThin:   {Open: -0.2, Echo: 0.5, Busy: -0.3, Lift: -1, Pad: -1},
+			secBreak:  {Open: -0.6, Grit: 0.3, Dark: 0.35, Room: 0.3},
+			secReturn: {Open: 0.35, Grit: 0.15, Wash: -0.3, Busy: 0.35, Pad: 1, Fill: true},
+		}},
+	"void": {Restlessness: 0.2, PhraseMin: 12, PhraseMax: 16, BreakChance: 0.5, // sparse, patient
+		Drop: []Layers{LayerLead, LayerFifth, LayerPad},
+		Shade: [nSections]Shade{
+			secBuild:  {Dark: 0.45, Wash: 0.4},
+			secThin:   {Dark: 0.3, Wash: 0.5, Echo: 0.8, Pad: -1},
+			secBreak:  {Open: -0.5, Dark: 0.7, Wash: 0.6, Room: 0.5},
+			secReturn: {Open: 0.2, Wash: -0.3, Echo: -0.3, Pad: 1},
+		}},
+	"village": {Restlessness: 0.5, PhraseMin: 8, PhraseMax: 12, BreakChance: 0.45, // lively, busy
+		Drop: []Layers{LayerPad, LayerLead, LayerDrums, LayerFifth},
+		Shade: [nSections]Shade{
+			secBuild:  {Open: -0.3, Dark: 0.2, Busy: -0.2},
+			secThin:   {Wash: 0.25, Echo: 0.5, Busy: -0.35, Pad: -1},
+			secBreak:  {Open: -0.45, Dark: 0.4, Wash: 0.3},
+			secReturn: {Open: 0.35, Wash: -0.3, Busy: 0.35, Pad: 1, Fill: true},
+		}},
+	"stratosphere": {Restlessness: 0.35, PhraseMin: 10, PhraseMax: 14, BreakChance: 0.4, // high, airy
+		Drop: []Layers{LayerLead, LayerPad, LayerFifth},
+		Shade: [nSections]Shade{
+			secBuild:  {Dark: 0.3, Wash: 0.4},
+			secThin:   {Wash: 0.45, Echo: 0.7, Lift: 1, Pad: -1},
+			secBreak:  {Open: -0.4, Dark: 0.45, Wash: 0.6, Room: 0.5},
+			secReturn: {Open: 0.3, Wash: -0.2, Echo: -0.3, Pad: 1},
+		}},
+	"overworld": {Restlessness: 0.45, PhraseMin: 8, PhraseMax: 12, BreakChance: 0.5, // open, travelling
+		Drop: []Layers{LayerPad, LayerLead, LayerFifth, LayerDrums},
+		Shade: [nSections]Shade{
+			secBuild:  {Open: -0.3, Dark: 0.3},
+			secThin:   {Wash: 0.3, Echo: 0.6, Busy: -0.25, Pad: -1},
+			secBreak:  {Open: -0.5, Dark: 0.5, Wash: 0.4, Room: 0.3},
+			secReturn: {Open: 0.35, Wash: -0.3, Busy: 0.3, Pad: 1, Fill: true},
 		}},
 }
 

@@ -67,7 +67,8 @@ player's own query) to show a panel in the corner. It counts **underruns**
 that took longer than the audio they made), the slowest render, and how full
 the queue is. Underruns are the count to trust; the lowest queue can miss a
 dip that the page itself caused. **reset** zeroes the counts, so reset before
-each step and read the panel after it. The counts are also published as
+each step and read the panel after it. On a phone the panel starts folded to
+one line; tap it to unfold it and reach **reset**. The counts are also published as
 `window.__undertoneDebug` for the console.
 
 Serve locally (see [Run](#run)) or use the live pages. A phone needs HTTPS:

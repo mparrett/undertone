@@ -50,10 +50,15 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 	doc := js.Global().Get("document")
 	box := doc.Call("createElement", "div")
 	box.Set("id", "undertone-debug")
-	box.Get("style").Set("cssText", "position:fixed;right:8px;bottom:8px;z-index:9999;"+
+	// Top right, clear of a notch: the demos dock their own controls at the
+	// bottom on a phone.
+	box.Get("style").Set("cssText", "position:fixed;z-index:9999;"+
+		"top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));"+
 		"font:12px/1.4 ui-monospace,Menlo,monospace;white-space:pre;padding:8px 10px;"+
 		"border-radius:6px;background:rgba(0,0,0,.78);color:#e8e8e8;pointer-events:auto")
 	text := doc.Call("createElement", "div")
+	text.Set("title", "tap to fold or unfold")
+	text.Get("style").Set("cursor", "pointer")
 	reset := doc.Call("createElement", "button")
 	reset.Set("textContent", "reset")
 	reset.Get("style").Set("cssText", "margin-top:6px;font:inherit;cursor:pointer")
@@ -65,12 +70,27 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 		opened  time.Time // when player first returned an output
 		lowest  = time.Duration(-1)
 		pending atomic.Bool // a reset waits for the next tick, on the overlay's goroutine
+		folded  atomic.Bool // one line, for a small screen
 	)
 	pending.Store(true)
 	reset.Call("addEventListener", "click", js.FuncOf(func(js.Value, []js.Value) any {
 		pending.Store(true)
 		return nil
 	}))
+	fold := func(f bool) {
+		folded.Store(f)
+		display := ""
+		if f {
+			display = "none"
+		}
+		reset.Get("style").Set("display", display)
+	}
+	text.Call("addEventListener", "click", js.FuncOf(func(js.Value, []js.Value) any {
+		fold(!folded.Load())
+		return nil
+	}))
+	// On a phone the open panel covers the top of the page; one line does not.
+	fold(js.Global().Get("innerWidth").Int() < 600)
 
 	go func() {
 		for range time.Tick(tick) {
@@ -90,7 +110,11 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 				lowest = now.queued
 			}
 			d := now.since(base)
-			text.Set("textContent", d.format(now, lowest))
+			if folded.Load() {
+				text.Set("textContent", fmt.Sprintf("debug: %d underruns, %d over", d.underruns, d.over))
+			} else {
+				text.Set("textContent", d.format(now, lowest))
+			}
 			color := "#e8e8e8"
 			if d.underruns > 0 || d.over > 0 {
 				color = "#ff8a80"

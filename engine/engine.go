@@ -1623,8 +1623,12 @@ func (s *Synth) publish(slot *atomic.Pointer[paramCmd], p Params) {
 // hear it, and the phrase that is ending is not worth pitching to. Safe to
 // call from any goroutine.
 func (s *Synth) effective() *paramCmd {
+	// The mailboxes before cur: the audio thread swaps a change out of its
+	// mailbox before publishing it as cur, so in this order one of the loads
+	// sees it.
+	pending := [...]*paramCmd{s.now.Load(), s.next.Load()}
 	c := s.cur.Load()
-	for _, m := range [...]*paramCmd{s.now.Load(), s.next.Load()} {
+	for _, m := range pending {
 		if m != nil && m.seq > c.seq {
 			c = m
 		}
@@ -1644,6 +1648,18 @@ func (s *Synth) staged() *paramCmd {
 		return nil
 	}
 	return n
+}
+
+// landsAtBoundary reports whether staged change c should apply at the
+// pattern boundary: it is newer than the change playing, and than any
+// immediate change waiting for its block, which would only replace it a few
+// frames in after its row-0 notes had started. Audio thread only.
+func (s *Synth) landsAtBoundary(c *paramCmd) bool {
+	if c.seq <= s.applied {
+		return false
+	}
+	w := s.now.Load()
+	return w == nil || w.seq < c.seq
 }
 
 func (s *Synth) apply(c *paramCmd) {
@@ -1769,7 +1785,7 @@ func (s *Synth) step() {
 	_, s.owner, s.runFrom = s.nextOwner()
 	if s.row == 0 {
 		s.advanceTheme()
-		if c := s.next.Swap(nil); c != nil && c.seq > s.applied {
+		if c := s.next.Swap(nil); c != nil && s.landsAtBoundary(c) {
 			s.apply(c)
 		}
 		s.pats = buildPatterns(s.params, s.pat)
@@ -1975,15 +1991,6 @@ func WriteWAV(path string, src io.Reader, seconds float64) error {
 // its end in the pad; a bpm of zero or NaN makes rows infinitely long), which
 // in a browser kills the whole wasm module. Out-of-range values are clamped or
 // replaced, never reported: the write-only contract has no way back.
-// owned is p sanitized, with a copy of its scale: Params is passed by value,
-// but the scale slice is not, and a caller editing the one it passed must
-// not reach a synth already playing it.
-func (p Params) owned() Params {
-	p = p.sanitized()
-	p.Scale = slices.Clone(p.Scale)
-	return p
-}
-
 func (p Params) sanitized() Params {
 	if len(p.Scale) < 5 {
 		p.Scale = scalesByBrightness[0]
@@ -2028,6 +2035,15 @@ func (p Params) sanitized() Params {
 		}
 		*x = max(-1, min(*x, 1))
 	}
+	return p
+}
+
+// owned is p sanitized, with a copy of its scale: Params is passed by value,
+// but the scale slice is not, and a caller editing the one it passed must
+// not reach a synth already playing it.
+func (p Params) owned() Params {
+	p = p.sanitized()
+	p.Scale = slices.Clone(p.Scale)
 	return p
 }
 

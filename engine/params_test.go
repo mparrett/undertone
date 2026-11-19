@@ -51,6 +51,28 @@ func TestOlderImmediateChangeDoesNotUndoBoundaryChange(t *testing.T) {
 	}
 }
 
+// A staged change that an immediate one has since replaced does not play at
+// the boundary, not even for the frames before the immediate change's block.
+func TestReplacedStagedChangeSkipsBoundary(t *testing.T) {
+	p := DeriveDungeon(7, 2, 0)
+	s := NewSynth(rooted(p, 50))
+	render(s, 1)
+	for s.row != 0 || s.rowLeft != 1 || (s.nframe+1)%nowBlock == 0 {
+		render(s, 1)
+	}
+	s.SetParameters(rooted(p, 72))
+	s.SetParametersNow(rooted(p, 60))
+	for range nowBlock {
+		render(s, 1)
+		if s.params.Root == 72 {
+			t.Fatalf("frame %d: the replaced staged change is playing", s.nframe)
+		}
+	}
+	if s.params.Root != 60 {
+		t.Errorf("root %d, want the immediate 60", s.params.Root)
+	}
+}
+
 // A degree shot is pitched against the newest change, whether it waits for
 // the boundary or is an immediate one not yet rendered; an older staged
 // change superseded by an immediate one no longer counts.

@@ -51,23 +51,27 @@ func (m *Music) renderWAV(path vm.Value, seconds float64, script vm.Value) (vm.V
 type scripted struct {
 	s     *engine.Synth
 	steps []step
-	frame int
+	at    int // bytes read so far; a step applies only between frames
 }
 
+// Read serves any length, as Synth.Read does: a reader that returns (0, nil)
+// for a short tail stalls io.ReadFull and the copies WriteWAV makes.
 func (r *scripted) Read(p []byte) (int, error) {
 	n := 0
-	for n+4 <= len(p) {
-		for len(r.steps) > 0 && r.steps[0].frame <= r.frame {
-			r.steps[0].apply(r.s)
-			r.steps = r.steps[1:]
+	for n < len(p) {
+		if r.at%4 == 0 {
+			for len(r.steps) > 0 && r.steps[0].frame <= r.at/4 {
+				r.steps[0].apply(r.s)
+				r.steps = r.steps[1:]
+			}
 		}
-		end := n + (len(p)-n)/4*4
+		end := len(p)
 		if len(r.steps) > 0 {
-			end = min(end, n+4*(r.steps[0].frame-r.frame))
+			end = min(end, n+4*r.steps[0].frame-r.at)
 		}
-		r.s.Read(p[n:end])
-		r.frame += (end - n) / 4
-		n = end
+		m, _ := r.s.Read(p[n:end])
+		r.at += m
+		n += m
 	}
 	return n, nil
 }

@@ -50,6 +50,16 @@ func TestTempoChangeKeepsArmedDrumHits(t *testing.T) {
 		if got := kinds(s, cursor)[c.kind]; got != 1 {
 			t.Errorf("%s: %d %v hits in the changed row, want 1", c.name, got, c.kind)
 		}
+		if c.kind == DrumGrace {
+			at := map[NoteKind]int64{}
+			evs, _, _ := s.NoteEvents(cursor, nil)
+			for _, e := range evs {
+				at[e.Kind] = e.Frame
+			}
+			if gap := at[DrumOff] - at[DrumGrace]; gap != int64(s.flamLead()) {
+				t.Errorf("%s: grace %d frames ahead of its off 16th, want flamLead %d", c.name, gap, s.flamLead())
+			}
+		}
 	}
 }
 
@@ -131,6 +141,14 @@ func TestReadAnyLength(t *testing.T) {
 	}
 	if _, err := io.ReadFull(NewSynth(DeriveDungeon(7, 2, 0)), make([]byte, 7)); err != nil {
 		t.Errorf("io.ReadFull of 7 bytes: %v", err)
+	}
+	// Frames counts a split frame once its last byte is out
+	s := NewSynth(DeriveDungeon(7, 2, 0))
+	for _, c := range []struct{ read, frames int }{{6, 1}, {1, 1}, {1, 2}, {4, 3}} {
+		s.Read(make([]byte, c.read))
+		if s.Frames() != int64(c.frames) {
+			t.Errorf("after reading %d more bytes: Frames = %d, want %d", c.read, s.Frames(), c.frames)
+		}
 	}
 }
 

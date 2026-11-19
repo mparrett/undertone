@@ -272,7 +272,9 @@ func (s *Synth) drumSeed(d int) uint64 {
 // applyNow, as rowLeft was. Left alone, a faster tempo stepped the row
 // before a pending off 16th, and the step cleared it unplayed. Each stays at
 // or inside rowLeft, which is where it still fires before the step; a swing
-// or groove change shapes the hits armed from the next row on.
+// or groove change shapes the hits armed from the next row on. A pending
+// grace is not scaled but kept flamLead ahead of its off 16th, or the flam
+// would smear into two hits or collapse into one.
 func (s *Synth) rescaleDrums(old int) {
 	scale := func(n int) int {
 		if n <= 0 {
@@ -282,7 +284,9 @@ func (s *Synth) rescaleDrums(old int) {
 	}
 	for d := range s.dvoices {
 		s.offLeft[d] = scale(s.offLeft[d])
-		s.graceLeft[d] = scale(s.graceLeft[d])
+		if s.graceLeft[d] > 0 {
+			s.graceLeft[d] = max(1, s.offLeft[d]-s.flamLead())
+		}
 		if rt := &s.rat[d]; rt.left > 0 {
 			rt.left, rt.gap = scale(rt.left), max(1, rt.gap*s.samplesPerRow/old)
 		}

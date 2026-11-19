@@ -1934,6 +1934,9 @@ func (s *Synth) frame() (int16, int16) {
 func (s *Synth) Read(p []byte) (int, error) {
 	n := copy(p, s.part[len(s.part)-s.partN:])
 	s.partN -= n
+	if n > 0 && s.partN == 0 {
+		s.frames.Store(s.nframe) // the split frame is now delivered whole
+	}
 	whole := (len(p) - n) / 4 * 4
 	tail := len(p) - n - whole
 	frames := whole / 4
@@ -1952,7 +1955,9 @@ func (s *Synth) Read(p []byte) (int, error) {
 		copy(p[n+whole:], s.part[:tail])
 		s.partN = len(s.part) - tail
 	}
-	s.frames.Store(s.nframe)
+	// Frames counts frames delivered, which a split one is not yet: a
+	// playhead set by it would run a frame ahead of the bytes.
+	s.frames.Store(s.nframe - int64(min(s.partN, 1)))
 	s.publishLevels()
 	s.layers.publish(int(s.nframe % layerFold))
 	s.clock.record(t0, frames)

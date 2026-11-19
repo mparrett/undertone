@@ -62,6 +62,12 @@ type noteRing struct {
 
 const noteSlots = noteRingSize + 1
 
+const noteBias = -minNote
+
+// The packed note field holds minNote..maxNote biased; widen it before
+// widening the voice's range.
+var _ [255 - (maxNote + noteBias)]struct{}
+
 // A cursor carries the synth it came from above bit 40 (12 bits), so one
 // kept across a Stop and Start is known for another synth's whatever its
 // count; the count of events read sits below. Both fit 52 bits, so a cursor
@@ -84,16 +90,17 @@ func newEpoch() uint64 {
 	}
 }
 
-// packed: gain as float32 bits (32), note (7), row (4), lane (2), kind (3),
-// layer (3).
+// packed: gain as float32 bits (32), note+noteBias (8), row (4), lane (2),
+// kind (3), layer (3). The bias makes the voice's whole minNote..maxNote
+// range fit unsigned in 8 bits.
 func (r *noteRing) add(e NoteEvent) {
 	n := r.n.Load()
 	i := n % noteSlots
 	r.frame[i].Store(uint64(e.Frame))
 	r.pat[i].Store(uint64(e.Pattern))
 	r.packed[i].Store(uint64(math.Float32bits(float32(e.Gain))) |
-		uint64(e.Note&0x7f)<<32 | uint64(e.Row&0xf)<<39 | uint64(e.Lane&3)<<43 |
-		uint64(e.Kind&7)<<45 | uint64(e.Layer&7)<<48)
+		uint64((e.Note+noteBias)&0xff)<<32 | uint64(e.Row&0xf)<<40 | uint64(e.Lane&3)<<44 |
+		uint64(e.Kind&7)<<46 | uint64(e.Layer&7)<<49)
 	r.n.Store(n + 1)
 }
 
@@ -126,11 +133,11 @@ func (s *Synth) NoteEvents(cursor uint64, dst []NoteEvent) (evs []NoteEvent, nex
 			Frame:   int64(f),
 			Pattern: int(pt),
 			Gain:    float64(math.Float32frombits(uint32(pk))),
-			Note:    int(pk >> 32 & 0x7f),
-			Row:     int(pk >> 39 & 0xf),
-			Lane:    int(pk >> 43 & 3),
-			Kind:    NoteKind(pk >> 45 & 7),
-			Layer:   int(pk >> 48 & 7),
+			Note:    int(pk>>32&0xff) - noteBias,
+			Row:     int(pk >> 40 & 0xf),
+			Lane:    int(pk >> 44 & 3),
+			Kind:    NoteKind(pk >> 46 & 7),
+			Layer:   int(pk >> 49 & 7),
 		})
 	}
 	return dst, r.epoch<<cursorShift | n, dropped

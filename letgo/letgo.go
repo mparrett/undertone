@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -82,11 +83,14 @@ func NewMusic(p engine.Params) *Music {
 }
 
 // Params returns a snapshot of the current parameter state — the demo trace
-// reads BPM and PulseGain off it. Read-only by construction: it is a copy.
+// reads BPM and PulseGain off it. Read-only by construction: it is a copy,
+// scale slice included.
 func (m *Music) Params() engine.Params {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.params
+	p := m.params
+	p.Scale = slices.Clone(p.Scale)
+	return p
 }
 
 // setParameters merges a partial lg map over current state and stages it.
@@ -128,6 +132,9 @@ func (m *Music) setParameters(v vm.Value, now bool) (vm.Value, error) {
 // (forward compatibility) and absent keys keep their current value. An unknown
 // :palette is an error, checked before p changes.
 func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
+	if err := retiredKey(lgm, "bell-density", "bell-lift"); err != nil {
+		return err
+	}
 	var pal *engine.Palette
 	if s, ok := kwStr(lgm, "palette"); ok {
 		bank, ok := engine.PaletteByName(s)
@@ -141,14 +148,14 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	// the host gets that palette without exporting the patch tables.
 	if s, ok := kwStr(lgm, "mood"); ok {
 		if d, ok := engine.DeriveMood(s, 1, 0, 0); ok {
-			// The palette's bell is the mood's seed-1 lead, so its name and
+			// The palette's lead track holds the mood's seed-1 lead, so its name and
 			// gate come too; a :lead below still overrides all three.
 			p.Palette = d.Palette
 			p.LeadName, p.LeadGate = d.LeadName, d.LeadGate
 		}
 	}
 	// :palette names a bank directly, for a mood the host has no row for. The
-	// bank's own bell is replaced by the current lead, since a partial map
+	// bank's lead track takes the current lead, since a partial map
 	// need not carry :lead.
 	if pal != nil {
 		p.Palette = *pal
@@ -159,7 +166,7 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	flt(lgm, "drone-gain", &p.DroneGain)
 	flt(lgm, "fifth-gain", &p.FifthGain)
 	flt(lgm, "pad-density", &p.PadDensity)
-	flt(lgm, "bell-density", &p.BellDensity)
+	flt(lgm, "lead-density", &p.LeadDensity)
 	flt(lgm, "air-gain", &p.AirGain)
 	flt(lgm, "pulse-gain", &p.PulseGain)
 	flt(lgm, "grit", &p.Grit)
@@ -167,7 +174,7 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	flt(lgm, "room-size", &p.Room.Size)
 	flt(lgm, "room-damp", &p.Room.Damp)
 	integer(lgm, "fifth-offset", &p.FifthOffset)
-	integer(lgm, "bell-lift", &p.BellLift)
+	integer(lgm, "lead-lift", &p.LeadLift)
 	if sc, ok := ints(lgm, "scale"); ok {
 		p.Scale = sc
 	}
@@ -183,14 +190,14 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	if s, ok := kwStr(lgm, "lead"); ok {
 		if s == "none" {
 			// As a lead-less mood derives: no name, so the generator plays
-			// nothing, and the bank's own bell back in the slot, where a
-			// grid's authored lead plays. Every built-in bank has the same
-			// bell, so with no :palette here any bank's will do.
+			// nothing, and the bell lead back on the lead track, where a
+			// grid's authored lead plays. Every bank, registered ones too, starts
+			// on the bell lead, so with no :palette here any bank's will do.
 			bank, _ := engine.PaletteByName("dungeon")
 			if pal != nil {
 				bank = *pal
 			}
-			p.LeadName, p.LeadGate, p.Palette.Bell = "", 0, bank.Bell
+			p.LeadName, p.LeadGate, p.Palette.Lead = "", 0, bank.Lead
 		} else {
 			engine.ApplyLead(p, s)
 		}

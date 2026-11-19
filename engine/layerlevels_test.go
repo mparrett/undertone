@@ -9,7 +9,7 @@ import (
 // source, not muted.
 func droneOnly() Params {
 	p := DeriveDungeon(1, 2, 0)
-	p.FifthGain, p.PadDensity, p.BellDensity, p.AirGain, p.PulseGain = 0, 0, 0, 0, 0
+	p.FifthGain, p.PadDensity, p.LeadDensity, p.AirGain, p.PulseGain = 0, 0, 0, 0, 0
 	p.LeadName, p.Groove = "", ""
 	return p
 }

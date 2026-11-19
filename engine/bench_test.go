@@ -128,8 +128,12 @@ func TestRenderDoesNotAllocate(t *testing.T) {
 
 	shots := builtinShots()
 	var synths []*Synth
+	tensions := []float64{0, 1}
+	if testing.Short() { // every mood still; full tension draws the most voices
+		tensions = []float64{1}
+	}
 	for _, name := range MoodNames() {
-		for _, tension := range []float64{0, 1} {
+		for _, tension := range tensions {
 			p, _ := DeriveMood(name, 7, 4, tension)
 			synths = append(synths, NewSynth(p))
 		}

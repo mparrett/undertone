@@ -118,10 +118,9 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 			continue
 		}
 		s.pats[t][row] = trackRow{}
-		if row == 0 {
-			// a held drone or pad from before the bed went off
-			s.voices[t].gate = false
-		}
+		// a held drone or pad from before the bed went off, at whatever row
+		// it did: SetGrid promises the next row, not the next pattern
+		s.voices[t].gate = false
 	}
 	for d, lane := range g.Drums {
 		s.drums[d][row] = gridHit(lane, row, s.pat*rows+row-s.runFrom)
@@ -132,7 +131,7 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 		if !ok {
 			gain = 0.55 // a voice added without measuring it
 		}
-		s.pats[trackLead][row] = trackRow{degreeNote(p, lead, d), gain, p.LeadGate, p.Palette.Bell}
+		s.pats[trackLead][row] = trackRow{degreeNote(p, lead, d), gain, p.LeadGate, p.Palette.Lead}
 	}
 	s.pats[trackFifth][row] = trackRow{}
 	if d := g.Bass[row]; d > 0 {
@@ -152,7 +151,7 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 func SeedGrid(p Params) Grid {
 	r := rng{p.Seed*0x9e3779b97f4a7c15 | 1}
 	g := Grid{Bed: true}
-	density := max(0.35, min(p.BellDensity*2, 0.7))
+	density := max(0.35, min(p.LeadDensity*2, 0.7))
 	d := 3 + r.n(4)
 	for i := range g.Lead {
 		if i == 0 || r.f() < density {

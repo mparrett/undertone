@@ -243,9 +243,8 @@ func (s *Synth) flamsAhead(strike bool) bool {
 // flam, with its gain and the sound it will play.
 func (s *Synth) flamAhead(d int) (float64, drumSound, bool) {
 	p := &s.params
-	if n := s.next.Load(); n != nil && s.row == 0 {
-		q := n.sanitized() // step applies it before this row
-		p = &q
+	if n := s.next.Load(); n != nil && s.row == 0 && s.landsAtBoundary(n) {
+		p = &n.p // step applies it before this row
 	}
 	var h drumHit
 	switch g, _, from := s.nextOwner(); {
@@ -266,6 +265,32 @@ func (s *Synth) flamAhead(d int) (float64, drumSound, bool) {
 // drumSeed seeds lane d's hit on the current row.
 func (s *Synth) drumSeed(d int) uint64 {
 	return s.params.Seed + uint64(s.pat*rows+s.row)*nDrums + uint64(d)
+}
+
+// rescaleDrums moves the hits armed within the current row (off 16ths,
+// their graces, ratchets) onto a row length changed from old frames by
+// applyNow, as rowLeft was. Left alone, a faster tempo stepped the row
+// before a pending off 16th, and the step cleared it unplayed. Each stays at
+// or inside rowLeft, which is where it still fires before the step; a swing
+// or groove change shapes the hits armed from the next row on. A pending
+// grace is not scaled but kept flamLead ahead of its off 16th, or the flam
+// would smear into two hits or collapse into one.
+func (s *Synth) rescaleDrums(old int) {
+	scale := func(n int) int {
+		if n <= 0 {
+			return n
+		}
+		return max(1, min(n*s.samplesPerRow/old, s.rowLeft))
+	}
+	for d := range s.dvoices {
+		s.offLeft[d] = scale(s.offLeft[d])
+		if s.graceLeft[d] > 0 {
+			s.graceLeft[d] = max(1, s.offLeft[d]-s.flamLead())
+		}
+		if rt := &s.rat[d]; rt.left > 0 {
+			rt.left, rt.gap = scale(rt.left), max(1, rt.gap*s.samplesPerRow/old)
+		}
+	}
 }
 
 // ratchet re-strikes a lane's hit within its 16th: left frames until the

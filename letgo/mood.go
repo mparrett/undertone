@@ -73,7 +73,7 @@ func deriveSpec(a []vm.Value) (vm.Value, error) {
 		vm.Keyword("drone-gain"), vm.Float(p.DroneGain),
 		vm.Keyword("fifth-gain"), vm.Float(p.FifthGain),
 		vm.Keyword("pad-density"), vm.Float(p.PadDensity),
-		vm.Keyword("bell-density"), vm.Float(p.BellDensity),
+		vm.Keyword("lead-density"), vm.Float(p.LeadDensity),
 		vm.Keyword("air-gain"), vm.Float(p.AirGain),
 		vm.Keyword("pulse-gain"), vm.Float(p.PulseGain),
 		vm.Keyword("grit"), vm.Float(p.Grit),
@@ -81,7 +81,7 @@ func deriveSpec(a []vm.Value) (vm.Value, error) {
 		vm.Keyword("room-size"), vm.Float(p.Room.Size),
 		vm.Keyword("room-damp"), vm.Float(p.Room.Damp),
 		vm.Keyword("fifth-offset"), vm.Int(p.FifthOffset),
-		vm.Keyword("bell-lift"), vm.Int(p.BellLift),
+		vm.Keyword("lead-lift"), vm.Int(p.LeadLift),
 		vm.Keyword("lead"), lead,
 		vm.Keyword("groove"), groove,
 		vm.Keyword("drum-gain"), vm.Float(p.DrumGain),
@@ -96,11 +96,15 @@ func deriveSpec(a []vm.Value) (vm.Value, error) {
 // to leave at zero.
 func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 	var s engine.MoodSpec
+	// first, or an old entry would fail on the missing :lead-density instead
+	if err := retiredKey(m, "bell", "bell-lift"); err != nil {
+		return s, err
+	}
 	known := map[string]bool{"palette": true, "leads": true, "grooves": true, "scales": true, "room": true}
 	ints := []struct {
 		k   string
 		dst *int
-	}{{"root-base", &s.RootBase}, {"root-step", &s.RootStep}, {"calm", &s.Calm}, {"bell-lift", &s.BellLift}}
+	}{{"root-base", &s.RootBase}, {"root-step", &s.RootStep}, {"calm", &s.Calm}, {"lead-lift", &s.LeadLift}}
 	for _, f := range ints {
 		known[f.k] = true
 		if !integer(m, f.k, f.dst) {
@@ -113,7 +117,7 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 		required bool
 	}{
 		{"bpm", &s.BPM, true}, {"drone", &s.Drone, true}, {"fifth", &s.Fifth, true},
-		{"pad", &s.Pad, true}, {"bell", &s.Bell, true}, {"air", &s.Air, true},
+		{"pad", &s.Pad, true}, {"lead-density", &s.LeadDensity, true}, {"air", &s.Air, true},
 		{"drums", &s.Drums, false}, {"busy", &s.Busy, false}, {"open", &s.Open, false},
 	}
 	for _, f := range lines {
@@ -200,6 +204,25 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 		s.Scales = append(s.Scales, sc)
 	}
 	return s, onlyKeys(m, known)
+}
+
+// retired maps keys the lead rename (#108) retired to what replaced them.
+// Each is an error rather than an alias: they had no users outside the repo
+// to keep working, and a silent no-op in a partial map is the worse failure.
+var retired = map[string]string{
+	"bell-density": "it is :lead-density",
+	"bell-lift":    "it is :lead-lift",
+	"bell":         "the line is :lead-density",
+}
+
+// retiredKey reports the first of keys that m still uses.
+func retiredKey(m *vm.PersistentMap, keys ...string) error {
+	for _, k := range keys {
+		if at(m, k) != vm.NIL {
+			return fmt.Errorf(":%s was renamed: %s", k, retired[k])
+		}
+	}
+	return nil
 }
 
 // onlyKeys reports the first key of m that known does not hold.

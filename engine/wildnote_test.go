@@ -69,12 +69,12 @@ func TestWildShotLeavesTheMusicPlaying(t *testing.T) {
 	}
 }
 
-// The same for the music's own notes: a scale, a bell lift or a second
+// The same for the music's own notes: a scale, a lead lift or a second
 // drone's offset that puts a track's note out of range.
 func TestWildMusicNotesDoNotPanic(t *testing.T) {
 	wild := map[string]func(*Params, int){
 		"scale":        func(p *Params, n int) { p.Scale = []int{0, n, 3, 5, 7} },
-		"bell-lift":    func(p *Params, n int) { p.BellLift = n },
+		"lead-lift":    func(p *Params, n int) { p.LeadLift = n },
 		"fifth-offset": func(p *Params, n int) { p.FifthOffset = n },
 	}
 	for what, set := range wild {
@@ -83,7 +83,7 @@ func TestWildMusicNotesDoNotPanic(t *testing.T) {
 				t.Run(fmt.Sprintf("%s/%s/%d", what, lead, note), func(t *testing.T) {
 					t.Parallel()
 					p, _ := DeriveMood("village", 1, 3, 0.5)
-					p.BellDensity = 1
+					p.LeadDensity = 1
 					ApplyLead(&p, lead)
 					set(&p, note)
 					if rms := playedRMS(NewSynth(p), 2); !(rms > 0) {

@@ -1,0 +1,1271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Undertone Studio</title>
+<style>
+  :root { --bg: #0d0d10; --panel: #15151a; --line: #26262e; --fg: #d6d1c2; --mut: #8a8576; --err: #c96a5f;
+          --src: #e0b84f; --mod: #b48ad6; --fx: #5fa8c9; --out: #9cc46a; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 ui-monospace, Menlo, monospace; }
+  main { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
+  main > * { min-width: 0; }  /* a wide child scrolls inside its column instead of widening the page */
+  @media (min-width: 900px) { main { grid-template-columns: 300px 1fr; align-items: start; } body { padding: 28px; }
+                              aside { position: sticky; top: 28px; } }
+  main.loading { opacity: .45; pointer-events: none; }
+  h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
+  .sub { color: var(--mut); font-size: 12px; margin: 0 0 16px; }
+  #names { align-content: flex-start; }
+  #tracks .chip.lane { border-style: dashed; }
+  #trackof { color: var(--fg); }  /* the open palette's name, a step brighter than the label */  /* drum lanes, after the bed layers */  /* rows packed at the top when it keeps a taller kind's height */
+  .chip.guide { color: var(--fx); border-color: color-mix(in srgb, var(--fx) 55%, var(--line));
+                background: color-mix(in srgb, var(--fx) 10%, var(--panel)); cursor: pointer; }
+  .chip.guide.on { color: var(--fg); background: color-mix(in srgb, var(--fx) 25%, var(--panel)); }
+  /* the scope's size toggle: a small tab hanging from its bottom edge */
+  .edgebar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin: -1px 0 12px; }
+  .edgebar .edge { font-size: 11px; color: var(--mut); padding: 1px 12px 2px; border-radius: 0 0 8px 8px; border-top: none; }
+  .edgebar .edge:hover { color: var(--fg); }
+  /* the units' size toggle sits on their top edge instead */
+  /* the units' tab row: scope fade, then the tab, which sits on the first unit's top edge */
+  .edgebar.top { margin: 12px 0 -1px; flex-wrap: wrap; align-items: flex-end; row-gap: 8px; }
+  .edgebar.top .head { margin-right: auto; padding-bottom: 9px; }  /* name and gate left; fade and the tab right, the tab on the units' edge */
+  .edgebar.top label.fade { padding-bottom: 15px; }  /* centred on the name and gate boxes beside it */
+  .edgebar.top + #units { margin-top: 0; }
+  .edgebar.top .edge { border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; white-space: nowrap; }
+  .edgebar label.fade { display: flex; gap: 6px; align-items: center; color: var(--mut); font-size: 12px; }
+  .edgebar label.fade input { width: 70px; }
+  .edgebar label.fade output { min-width: 5ch; white-space: nowrap; }
+  .help { cursor: help; color: var(--src); font-weight: 400; letter-spacing: 0; }
+  .lab { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 22px 0 8px; font-weight: 600; }
+  #status { color: var(--mut); min-height: 1.45em; font-size: 13px; white-space: pre-wrap; }
+  #status.err, #takeednhint.err, #ednhint.err { color: var(--err); }
+  /* the hovered control's description, in place of the browser's tooltips */
+  #helpline { position: fixed; left: 0; right: 0; bottom: 0; padding: 5px 16px; font-size: 12px; color: var(--fg);
+              background: color-mix(in srgb, var(--panel) 92%, transparent); border-top: 1px solid var(--line);
+              pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 5; }
+  #helpline:empty { display: none; }
+  body { padding-bottom: 44px; }  /* the last line can scroll clear of the help line */
+  .bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+  button, .chip, select, input[type=number], input[type=text], textarea {
+    font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+  button, .chip { cursor: pointer; user-select: none; -webkit-user-select: none; }
+  .chip { font-size: 13px; color: var(--mut); padding: 3px 9px; white-space: nowrap; }
+  .chip.on { color: var(--fg); border-color: var(--src); background: color-mix(in srgb, var(--src) 18%, var(--panel)); }
+  /* registered this session: dashed and in the control colour, so it can't be read as selected (solid gold) */
+  .chip.reg { font-style: italic; border-style: dashed; border-color: color-mix(in srgb, var(--mod) 70%, var(--line)); }
+  #scope.thin { height: 34px; }
+  #scope { cursor: pointer; display: block; margin: 0; width: 100%; height: 118px; background: #07090a; border: 1px solid var(--line); border-radius: 8px; }
+  #play { min-width: 6.5em; border-color: #3d5a47; background: #18241d; }
+  #play.on { border-color: var(--src); background: #2a2414; }
+  #names { max-height: 220px; overflow: auto; }
+  label.sl { display: grid; grid-template-columns: 5.5em 1fr 6ch; gap: 8px; align-items: center; font-size: 13px; color: var(--mut); margin: 4px 0; }
+  label.sl output { color: var(--fg); text-align: right; }
+  input[type=range] { width: 100%; accent-color: var(--src); }
+  #meters { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; height: 54px; align-items: end; }
+  #meters div { background: var(--line); border-radius: 3px; position: relative; height: 100%; }
+  #meters div i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--out); border-radius: 3px; }
+  #meterlbl { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; font-size: 10px; color: var(--mut); text-align: center; }
+  .head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .head input[type=text] { width: 12em; }
+  #gatebox input[type=range] { width: 130px; accent-color: var(--src); }
+  #gatebox input[type=number] { width: 6.5em; }
+  .head label { color: var(--mut); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  .head input[type=number] { width: 6.5em; }
+  #units { display: grid; gap: 6px; margin-top: 10px; }
+  .unit { display: grid; grid-template-columns: 3.5ch 5.5em 4.5em 1fr auto; gap: 8px; align-items: center;
+          background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--k, var(--line)); border-radius: 8px; padding: 6px 8px; }
+  .unit.bad { border-color: var(--err); }
+  .unit .ix { color: var(--mut); font-size: 12px; }
+  .unit .grip { cursor: grab; touch-action: none; user-select: none; white-space: nowrap; }
+  .unit .grip:hover { color: var(--fg); }
+  .unit.dragging { opacity: .5; }
+  .unit.dragging .grip { cursor: grabbing; }
+  .unit.drop-before { box-shadow: 0 -3px 0 var(--src); }
+  .unit.drop-after { box-shadow: 0 3px 0 var(--src); }
+  .unit .stack { display: flex; gap: 2px; align-items: center; }
+  .unit .stack b { width: 6px; height: 12px; border-radius: 2px; background: var(--mod); }
+  .unit .stack b.sig { background: var(--src); }
+  .unit .args { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 14px; }
+  .unit .args label.sl { grid-template-columns: 5.6em 1fr 8.5ch; margin: 0; }  /* fits "transpose" and "0.001" */
+  /* one height for every control in a full unit, so a row's height comes from its arguments, not from a tall dropdown */
+  .unit select, .unit .args input[type=number], .unit .ops button { height: 24px; box-sizing: border-box; padding: 2px 6px; font-size: 12px; }
+  .unit .args input[type=number] { width: 100%; text-align: right; padding: 2px 4px; }
+  .unit .doc { grid-column: 2 / -1; color: var(--mut); font-size: 11px; margin-top: -2px; }
+  /* phone: a unit's arguments take a full row under its name and buttons */
+  @media (max-width: 560px) {
+    .unit, #units.compact .unit { grid-template-columns: 3.5ch 5.5em 4.5em minmax(0, 1fr) auto; }
+    .unit .args { grid-column: 1 / -1; grid-row: 2; grid-template-columns: 1fr; }  /* one argument a line, so each slider has room */
+    .unit .doc { grid-column: 1 / -1; grid-row: 3; }
+  }
+  /* compact: a unit to a line, for long patches and palettes */
+  #units.compact { gap: 3px; }
+  #units.compact .unit { padding: 2px 6px; gap: 6px; grid-template-columns: 3.5ch 5em 3.5em 1fr auto; border-radius: 6px; }
+  #units.compact .unit .doc { display: none; }
+  #units.compact .unit select { padding: 1px 4px; font-size: 12px; height: 20px; }
+  #units.compact .unit .args { display: flex; flex-wrap: wrap; gap: 0 12px; }
+  #units.compact .unit .args label.sl { display: flex; gap: 4px; font-size: 11px; align-items: center; }
+  #units.compact .unit .args label.sl > span { white-space: nowrap; }
+  #units.compact .unit .args input[type=range] { width: 56px; }
+  #units.compact .unit .args input[type=number] { padding: 0 3px; font-size: 11px; width: 8ch; height: 20px; }
+  #units.compact .unit .args select { width: auto; }
+  #units.compact .unit .args output { display: none; }
+  #units.compact .unit .args input[type=range] { height: 12px; }
+  #units.compact .unit .ops button { padding: 0 5px; font-size: 11px; height: 20px; }
+  #units.compact .unit .stack b { height: 9px; width: 5px; }
+  #pads button { min-width: 2.6em; transition: background .25s, color .25s; }
+  /* the bed is running but silent (mute): the mood select breathes, so it's clear the music is there to bring in */
+  #mood.quiet { animation: breathe 2.4s ease-in-out infinite; }
+  @keyframes breathe { 50% { border-color: var(--src); box-shadow: 0 0 6px -1px var(--src); } }
+  #pads button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
+  #pads button.hit, #meterlbl span.hit { background: var(--src); color: var(--bg); transition: none; }
+  #meterlbl span { transition: background .3s, color .3s; border-radius: 3px; }
+  textarea { width: 100%; min-height: 150px; font-size: 12px; }
+  #takeedn { min-height: 6em; height: 9em; resize: vertical; }
+  /* audition left, the EDN boxes right; stacked until the editor column is wide enough */
+  .audrow { display: grid; gap: 4px 20px; }
+  @media (min-width: 1180px) { .audrow { grid-template-columns: 3fr 2fr; align-items: start; } }
+  .audrow > * { min-width: 0; }
+  .takerow button { min-width: 2.6em; transition: background .25s, color .25s; }
+  .takerow button.hit { background: var(--src); color: var(--bg); transition: none; }
+  .takerow .tlabel { color: var(--mut); font-size: 12px; cursor: pointer; flex-basis: 100%; margin-top: 4px; }
+  .takerow.sel { box-shadow: -3px 0 0 var(--src); padding-left: 6px; }
+  .takerow.sel .tlabel { color: var(--src); }
+  .takerow.sel .tlabel::after { content: "  · keys"; color: var(--mut); font-style: normal; }
+  .takerow .tsub { color: var(--mut); font-style: italic; }
+  .namebar { padding: 6px 8px; border: 1px solid var(--src); border-radius: 8px; background: color-mix(in srgb, var(--src) 10%, var(--panel)); }
+  .namebar .q { flex-basis: 100%; font-size: 13px; }
+  #pads button:disabled { opacity: .35; cursor: default; }
+  .takerow button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
+  /* EDN boxes: a highlighted <pre> sits under a transparent textarea. Both
+     share one grid cell, font, padding and border, and neither wraps, so
+     their lines stay aligned; scroll is copied from the textarea. */
+  .hl { display: grid; }
+  .hl > * { grid-area: 1 / 1; margin: 0; font: 12px/1.45 ui-monospace, Menlo, monospace; padding: 5px 9px;
+            border: 1px solid var(--line); border-radius: 8px; white-space: pre; overflow-wrap: normal; tab-size: 2;
+            box-sizing: border-box; width: 100%; min-width: 0; }
+  .hl > pre { background: var(--panel); color: var(--fg); overflow: hidden; pointer-events: none; contain: size; }  /* the textarea sets the height */
+  .hl > textarea { background: transparent; color: transparent; caret-color: var(--fg); overflow: auto; position: relative; }
+  .hl > textarea::selection { background: color-mix(in srgb, var(--fx) 35%, transparent); color: transparent; }
+  .e-kw { color: var(--mod); } .e-num { color: var(--fx); } .e-str { color: var(--src); } .e-br { color: var(--mut); }
+  .e-cm { color: var(--mut); font-style: italic; } .e-off { opacity: .6; }
+  .hint { color: var(--mut); font-size: 12px; }
+  #guide { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px 16px; margin: 0 0 16px; font-size: 13px; }
+  #guide summary { cursor: pointer; color: var(--src); padding: 8px 0; font-weight: 600; letter-spacing: .05em; }
+  #guide h3 { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 14px 0 4px; }
+  #guide p, #guide li { color: var(--fg); margin: 4px 0; }
+  #guide ol, #guide ul { padding-left: 1.3em; margin: 4px 0; }
+  #guide code, #guide pre { color: var(--src); }
+  #guide pre { background: var(--bg); padding: 8px 10px; border-radius: 6px; overflow-x: auto; margin: 6px 0; }
+  kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 11px; }
+</style>
+</head>
+<body>
+<main class="loading">
+<aside>
+  <h1>UNDERTONE STUDIO</h1>
+  <p class="sub">shape a one-shot, a lead or a palette; hear it; take it away as EDN</p>
+  <div class="bar" id="kinds"></div>
+  <div class="bar"><span class="chip guide" id="guidechip" title="show or hide the how-to">? guide</span></div>
+  <div class="lab">OPEN A <span id="openkind">SHOT</span> <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
+  <p class="hint" id="openhelp" hidden><i>Dashed italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
+  <div class="bar" id="names"></div>
+  <div id="trackbox" hidden>
+    <div class="lab">EDIT A TRACK OF <span id="trackof"></span> <span class="help" tabindex="0" title="what the tracks are" onclick="trackhelp.hidden = !trackhelp.hidden">[?]</span></div>
+    <p class="hint" id="trackhelp" hidden>A bed layer (drone to pulse) or a drum lane (kick, clap, shaker, dashed): each is its own patch.</p>
+    <div class="bar" id="tracks"></div>
+  </div>
+
+  <div class="lab">BED</div>
+  <div class="bar"><button id="play" disabled>loading…</button>
+    <select id="mood"></select>
+    <span class="chip" id="solo" title="hear only the layer being edited">solo</span>
+    <span class="chip on" id="silent" title="(m) mute the whole bed: a shot alone, still pitched in the mood's scale">mute</span></div>
+  <label class="sl">level <input type="range" id="level" min="0" max="10" step="1" value="1"><output></output></label>
+  <label class="sl">tension <input type="range" id="tension" min="0" max="1" step="0.0625" value="0"><output></output></label>
+  <label class="sl">seed <input type="range" id="seed" min="1" max="64" step="1" value="1"><output></output></label>
+  <div id="meters"></div><div id="meterlbl"></div>
+  <div class="lab">STATUS</div>
+  <div id="status">loading the engine…</div>
+</aside>
+
+<section>
+  <canvas id="scope" title="each layer's notes and level, swept left to right; marks fade over a few seconds. Click for the thin strip."></canvas>
+  <div class="edgebar"><button id="thinscope" class="edge"></button></div>
+  <details id="guide">
+    <summary>HOW TO USE THE STUDIO</summary>
+    <p>Every sound undertone plays is a <b>patch</b>: a short list of units run once per sample, left to right, on a
+    small stack (up to 8 values). Sources push a value, processors change the top one, and <code>out</code> pops one
+    into the mix. The studio edits that list and plays the result as you go.</p>
+
+    <h3>WHAT YOU CAN EDIT</h3>
+    <ul>
+      <li><b>shot</b>: a one-shot (a hit, a pickup, a footstep). Its gate is in milliseconds. Fire it on a degree of the music's scale.</li>
+      <li><b>lead</b>: the melody voice the generator picks. Its gate is in rows (a row is an eighth note).</li>
+      <li><b>bed palette</b>: the band a mood's bed is made of, everything but the lead: drone, fifth, pad, air, pulse, and a drum kit (kick, clap, shaker).
+        A palette has no melody track; a melody sound is a lead.</li>
+    </ul>
+
+    <h3>A FIRST SOUND IN A MINUTE</h3>
+    <ol>
+      <li>Press <b>play</b> (or <kbd>space</kbd>; <kbd>m</kbd> mutes and unmutes) to start the bed (dungeon is a good quiet one).</li>
+      <li>Pick <b>shot</b>, open <b>tink</b>, and press <kbd>1</kbd>–<kbd>8</kbd>: the shot plays on that degree of the bed's scale.</li>
+      <li>Drag the <b>env</b> unit's decay: every edit fires the shot, so you hear it change as you drag. <b>Shift-click</b> a pad to repeat it while you work; shift-click again (or click any pad) to stop.</li>
+      <li><b>+ add a unit… → svf</b>, then drag it by its <b>⠿</b> grip to just before <code>out</code>: a resonant filter. Turn up <i>res</i>.</li>
+      <li>Rename it, then <b>download</b> the EDN.</li>
+    </ol>
+
+    <h3>READING A PATCH</h3>
+    <p>The usual voice is <code>env → osc → mul → out</code>: an envelope and an oscillator are pushed, <code>mul</code> multiplies them
+    (the envelope shapes the tone), <code>out</code> mixes it. Two such chains in one patch are two layers. The coloured bars after a unit
+    are the stack after it runs: <b style="color:var(--src)">signal</b> (from an osc or pluck) or <b style="color:var(--mod)">control</b>
+    (from an env or lfo). A <b>!</b> means the stack runs dry or overflows there.</p>
+    <ul>
+      <li><b>modulate</b>: push an <code>lfo</code> or <code>env</code>, then an <code>svf</code> with a nonzero <i>depth</i> pops it to sweep the cutoff;
+        <code>pitch</code> pops it to bend the oscillators after it; <code>scale</code> turns it into a range for a tremolo with <code>mul</code>.</li>
+      <li><b>grit</b>: <code>drive</code> overdrives, <code>crush</code> lowers the sample rate and bit depth.</li>
+      <li><b>space</b>: <code>send</code> feeds the tempo delay, <code>verb</code> the room. Both read the top without popping it.</li>
+    </ul>
+
+    <h3>HEARING IT</h3>
+    <ul>
+      <li>Every edit <b>registers</b> the sound. If the engine refuses it, the status says why and outlines the unit; the last good version keeps playing.</li>
+      <li>A lead or palette you edit replaces the bed's own, so you hear it in the music. <b>solo</b> mutes the rest.</li>
+      <li><b>mute</b> (on at first) silences the bed (music gain 0) for a shot on its own: the room and delay still ring, and the mood still sets the key its degrees land in. Click it off to hear the music; leads and palettes need it off.</li>
+      <li>Change <b>mood, level, tension, seed</b> to hear it in other keys, tempos and densities. The meters show each layer (not shots).</li>
+      <li>Clicking a name opens it. A built-in plays as it is; your first edit makes it your own copy (<code>name-2</code>), since built-in names can't be replaced. <b>Shift-click</b> makes a copy straight away. Sounds you registered are in <i>italic</i>.</li>
+    </ul>
+
+    <h3>TAKING IT TO A GAME</h3>
+    <p>The EDN box is exactly what the lg binding takes. Load it at boot, then use the name:</p>
+<pre>(undertone/register-shot   (read-string (slurp "sfx/zap.edn")))
+(undertone/trigger {:shot :zap :degree 2})
+
+(undertone/register-lead    (read-string (slurp "music/glass.edn")))
+(undertone/register-palette (read-string (slurp "music/cavern.edn")))
+;; a mood names them with :lead and :palette, or set-parameters does</pre>
+    <p>The box takes one back too: edit it, or paste a shot, lead or palette map into it, and it applies after a pause. A new <code>:name</code> asks first: create it, rename the open sound, or cancel.</p>
+
+    <h3>LIMITS</h3>
+    <ul>
+      <li>At most 8 values on the stack. A patch needs an <code>env</code> (it ends the sound) and an <code>out</code>.</li>
+      <li>Shots: release up to 2 s, out gain up to 2. Leads and palette patches: release up to 10 s, gain up to 4.</li>
+      <li>Shots aren't part of the music: they don't show on the meters, and they ignore mute and solo.</li>
+      <li>This is a spike: nothing is saved in the page. Download what you want to keep.</li>
+    </ul>
+  </details>
+  <div class="bar namebar" id="namebar" hidden></div>
+  <div class="bar" id="kitbox" hidden>
+    <label class="hint">note <input type="number" id="kitnote" min="0" max="127" style="width:5em"></label>
+    <span class="chip" id="kitdef" title="leave this lane to the default kit">default kit</span>
+  </div>
+
+  <div class="edgebar top">
+  <div class="head">
+    <label title="the name a game triggers it by; a new name asks before it makes a new sound">name <input type="text" id="name" spellcheck="false"></label>
+    <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
+      <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
+  </div>
+    <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label>
+    <button id="compact" class="edge"></button></div>
+  <div id="units"></div>
+
+  <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select>
+    <span class="hint">the bars after each unit are its stack: <b style="color:var(--src)">signal</b>, <b style="color:var(--mod)">control</b></span></div>
+
+  <div class="audrow"><div class="audcol">
+  <div class="lab" id="audlab">AUDITION</div>
+  <div class="bar" id="pads"></div>
+  <div id="takerows"></div>
+  <div class="bar" id="takebox" hidden><button id="playtake"></button><span class="hint" id="takehint"></span></div>
+  <label class="sl" id="gainbox">gain <input type="range" id="sgain" min="0" max="2" step="0.05" value="1"><output></output></label>
+  <p class="hint" id="audhint"></p>
+  </div><div class="edncol">
+  <div id="takeednbox">
+    <div class="lab">TAKE EDN</div>
+    <div class="bar"><span class="hint">key <kbd>1</kbd>'s take; paste takes or sfx-board blocks for a row each</span>
+      <span class="chip" id="takestate" title="default: the open shot on each key. edited: keys play the take in the box">default</span>
+      <button id="copytake">copy</button><button id="resettake" hidden>reset</button></div>
+    <textarea id="takeedn" spellcheck="false"></textarea>
+    <p class="hint" id="takeednhint"></p>
+  </div>
+
+  <div class="lab">EDN</div>
+  <div class="bar"><button id="copy">copy</button><button id="save">download</button>
+    <span class="hint">the map undertone/register-<span id="regkind">shot</span> takes</span></div>
+  <textarea id="edn" spellcheck="false"></textarea>
+  <p class="hint" id="ednhint">edit or paste here: it applies after a pause, and asks before it makes a new name</p>
+  </div></div>
+</section>
+</main>
+
+<div id="helpline"></div>
+<script src="wasm_exec.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const status = $("status");
+const say = (t, err) => { status.textContent = t; status.classList.toggle("err", !!err); };
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+// Each op's arguments, with the ranges the engine validates (engine/shotspec.go,
+// UnitSpec.unit). "rel" and "gain" stretch for music patches (musicBounds).
+// k is the role colour: a source, a modulator, a processor or an output.
+const OPS = {
+  env:   { k: "mod", doc: "push an envelope", args: [["attack", 0, 10, "log", "s"], ["decay", .001, 10, "log", "s"], ["sustain", 0, 1], ["release", .001, "rel", "log", "s"]] },
+  osc:   { k: "src", doc: "push an oscillator; shape below", shape: true, args: [["transpose", -48, 48, 0, "st"], ["sweep", -48, 48, 0, "st"], ["sweep dec", 0, 5, 0, "s"]] },
+  pluck: { k: "src", doc: "push a plucked string", args: [["transpose", -24, 24, 0, "st"], ["feedback", 0, .999]] },
+  lfo:   { k: "mod", doc: "push a slow wave, -1..1", args: [["rate", .01, 100, "log", "Hz"], ["shape", 0, 2, "int", ["sine", "tri", "s&h"]]] },
+  mul:   { k: "fx", doc: "pop two, push their product", args: [] },
+  lpf:   { k: "fx", doc: "one-pole lowpass", args: [["cutoff", 20, 22050, "log", "Hz"]] },
+  hpf:   { k: "fx", doc: "one-pole highpass", args: [["cutoff", 20, 22050, "log", "Hz"]] },
+  svf:   { k: "fx", doc: "resonant filter; depth ≠ 0 pops a modulator first", args: [["cutoff", 20, 22050, "log", "Hz"], ["res", 0, 1], ["mode", 0, 2, "int", ["low", "band", "high"]], ["depth", -8, 8, 0, "oct"]] },
+  drive: { k: "fx", doc: "tanh overdrive", args: [["drive", .1, 20, "log"], ["bias", -1, 1]] },
+  crush: { k: "fx", doc: "sample-hold and bit depth", args: [["hold", 50, 44100, "log", "Hz"], ["bits", 1, 16, "int"]] },
+  scale: { k: "mod", doc: "top·gain + offset (offset only on a control)", args: [["gain", -2, 2], ["offset", -2, 2]] },
+  pitch: { k: "mod", doc: "pop m; bend later oscs by m·depth", args: [["depth", -12, 12, 0, "st"]] },
+  send:  { k: "out", doc: "add to the delay bus", args: [["amount", 0, 1]] },
+  verb:  { k: "out", doc: "add to the reverb bus", args: [["amount", 0, 1]] },
+  out:   { k: "out", doc: "pop and mix", args: [["gain", 0, "gain"], ["pan", 0, 1]] },
+};
+const DEFAULT_ARGS = { env: [.005, .3, 0, .2], osc: [0, 0, 0], pluck: [0, .99], lfo: [2, 0], mul: [], lpf: [2000], hpf: [80],
+  svf: [1200, .3, 0, 0], drive: [2, 0], crush: [8000, 8], scale: [.5, .5], pitch: [.3], send: [.2], verb: [.2], out: [.5, .5] };
+// compact units label arguments short; the full name is in the help line
+const SHORT = { attack: "atk", decay: "dec", sustain: "sus", release: "rel", transpose: "tr", sweep: "sw", "sweep dec": "sw.d",
+  feedback: "fb", cutoff: "cut", depth: "dep", amount: "amt", offset: "off" };
+const compact = () => $("units").classList.contains("compact");
+const SHAPES = ["sine", "saw", "pulse", "noise"];
+const TRACKS = ["drone", "fifth", "pad", "air", "pulse"];  // a palette has no melody track: a melody sound is a registered lead
+const LANES = ["kick", "clap", "shaker"];
+const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums"];
+
+let mutedNow = [];
+const last = {};
+function resume(st) { spec = st.spec; track = st.track; builtin = st.builtin; render(); builtin ? preview() : commit(); }
+let builtin = false;  // spec is a built-in, unedited: shown and played, not registered
+let kind = "shot", spec = null, track = "drone", playing = false, solo = false, bedOn = false;  // the bed starts silent: shots are most of the work
+const registered = { shot: new Set(), lead: new Set(), palette: new Set() };
+// Names renamed away. The engine can't unregister a name, so a renamed sound
+// stays playable under its old name but leaves the list.
+const retired = { shot: new Set(), lead: new Set(), palette: new Set() };
+const U = () => window.undertoneStudio;
+
+// The patch being edited: a shot's or lead's units, or one track of a palette.
+function patch() {
+  if (kind !== "palette") return spec;
+  const li = LANES.indexOf(track);
+  return li >= 0 ? spec.Kit[li] : spec[cap(track)];
+}
+const cap = (s) => s[0].toUpperCase() + s.slice(1);
+const limit = (v) => v === "rel" ? (kind === "shot" ? 2 : 10) : v === "gain" ? (kind === "shot" ? 2 : 4) : v;
+
+// ---- the list of names ----
+function buildKinds() {
+  for (const k of ["shot", "lead", "palette"]) {
+    const c = el("span", "chip", k === "palette" ? "bed palette" : k); c.dataset.k = k;  // a palette is the bed's band, all but the lead
+    // each kind keeps what was being edited, so switching back resumes it
+    // rather than opening another copy
+    c.onclick = () => { if (spec) last[kind] = { spec, track, builtin }; kind = k; last[k] ? resume(last[k]) : openFirst(); };
+    $("kinds").append(c);
+  }
+}
+// The name list keeps the height of the longest kind's, so switching kinds
+// doesn't move everything below it. Measured once the engine is up, and on
+// a resize (the chips rewrap).
+let namesMin = 0;
+function measureNames() {
+  const box = $("names"); box.style.minHeight = "";
+  let h = 0;
+  for (const k of ["shot", "lead", "palette"]) {
+    box.replaceChildren(...JSON.parse(U().names(k)).map((n) => el("span", "chip", n)));
+    h = Math.max(h, box.offsetHeight);
+  }
+  namesMin = h; buildNames();
+}
+addEventListener("resize", () => { if (U()) measureNames(); });
+function buildNames() {
+  // a palette adds its track section below anyway, so it doesn't hold the space
+  $("names").style.minHeight = namesMin && kind !== "palette" ? namesMin + "px" : "";
+  $("names").replaceChildren();
+  for (const n of JSON.parse(U().names(kind))) {
+    if (retired[kind].has(n)) continue;
+    const c = el("span", "chip" + (registered[kind].has(n) ? " reg" : ""), n);
+    c.classList.toggle("on", spec && spec.Name === n);
+    c.onclick = (e) => open(n, e.shiftKey);
+    $("names").append(c);
+  }
+  for (const c of $("kinds").children) c.classList.toggle("on", c.dataset.k === kind);
+  $("openkind").textContent = kind === "palette" ? "BED PALETTE" : kind.toUpperCase();
+}
+function openFirst() {
+  const first = { shot: "chime", lead: "chime", palette: "village" }[kind];
+  const names = JSON.parse(U().names(kind));
+  open(names.includes(first) ? first : names[0]);
+}
+// Open a sound. A built-in plays as it is, and becomes a copy under a new
+// name on the first edit (built-in names cannot be registered over), so
+// browsing the list never piles up copies. copy makes the copy now.
+function open(name, copy) {
+  const s = JSON.parse(U().get(kind, name));
+  if (!s) return say(`no ${kind} ${name}`, true);
+  builtin = !registered[kind].has(name);
+  if (copy) { s.Name = freeName(name); builtin = false; }
+  if (kind === "palette") {
+    for (const t of TRACKS) s[cap(t)] = s[cap(t)] || { Name: "", Units: [] };
+    if (!LANES.includes(track) && !TRACKS.includes(track)) track = "drone";
+  }
+  spec = s;
+  render(); builtin ? preview() : commit();
+}
+function preview() {
+  $("edn").value = U().edn(kind, JSON.stringify(spec));
+  buildNames(); applyBed();
+  say(`built-in ${kind} ${spec.Name}: your first edit makes it your own copy`);
+}
+function freeName(n) {
+  const taken = new Set(JSON.parse(U().names(kind)));
+  for (let i = 2; ; i++) if (!taken.has(`${n}-${i}`)) return `${n}-${i}`;
+}
+
+// ---- the editor ----
+function render() {
+  $("name").value = spec.Name;
+  $("regkind").textContent = kind;
+  $("gatebox").hidden = kind === "palette";
+  if (kind === "shot") { $("gatelbl").textContent = "gate ms"; $("gate").value = spec.GateMS; $("gate").min = 1; $("gate").max = 10000; }
+  if (kind === "lead") { $("gatelbl").textContent = "gate rows"; $("gate").value = spec.Gate; $("gate").min = 1; $("gate").max = 16; }
+  gateToRange();
+  // the help line reads data-tip; the gate means something different per kind
+  $("gatebox").removeAttribute("title");
+  $("gatebox").dataset.tip = kind === "shot"
+    ? "gate ms: how long the shot's note is held before its envelopes release. With sustain 0 it only matters when it's shorter than the decay"
+    : "gate rows: how long each note of the lead is held, in sequencer rows";
+  // A palette is a patch per bed layer and drum lane; the sidebar picks which
+  // one the editor shows, as a second step under the palette list.
+  $("tracks").replaceChildren(); $("trackbox").hidden = kind !== "palette";
+  $("trackof").textContent = kind === "palette" ? spec.Name.toUpperCase() : "";
+  $("kitbox").hidden = !(kind === "palette" && LANES.includes(track));
+  if (kind === "palette") {
+    for (const t of [...TRACKS, ...LANES]) {
+      const c = el("span", "chip" + (t === track ? " on" : "") + (LANES.includes(t) ? " lane" : ""), t);
+      c.onclick = () => { track = t; render(); };
+      $("tracks").append(c);
+    }
+    if (LANES.includes(track)) {
+      const d = patch();
+      $("kitnote").value = d.Note; $("kitdef").classList.toggle("on", !!d.Default);
+    }
+  }
+  renderUnits();
+  renderAudition();
+  buildNames();
+}
+
+// stack depth and which slots carry signal after each unit, as buildPatch counts them
+function stacks(units) {
+  const out = []; let st = [];
+  for (const u of units) {
+    const a = u.Args || [];
+    switch (u.Op) {
+      case "env": case "lfo": st.push(false); break;
+      case "osc": case "pluck": st.push(true); break;
+      case "mul": { const b = st.pop(), x = st.pop(); if (x === undefined) { out.push(null); continue; } st.push(x || b); break; }
+      case "out": case "pitch": st.pop(); break;
+      case "svf": if (a[3]) st.splice(st.length - 2, 1); break;
+    }
+    out.push(st.length > 8 || st.includes(undefined) ? null : [...st]);
+  }
+  return out;
+}
+
+function renderUnits() {
+  const p = patch(), units = p.Units || (p.Units = []);
+  const st = stacks(units);
+  $("units").replaceChildren();
+  units.forEach((u, i) => {
+    const op = OPS[u.Op], row = el("div", "unit");
+    row.style.setProperty("--k", `var(--${op ? op.k : "line"})`);
+    const grip = el("span", "ix grip", `⠿${i}`); grip.title = `unit ${i}: drag to move`;
+    grip.addEventListener("pointerdown", (e) => dragUnit(e, i, row));
+    row.append(grip);
+    const sel = el("select");
+    for (const o of Object.keys(OPS)) { const opt = el("option", null, o); opt.selected = o === u.Op; sel.append(opt); }
+    sel.onchange = () => { u.Op = sel.value; u.Args = [...DEFAULT_ARGS[u.Op]]; u.Shape = u.Op === "osc" ? "sine" : ""; edited(); };
+    row.append(sel);
+    const stk = el("span", "stack");
+    if (st[i]) for (const s of st[i]) stk.append(el("b", s ? "sig" : ""));
+    else stk.append(el("span", "hint", "!"));
+    row.append(stk);
+    const args = el("div", "args");
+    if (op && op.shape) {
+      const sh = el("select");
+      for (const s of SHAPES) { const o = el("option", null, s); o.selected = s === u.Shape; sh.append(o); }
+      sh.onchange = () => { u.Shape = sh.value; edited(); };
+      const l = el("label", "sl"); l.append(el("span", null, "shape"), sh, el("output")); args.append(l);
+    }
+    (op ? op.args : []).forEach(([label, lo, hi, mode, unit], j) => argControl(args, u, j, label, lo, limit(hi), mode, unit));
+    row.append(args);
+    const ops = el("span", "ops");
+    const mk = (t, f, tip) => { const b = el("button", null, t); b.title = tip; b.onclick = f; ops.append(b); };
+    mk("⧉", () => { units.splice(i + 1, 0, JSON.parse(JSON.stringify(u))); edited(); }, "duplicate");
+    mk("×", () => { units.splice(i, 1); edited(); }, "remove");
+    row.append(ops);
+    if (op) row.append(el("div", "doc", op.doc));
+    $("units").append(row);
+  });
+}
+
+// Drag a unit by its grip to reorder. Pointer events rather than HTML drag
+// and drop, which touch screens don't fire. A line marks where it will land.
+function dragUnit(e, from, row) {
+  if (e.button) return;
+  e.preventDefault();
+  const grip = e.currentTarget, rows = [...$("units").children];
+  grip.setPointerCapture(e.pointerId); row.classList.add("dragging");
+  let to = from;
+  const mark = () => rows.forEach((r, j) => { r.classList.toggle("drop-before", j === to && to < from); r.classList.toggle("drop-after", j === to && to > from); });
+  const move = (ev) => {
+    to = rows.findIndex((r) => ev.clientY < r.getBoundingClientRect().bottom);
+    if (to < 0) to = rows.length - 1;
+    mark();
+  };
+  const up = () => {
+    grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); grip.removeEventListener("pointercancel", up);
+    rows.forEach((r) => r.classList.remove("dragging", "drop-before", "drop-after"));
+    if (to === from) return;
+    const units = patch().Units; units.splice(to, 0, units.splice(from, 1)[0]); edited();
+  };
+  grip.addEventListener("pointermove", move); grip.addEventListener("pointerup", up); grip.addEventListener("pointercancel", up);
+}
+function argControl(box, u, j, label, lo, hi, mode, unit) {
+  const l = el("label", "sl"), r = el("input"), n = el("input");
+  r.type = "range"; n.type = "number";
+  const isLog = mode === "log", isInt = mode === "int";
+  const toPos = (v) => isLog ? Math.log(Math.max(v, lo || .0005) / (lo || .0005)) / Math.log(hi / (lo || .0005)) : (v - lo) / (hi - lo);
+  const fromPos = (p) => isLog ? (lo || .0005) * Math.pow(hi / (lo || .0005), p) : lo + p * (hi - lo);
+  const round = (v) => isInt ? Math.round(v) : Math.abs(v) >= 100 ? Math.round(v) : +v.toPrecision(3);
+  r.min = 0; r.max = 1; r.step = isInt ? 1 / (hi - lo) : .001;
+  n.step = "any"; n.min = lo; n.max = hi;
+  const show = () => { r.value = toPos(u.Args[j]); n.value = u.Args[j]; n.title = Array.isArray(unit) ? unit[u.Args[j]] : unit || ""; };
+  r.oninput = () => { u.Args[j] = round(isLog && lo === 0 && +r.value === 0 ? 0 : fromPos(+r.value)); n.value = u.Args[j]; edited(true); };
+  n.onchange = () => { u.Args[j] = +n.value; show(); edited(true); };
+  const name = el("span", null, compact() ? SHORT[label] || label : label); name.title = label;
+  l.append(name, r, n);
+  if (Array.isArray(unit)) l.title = unit.map((s, i) => `${i} ${s}`).join(", ");
+  box.append(l); show();
+}
+
+// ---- audition ----
+function renderAudition() {
+  stopLoop(); $("pads").replaceChildren();
+  $("gainbox").hidden = kind !== "shot";
+  const shot = kind === "shot";
+  for (let d = 0; d < 8; d++) {
+    const b = el("button", null, `${d + 1}`); b.title = `scale degree ${d + 1}, key ${d + 1}; shift-click repeats`;
+    b.onclick = (e) => e.shiftKey ? loop(d) : (stopLoop(), fire(d)); $("pads").append(b);
+  }
+  if (shot) { const t = el("button", null, "t"); t.disabled = true; t.title = "the take as pasted: paste takes in TAKE EDN to use it"; $("pads").append(t); }
+  const mel = el("button", null, ""); mel.innerHTML = "&#9835;"; mel.id = "melody";
+  mel.title = shot ? "play the xsofy title theme's melody on this shot (again to stop)"
+    : `play the xsofy title theme through the bed's voices, with this ${kind} (again to stop)`;
+  mel.onclick = () => mel.classList.contains("loop") ? stopLoop() : melody(); $("pads").append(mel);
+  const x = el("button", null, ""); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat and all sound";
+  x.onclick = () => { stopLoop(); setPlaying(false); }; $("pads").append(x);
+  $("solo").hidden = shot;
+  $("takeednbox").hidden = !shot;
+  renderTakeRows();
+  showKeyTake();
+  $("audhint").innerHTML = shot
+    ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it. Paste takes in TAKE EDN and each gets a row like this one, plus <kbd>t</kbd>: the take as pasted. The keyboard plays the row marked · keys; a click selects a row"
+    : kind === "lead"
+      ? "keys <kbd>1</kbd>–<kbd>8</kbd> play this lead on that degree (it plays solo); ♫ plays the title theme with it. The bed also plays it in the generator's place"
+      : "keys <kbd>1</kbd>–<kbd>8</kbd> play a lead note over this palette; ♫ plays the title theme through it. <b>solo</b> hears the track being edited alone";
+}
+let lastDeg = 0;
+// Shift-click a pad to fire it every LOOP_MS until clicked again, so a sound
+// can be shaped while it repeats; a plain click or another kind stops it.
+const LOOP_MS = 700;
+let loopTimer = 0, loopDeg = -1;
+// The xsofy title theme's lead, a scale degree (1-8) per row or 0 for a rest,
+// four 16-row grids at 67 bpm, a row an eighth note (from xsofy's title
+// theme, round 2). ♪ plays it on the shot being edited, on the bed's scale.
+const TITLE = [
+  { lead: "5004300010000000", bass: "1000000060000000", drums: [], bed: true },
+  { lead: "5004300020301000", bass: "1000000040000000", drums: [], bed: true },
+  { lead: "8007500060054000", bass: "6000000040000000", drums: ["X...............X..............."], bed: true },
+  { lead: "5004300020001000", bass: "5000000010000000", drums: ["X..............................."], bed: true }];
+const TITLE_ROW_MS = 60000 / 67 / 2;
+let themeWatch = 0;  // clears ♫'s outline when the theme ends
+let melodyTimers = [];
+// A lead or palette plays the theme itself through the engine, voiced by the
+// bed (so by the lead or palette being edited), at the mood's tempo; a shot
+// has no voice in a theme, so its melody is fired note by note at 67 bpm.
+function melody(fireFn = fire, btn = $("melody")) {
+  stopLoop(); btn.classList.add("loop");
+  if (kind !== "shot") {
+    audible(); const err = U().theme(JSON.stringify(TITLE)); if (err) return say(err, true);
+    themeWatch = setInterval(() => { if (!U().themePlaying()) stopLoop(); }, 250);
+    return;
+  }
+  [...TITLE.map((g) => g.lead).join("")].forEach((c, i) => { if (c !== "0") melodyTimers.push(setTimeout(() => fireFn(+c - 1), i * TITLE_ROW_MS)); });
+  melodyTimers.push(setTimeout(stopLoop, TITLE.length * 16 * TITLE_ROW_MS));
+}
+function stopLoop() {
+  if (themeWatch || themeNote) { clearInterval(themeWatch); themeWatch = 0; themeNote = false; U()?.theme(""); }
+  melodyTimers.forEach(clearTimeout); melodyTimers = []; clearInterval(loopTimer); loopDeg = -1;
+  for (const b of document.querySelectorAll("#pads .loop, #takerows .loop")) b.classList.remove("loop"); }
+function loop(d, fireFn = fire, btn = $("pads").children[d]) {
+  const again = loopDeg === d && btn.classList.contains("loop"); stopLoop(); if (again) return;
+  loopDeg = d; btn.classList.add("loop"); fireFn(d);
+  loopTimer = setInterval(() => kind === "shot" ? fireFn(d) : stopLoop(), LOOP_MS);
+}
+// flash lights a pad or a layer's label for a moment, as it sounds.
+function flash(e) { if (!e) return; e.classList.add("hit"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("hit"), 260); }
+// A lead or palette has no one-shot voice, so a pad plays one note on the
+// theme player's lead lane: the bed's lead, the one being edited, the way a
+// game's theme would sound it. The rest of that pattern rests the generated lead.
+let themeNote = false;
+function audible() {
+  if (!playing) setPlaying(true);
+  if (!bedOn || (kind === "palette" && solo)) { bedOn = true; solo = kind === "lead"; bedChips(); }
+}
+function fire(d) {
+  lastDeg = d;
+  if (kind !== "shot") {
+    audible(); themeNote = true;
+    const err = U().theme(JSON.stringify([{ lead: String(d + 1), bed: true }])); if (err) return say(err, true);
+    flash($("pads").children[d]); return;
+  }
+  if (!playing) setPlaying(true);
+  U().shot(spec.Name, d, +$("sgain").value);
+  flash($("pads").children[d]); scopeNote(SHOTS, 60 + d * 2, 1); shotShape(spec.Name, d, +$("sgain").value);
+}
+
+// Register what is on screen, then retune the bed to it. Every edit runs this.
+function commit(refire) {
+  showKeyTake();
+  if (builtin) {  // the first edit of a built-in: it becomes a copy
+    builtin = false;
+    if (JSON.parse(U().names(kind)).includes(spec.Name) && !registered[kind].has(spec.Name)) spec.Name = freeName(spec.Name);
+    $("name").value = spec.Name;
+  }
+  const json = JSON.stringify(spec);
+  $("edn").value = U().edn(kind, json);
+  const err = U().register(kind, json);
+  document.querySelectorAll(".unit").forEach((r) => r.classList.remove("bad"));
+  if (err) {
+    const m = /unit (\d+)/.exec(err); if (m && kind !== "palette") $("units").children[+m[1]]?.classList.add("bad");
+    say(err, true); return;
+  }
+  const fresh = !registered[kind].has(spec.Name);
+  registered[kind].add(spec.Name);
+  if (fresh) buildNames();  // a new copy joins the list, lit
+  say(`${kind} ${spec.Name} registered`);
+  applyBed();
+  if (refire && kind === "shot" && loopDeg < 0) fire(lastDeg);  // auto-audition: hear each edit (a loop already repeats it)
+}
+let refireTimer = 0;
+function edited(fromSlider) {
+  if (kind === "palette" && patch().Name && !LANES.includes(track)) patch().Name = "";  // edited units are no longer the built-in's
+  if (kind === "palette" && LANES.includes(track)) patch().Default = false;
+  if (!fromSlider) renderUnits();
+  else { const st = stacks(patch().Units); $("units").querySelectorAll(".stack").forEach((s, i) => { s.replaceChildren(); (st[i] || []).forEach((x) => s.append(el("b", x ? "sig" : ""))); }); }
+  clearTimeout(refireTimer);
+  refireTimer = setTimeout(() => commit(true), fromSlider ? 90 : 0);
+}
+
+function applyBed() {
+  const layer = kind === "lead" ? "lead" : LANES.includes(track) ? "drums" : track;
+  // mute is music gain 0, not a layer mute: the bed goes silent but its delay and
+  // room still carry the shots, as a game with its music off hears them
+  const muted = mutedNow = solo && kind !== "shot" ? LAYERS.filter((l) => l !== layer) : [];
+  const err = U().bed(JSON.stringify({
+    mood: $("mood").value, seed: +$("seed").value, level: +$("level").value, tension: +$("tension").value,
+    palette: kind === "palette" && (builtin || registered.palette.has(spec.Name)) ? spec.Name : "",
+    lead: kind === "lead" && (builtin || registered.lead.has(spec.Name)) ? spec.Name : "", muted, musicGain: bedOn ? 1 : 0 }));
+  if (err) say(err, true);
+}
+
+const quietCue = () => $("mood").classList.toggle("quiet", playing && !bedOn);
+function setPlaying(on) {
+  playing = on; quietCue();
+  playing ? U().play() : U().stop();
+  $("play").classList.toggle("on", playing);
+  $("play").innerHTML = playing ? "&#10074;&#10074; stop" : "&#9654; play";
+}
+
+// ---- a small EDN reader: maps, vectors, keywords, numbers, strings ----
+function readEDN(src) {
+  let i = 0;
+  const ws = () => { while (i < src.length) { if (/[\s,]/.test(src[i])) i++; else if (src[i] === ";") { while (i < src.length && src[i] !== "\n") i++; } else break; } };
+  const val = () => {
+    ws(); const c = src[i];
+    if (c === "{") { i++; const m = {}; for (;;) { ws(); if (src[i] === "}") { i++; return m; } const k = val(); m[k] = val(); } }
+    if (c === "[" || c === "(") { const end = c === "[" ? "]" : ")"; i++; const v = []; for (;;) { ws(); if (src[i] === end) { i++; return v; } v.push(val()); } }
+    if (c === '"') {
+      let s = "", j = i + 1;
+      for (; j < src.length && src[j] !== '"'; j++) s += src[j] === "\\" && j + 1 < src.length ? src[++j] : src[j];
+      if (j >= src.length) throw new Error(`EDN: a string opened at ${i} never closes`);
+      i = j + 1; return s;
+    }
+    const m = /^[^\s,{}\[\]()";]+/.exec(src.slice(i)); if (!m) throw new Error(`EDN: unexpected ${c ?? "end"} at ${i}`);
+    i += m[0].length; const t = m[0];
+    if (t[0] === ":") return t;
+    if (!isNaN(+t)) return +t;
+    if (t === "true" || t === "false") return t === "true";
+    if (t === "nil") return null;
+    return t;
+  };
+  const v = val(); ws();
+  if (i < src.length) throw new Error(`EDN: unexpected ${src[i]} at ${i}, after the end`);
+  return v;
+}
+const kw = (x) => typeof x === "string" && x[0] === ":" ? x.slice(1) : x;
+const unitsOf = (v) => {
+  if (!Array.isArray(v)) throw new Error("EDN: a patch is a vector of units, [[:env …] [:osc …] …]");
+  return v.map((u, n) => {
+  if (!Array.isArray(u) || typeof u[0] !== "string" || u[0][0] !== ":") throw new Error(`EDN: unit ${n} should be a vector starting with an op, like [:mul]`);
+  let [op, ...rest] = u;
+  op = kw(op); let shape = "";
+  // as the engine's reader: an osc names its shape second, and only an osc names one
+  if (op === "osc") {
+    if (typeof rest[1] !== "string") throw new Error(`EDN: unit ${n} osc needs a shape second, like [:osc 0 :sine 0 1]`);
+    shape = kw(rest[1]); rest.splice(1, 1);
+  }
+  if (rest.some((x) => typeof x !== "number")) throw new Error(`EDN: unit ${n} ${op} takes numbers only`);
+  return { Op: op, Shape: shape, Args: rest };
+  });
+};
+const patchOf = (p) => typeof p === "string" ? { Name: kw(p), Units: [] }
+  : Array.isArray(p) ? { Name: "", Units: unitsOf(p) } : { Name: kw(p[":name"] || ""), Units: unitsOf(p[":patch"]) };
+
+// Read a shot, lead or palette map; throws on bad EDN or an unknown shape.
+function soundOf(text) {
+  const m = readEDN(text);
+  if (!m || typeof m !== "object" || Array.isArray(m)) throw new Error("EDN: expected a map, {:name … }");
+  const name = kw(m[":name"]);
+  let k, s;
+  if (":gate-ms" in m) { k = "shot"; s = { Name: name, GateMS: m[":gate-ms"], Units: unitsOf(m[":patch"]) }; }
+  else if (":gate" in m) { k = "lead"; s = { Name: name, Gate: m[":gate"], ...patchOf(m[":patch"]), }; s.Name = name; }
+  else if (":kit" in m || ":drone" in m) {
+    k = "palette"; s = { Name: name, Kit: [] };
+    for (const t of TRACKS) if (m[":" + t]) s[cap(t)] = patchOf(m[":" + t]);
+    s.Kit = (m[":kit"] || [":default", ":default", ":default"]).map((d) => d === ":default" ? { Name: "", Units: [], Note: 0, Default: true }
+      : { ...patchOf(d[":patch"]), Note: d[":note"], Default: false });
+  } else throw new Error("EDN: not a shot (:gate-ms), lead (:gate) or palette (:kit)");
+  return { k, s, name };
+}
+// Apply the EDN box. From a link (keep=false) the box is then rewritten from
+// the sound; while typing (keep=true) the text and caret stay as typed.
+function importEDN(keep) {
+  const box = $("edn"), hint = $("ednhint");
+  let k, s, name;
+  try { ({ k, s, name } = soundOf(box.value)); }
+  catch (e) { hint.textContent = e.message; hint.classList.add("err"); return say(e.message, true); }
+  const go = (how) => {
+    const err = U().register(k, JSON.stringify(s));
+    if (err) { hint.textContent = `${err} (the last good version keeps playing)`; hint.classList.add("err"); return say(err, true); }
+    if (how === "rename") retire(k, spec.Name);
+    retired[k].delete(name);
+    const text = box.value, a = box.selectionStart, b = box.selectionEnd, typing = document.activeElement === box;
+    registered[k].add(name); kind = k; open(name);  // read back: built-in patch names come back with their units
+    if (keep) { box.value = text; if (typing) box.setSelectionRange(a, b); }
+    hint.textContent = `✓ applied: ${k} ${name}`; hint.classList.remove("err");
+    say(`applied ${k} ${name}`);
+  };
+  if (spec && k === kind && name === spec.Name) {
+    if (builtin || (!registered[k].has(name) && JSON.parse(U().names(k)).includes(name))) {
+      // an edit of a built-in becomes a copy, as in the editor; the box's
+      // :name follows so the next pause applies to the copy
+      const to = freeName(name), d = to.length - name.length, a = box.selectionStart, b = box.selectionEnd;
+      const at = box.value.search(new RegExp(":name\\s+:" + name.replace(/[.*+?^$()|[\]\\{}]/g, "\\$&") + "(?![\\w-])"));
+      box.value = box.value.replace(new RegExp("(:name\\s+):" + name.replace(/[.*+?^$()|[\]\\{}]/g, "\\$&") + "(?![\\w-])"), `$1:${to}`);
+      if (at >= 0 && document.activeElement === box) box.setSelectionRange(a + (a > at ? d : 0), b + (b > at ? d : 0));
+      s.Name = name = to;
+    }
+    return go();
+  }
+  // a built-in name is refused by register below; ask only about names that would register
+  if (JSON.parse(U().names(k)).includes(name) && !registered[k].has(name) && !retired[k].has(name)) return go();
+  hint.textContent = `${name} is a new name: choose below`; hint.classList.remove("err");
+  askName(k, k === kind && spec ? spec.Name : null, name, $("edn"), go, () => { hint.textContent = "not applied: the name is unchanged in the editor"; });
+}
+
+// A name change creates a sound, so the page asks first: create it beside the
+// open one, rename the open one (it leaves the list), or replace one of yours
+// that already has the name. Built-ins can't be renamed, only copied.
+function retire(k, n) { registered[k].delete(n); retired[k].add(n); }
+function askName(k, from, to, near, onOk, onCancel) {
+  const bar = $("namebar"); bar.replaceChildren(); bar.dataset.to = to;
+  const btn = (t, fn) => { const b = el("button", null, t); b.onclick = () => { bar.hidden = true; fn(); }; bar.append(b); return b; };
+  const mine = registered[k].has(to) && !retired[k].has(to);
+  const canRename = from && registered[k].has(from) && !mine;
+  bar.append(el("span", "q", mine ? `${to} is already one of your ${k}s: replace it?`
+    : from ? `the name changed from ${from} to ${to}:` : `this makes a new ${k}, ${to}:`));
+  mine ? btn(`replace ${to}`, () => onOk("replace")) : btn(`create ${to}`, () => onOk("create"));
+  if (canRename) btn(`rename ${from} → ${to}`, () => onOk("rename"));
+  btn("cancel", () => onCancel && onCancel());
+  if (!canRename && from && !mine) bar.append(el("span", "hint", `${from} is a built-in: it can be copied, not renamed`));
+  if (near.closest(".hl")) near.closest(".hl").after(bar); else (near.closest(".edgebar") || near.closest(".bar, .head")).before(bar);  // by the name field, or under the EDN box
+  bar.hidden = false; bar.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+// ---- takes: the take box, and an audition row per pasted take ----
+// By default the box shows key 1's take and follows the shot and gain. An
+// edit installs itself 400 ms after typing stops: each top-level vector in
+// it is a take (so several sfx-board blocks paste at once), labelled by the
+// first comment line before it, with a row of pads under the shot's.
+// Keys 1-8 set the take's base degree: the whole take moves so its first
+// :degree trigger lands on degree N (a :note stays put; a note is absolute).
+// 9 plays it as pasted. The gain slider scales every trigger (at 1, as
+// pasted). Shot maps in the paste are registered first. The keyboard plays
+// the selected row; clicking a row's pad selects it. Takes survive opening
+// another shot; reset clears them.
+let takeDirty = false, takes = [], selRow = -1, takeTimer = 0;
+function takeState() {
+  const c = $("takestate"), n = takes.length;
+  c.textContent = n ? `edited: ${n} take${n === 1 ? "" : "s"}` : "default";
+  c.classList.toggle("on", n > 0); $("resettake").hidden = !takeDirty;
+}
+// The shot an edited take follows: set when every trigger in it plays the
+// shot that was open, so it is a tweak of that shot's take rather than a
+// pasted one. Opening or renaming a shot then points it at the new name and
+// keeps the tweak; pasted takes stay put while shots are browsed.
+let followShot = null;
+function showKeyTake() {
+  takeState();
+  if (spec && takeDirty && followShot && followShot !== spec.Name) {
+    const esc = followShot.replace(/[.*+?^$()|[\]\\{}]/g, "\\$&");
+    const re = new RegExp("(:shot\\s+):" + esc + "(?![\\w*+!?'<>=/.-])", "g");
+    $("takeedn").value = $("takeedn").value.replace(re, `$1:${spec.Name}`);
+    installTake(); return;
+  }
+  if (!spec || takeDirty) return;
+  $("takeedn").value = `[{:shot :${spec.Name} :degree 0 :gain ${+$("sgain").value}}]`;
+}
+function parseTake(text) {
+  // readEDN reads numbers as JS numbers; a 64-bit seed must stay whole
+  const forms = readEDN("[" + text.replace(/(:seed\s+)(-?\d+)/g, '$1"$2"') + "\n]");
+  let tk = null; const names = [];
+  for (const f of forms) {
+    if (Array.isArray(f)) tk = f;
+    else if (f && typeof f === "object" && ":gate-ms" in f) {
+      const n = kw(f[":name"]);
+      const err = U().register("shot", JSON.stringify({ Name: n, GateMS: f[":gate-ms"], Units: unitsOf(f[":patch"]) }));
+      if (err) throw new Error(`${n}: ${err}`);
+      registered.shot.add(n); names.push(n);
+    } else if (f && typeof f === "object" && ":shot" in f) tk = [f];
+  }
+  if (!tk || !tk.length) throw new Error("no take: paste a vector of trigger maps, [{:shot :tink :degree 0} …]");
+  const trs = tk.map((m) => Object.fromEntries(Object.entries(m).map(([k, v]) => [kw(k), kw(v)])));
+  return { trs, names };
+}
+// Cut the text after each top-level vector, skipping strings and comments;
+// anything after the last vector (say, shot maps) joins the last piece.
+function takeChunks(text) {
+  const out = []; let depth = 0, prev = 0, top = "";
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === ";") { while (i < text.length && text[i] !== "\n") i++; continue; }
+    if (c === '"') { i++; while (i < text.length && text[i] !== '"') { if (text[i] === "\\") i++; i++; } continue; }
+    if ("[{(".includes(c)) { if (depth === 0) top = c; depth++; }
+    else if ("]})".includes(c)) { depth--; if (depth === 0 && top === "[") { out.push(text.slice(prev, i + 1)); prev = i + 1; } }
+  }
+  const rest = text.slice(prev);
+  if (/^[^;]*\S/m.test(rest.replace(/;.*$/gm, ""))) { if (out.length) out[out.length - 1] += rest; else out.push(rest); }
+  return out.length ? out : [text];
+}
+function installTake() {
+  const h = $("takeednhint");
+  try {
+    const got = [], names = [];
+    takeChunks($("takeedn").value).forEach((ch, i) => {
+      const r = parseTake(ch);
+      const lab = (/^\s*;+\s*(\S.*)$/m.exec(ch) || [])[1];
+      // name the shot that plays; a map the block registers may not be it
+      // (a board block of a built-in registers :x-copy but triggers :x)
+      got.push({ name: r.trs[0].shot, label: lab || "", trs: r.trs }); names.push(...r.names);
+    });
+    takes = got; if (selRow < 0 || selRow >= takes.length) selRow = 0;
+    followShot = spec && takes.length === 1 && takes[0].trs.every((t) => t.shot === spec.Name) ? spec.Name : null;
+    h.textContent = `✓ ${takes.length} take${takes.length === 1 ? "" : "s"} installed` +
+      (names.length ? `; registered ${names.join(", ")}` : "") +
+      ". Pads 1–8 put the take's first degree on that degree; t plays it as pasted; a :note stays put.";
+    h.classList.remove("err");
+  } catch (e) {
+    // a typo mid-edit keeps the last good takes (or the shot) playing
+    h.textContent = e.message + (takes.length ? " (rows still play the last good takes)" : " (keys still play the shot)");
+    h.classList.add("err");
+  }
+  takeState(); renderTakeRows();
+}
+// Pasted takes replace the shot's row: each gets the same pads, then t (the
+// take as pasted), then the shot row's ♫ and stop. Pads step the take the way
+// they step a shot: its first :degree lands on the pad's degree and the rest
+// move with it (a :note stays put; a notes-only take sounds the same on every
+// pad, kept for a uniform row). Shift-click repeats a pad, as on the shot row.
+const TAKE = -1;  // fireTakeRow's "as pasted"
+function selectRow(i) {
+  selRow = i;
+  [...$("takerows").children].forEach((r, j) => r.classList.toggle("sel", j === i));
+}
+function renderTakeRows() {
+  const box = $("takerows"); box.replaceChildren();
+  const on = kind === "shot" && takes.length > 0;
+  $("pads").hidden = on;
+  if (!on) { selRow = -1; return; }
+  takes.forEach((tk, i) => {
+    const row = el("div", "bar takerow"), fireFn = (d) => fireTakeRow(i, d);
+    const lab = el("span", "tlabel", `take ${i + 1}: ${tk.name}`);
+    if (tk.label) { lab.append(el("span", "tsub", ` ${tk.label}`)); }
+    lab.title = (tk.label ? tk.label + "\n" : "") + "click to select: the keys play this row";
+    lab.onclick = () => selectRow(i); row.append(lab);
+    const btn = (text, title, fn) => { const b = el("button", null, text); b.title = title; b.onclick = (e) => { selectRow(i); fn(e, b); }; row.append(b); return b; };
+    for (let d = 0; d < 8; d++)
+      btn(`${d + 1}`, `the take with its first degree on ${d + 1}, key ${d + 1}; shift-click repeats`,
+          (e, b) => e.shiftKey ? loop(d, fireFn, b) : (stopLoop(), fireFn(d)));
+    btn("t", "the take exactly as pasted, key t; shift-click repeats",
+        (e, b) => e.shiftKey ? loop(TAKE, fireFn, b) : (stopLoop(), fireFn(TAKE))).classList.add("tk");
+    const mel = btn("♫", "play the xsofy title theme's melody on this take (again to stop)",
+        (e, b) => b.classList.contains("loop") ? stopLoop() : melody(fireFn, b));
+    btn("■ stop", "stop the repeat and all sound", () => { stopLoop(); setPlaying(false); });
+    box.append(row);
+  });
+  selectRow(Math.min(Math.max(selRow, 0), takes.length - 1));
+}
+function fireTakeRow(i, d) {
+  const tk = takes[i]; if (!tk) return;
+  if (!playing) setPlaying(true);
+  const g = +$("sgain").value, first = tk.trs.find((t) => t.degree != null);
+  const shift = d === TAKE || !first ? 0 : d - first.degree;
+  const trs = tk.trs.map((t) => {
+    const o = { ...t };
+    if (o.degree != null) o.degree += shift;
+    o.gain = (o.gain ?? 1) * g;
+    return o;
+  });
+  const take = JSON.stringify(trs), r = JSON.parse(U().trigger(take) || "{}");
+  if (r && r.error) return say(r.error, true);
+  const bs = $("takerows").children[i]?.querySelectorAll("button");
+  flash(d === TAKE ? $("takerows").children[i]?.querySelector(".tk") : bs?.[d]);
+  scopeNote(SHOTS, 60 + (first ? first.degree + shift : 0) * 2, 1); takeShape(take);
+}
+$("takeedn").oninput = () => {
+  takeDirty = true; takeState();
+  clearTimeout(takeTimer); takeTimer = setTimeout(installTake, 400);
+};
+$("resettake").onclick = () => {
+  takeDirty = false; takes = []; selRow = -1; followShot = null; clearTimeout(takeTimer); renderTakeRows();
+  $("takeednhint").textContent = ""; $("takeednhint").classList.remove("err");
+  showKeyTake();
+};
+$("copytake").onclick = async () => { try { await navigator.clipboard.writeText($("takeedn").value); say("take copied"); } catch { $("takeedn").select(); say("select the take to copy it"); } };
+
+// ---- EDN highlighting (the sfx board's tokenizer) ----
+// Explanatory comments dim; commented-out code keeps its colours, faded.
+const TOK = /("(?:\\.|[^"\\])*")|(:[^\s\[\]{}()",;]+)|(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)(?![\w.])|([\[\]{}()])|([^"\[\]{}():\-\d;]+|[\s\S])/g;
+const escH = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const tokensH = (code) => code.replace(TOK, (m, str, k, num, br) => {
+  const c = str ? "e-str" : k ? "e-kw" : num ? "e-num" : br ? "e-br" : null;
+  return c ? `<span class="${c}">${escH(m)}</span>` : escH(m);
+});
+function highlightEDN(block) {
+  return block.split("\n").map((line) => {
+    const m = /^(\s*;+\s?)(.*)$/.exec(line);
+    if (!m) return tokensH(line);
+    return /^\s*[\[{(:]/.test(m[2])
+      ? `<span class="e-cm">${escH(m[1])}</span><span class="e-off">${tokensH(m[2])}</span>`
+      : `<span class="e-cm">${escH(line)}</span>`;
+  }).join("\n");
+}
+// Wrap a textarea in the highlight layer. Its value is set from code in many
+// places, so the instance's value setter repaints too; copy and parse read
+// the textarea, so they stay plain text.
+function highlightBox(ta) {
+  const wrap = el("div", "hl"), pre = el("pre"); pre.setAttribute("aria-hidden", "true");
+  ta.replaceWith(wrap); wrap.append(pre, ta); ta.wrap = "off";
+  const d = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
+  // a trailing space keeps a final empty line, and the extra lines the room a scrollbar takes
+  const paint = () => { pre.innerHTML = highlightEDN(d.get.call(ta)) + " \n\n"; sync(); };
+  const sync = () => { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; };
+  Object.defineProperty(ta, "value", { get() { return d.get.call(ta); }, set(v) { d.set.call(ta, v); paint(); } });
+  ta.addEventListener("input", paint); ta.addEventListener("scroll", sync);
+  paint();
+}
+highlightBox($("edn")); highlightBox($("takeedn"));
+
+// ---- help line ----
+// The browser's tooltips cover the controls they describe, so each title
+// moves to data-tip the first time the pointer reaches it (before the
+// tooltip's delay) and shows in a line along the bottom instead. Titles set
+// later, on rebuilt rows, are caught the same way.
+function tipOf(t) {
+  const e = t && t.closest && t.closest("[title], [data-tip]");
+  if (!e) return "";
+  if (e.hasAttribute("title")) { e.dataset.tip = e.title; e.removeAttribute("title"); }
+  return e.dataset.tip;
+}
+document.addEventListener("pointerover", (e) => { if (e.pointerType === "mouse") $("helpline").textContent = tipOf(e.target); });
+// keyboard focus too, but only where there's a pointer to hover: on a touch
+// screen the line would just cover the page
+if (matchMedia("(hover: hover)").matches) document.addEventListener("focusin", (e) => { $("helpline").textContent = tipOf(e.target); });
+document.addEventListener("pointerleave", () => { $("helpline").textContent = ""; });
+
+// ---- wiring ----
+$("name").onchange = () => {
+  const to = $("name").value.trim(), from = spec.Name;
+  // a blur after an edit fires change again; one question per name is enough
+  if (!$("namebar").hidden && $("namebar").dataset.to === to) return;
+  if (!to || to === from) { $("name").value = from; return; }
+  if (JSON.parse(U().names(kind)).includes(to) && !registered[kind].has(to) && !retired[kind].has(to)) {
+    $("name").value = from; return say(`${to} is a built-in ${kind}: pick another name`, true);
+  }
+  askName(kind, from, to, $("name"), (how) => {
+    if (how === "rename") retire(kind, from);
+    retired[kind].delete(to);
+    spec.Name = to; builtin = false; commit(); buildNames();
+  }, () => { $("name").value = from; });
+};
+$("gate").onchange = () => { if (kind === "shot") spec.GateMS = +$("gate").value; else spec.Gate = +$("gate").value; gateToRange(); commit(true); };
+// The slider beside the gate: log-scaled over a shot's 1-10000 ms, so the
+// short gates most shots use get most of its travel; whole rows for a lead.
+// It sets the number and commits as it moves, like a unit's sliders.
+const gateMs = (r) => Math.round(Math.exp(Math.log(10000) * r / 1000));
+function gateToRange() {
+  const g = +$("gate").value || 1;
+  if (kind === "shot") { $("gaterange").min = 0; $("gaterange").max = 1000; $("gaterange").step = 1; $("gaterange").value = Math.round(1000 * Math.log(g) / Math.log(10000)); }
+  else { $("gaterange").max = 16; $("gaterange").min = 1; $("gaterange").step = 1; $("gaterange").value = g; }
+}
+$("gaterange").oninput = () => {
+  const r = +$("gaterange").value, g = kind === "shot" ? gateMs(r) : r;
+  $("gate").value = g;
+  if (kind === "shot") spec.GateMS = g; else spec.Gate = g;
+  clearTimeout(refireTimer); refireTimer = setTimeout(() => commit(true), 60);
+};
+$("kitnote").onchange = () => { patch().Note = +$("kitnote").value; patch().Default = false; render(); commit(); };
+$("kitdef").onclick = () => { const d = patch(); d.Default = !d.Default; if (d.Default) { d.Name = ""; d.Units = []; d.Note = 0; } open2(); };
+function open2() { commit(); if (kind === "palette" && registered.palette.has(spec.Name)) { const t = track; spec = JSON.parse(U().get("palette", spec.Name)); for (const x of TRACKS) spec[cap(x)] ||= { Name: "", Units: [] }; track = t; render(); } }
+$("addop").onchange = () => {
+  const op = $("addop").value; $("addop").value = ""; if (!op) return;
+  const p = patch(); p.Units.push({ Op: op, Shape: op === "osc" ? "sine" : "", Args: [...DEFAULT_ARGS[op]] }); edited();
+};
+for (const o of Object.keys(OPS)) $("addop").append(el("option", null, o));
+$("play").onclick = () => { setPlaying(!playing); if (playing) applyBed(); };
+// solo and none contradict each other (only this layer vs no bed at all), so
+// at most one is on: turning one on turns the other off.
+const bedChips = () => { $("solo").classList.toggle("on", solo); $("silent").classList.toggle("on", !bedOn); quietCue(); applyBed(); };
+$("solo").onclick = () => { solo = !solo; if (solo) bedOn = true; bedChips(); };
+// No bed: every layer muted. The engine keeps running, so a shot's degree is
+// still read in the mood's scale; shots sit above the mute.
+$("silent").onclick = () => { bedOn = !bedOn; if (!bedOn) solo = false; bedChips(); };
+for (const id of ["level", "tension", "seed", "sgain"]) {
+  const r = $(id), o = r.nextElementSibling; o.value = r.value;
+  r.oninput = () => { o.value = r.value; if (id !== "sgain") applyBed(); else showKeyTake(); };
+  if (id === "seed") r.onchange = () => bedMark("seed", `seed ${r.value}`);  // level and tension are traced instead
+}
+$("mood").onchange = () => { applyBed(); bedMark("mood", $("mood").value); lastDrone = -1; };
+const NOTE = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+$("copy").onclick = async () => { try { await navigator.clipboard.writeText($("edn").value); say("EDN copied"); } catch { $("edn").select(); say("select the EDN to copy it"); } };
+$("save").onclick = () => { const a = el("a"); a.href = URL.createObjectURL(new Blob([$("edn").value + "\n"], { type: "application/edn" })); a.download = `${spec.Name}.edn`; a.click(); };
+let ednTimer = 0;
+$("edn").addEventListener("input", () => { clearTimeout(ednTimer); ednTimer = setTimeout(() => importEDN(true), 400); });
+addEventListener("keydown", (e) => {
+  const typing = /textarea|select/i.test(document.activeElement.tagName) || (document.activeElement.tagName === "INPUT" && !/range|checkbox/.test(document.activeElement.type));
+  // space plays or stops the bed (and ends a repeat) rather than scrolling the page
+  if (e.key === "m" && !typing && !e.metaKey && !e.ctrlKey) { $("silent").click(); return; }  // m mutes or unmutes the bed
+  if (e.key === " " && !typing) { e.preventDefault(); if (playing) { stopLoop(); setPlaying(false); } else setPlaying(true); return; }
+  if (/input|textarea|select/i.test(document.activeElement.tagName)) return;
+  const d = +e.key;
+  if (kind === "shot" && takes[selRow]) {
+    if (e.key === "t") return fireTakeRow(selRow, TAKE);
+    if (d >= 1 && d <= 8) return fireTakeRow(selRow, d - 1);
+  }
+  if (d >= 1 && d <= 8) fire(d - 1);
+});
+// meters
+for (const l of LAYERS) { $("meters").append(el("div")); $("meters").lastChild.append(el("i")); $("meterlbl").append(el("span", null, l)); }
+function meters() {
+  // The engine meters a layer before the mix mutes it, so the page drops muted ones itself.
+  if (U() && playing) {
+    const ns = U().notes();
+    for (let i = 0; i < ns.length; i += 3) {
+      const l = ns[i];
+      if (!bedOn || mutedNow.includes(LAYERS[l])) { scopeNote(l + 1, ns[i + 1], ns[i + 2], true); continue; }
+      flash($("meterlbl").children[l]); scopeNote(l + 1, ns[i + 1], ns[i + 2]);
+      if (l === 0 && ns[i + 1] !== lastDrone) { if (lastDrone >= 0) bedMark("chord", NOTE[ns[i + 1] % 12]); lastDrone = ns[i + 1]; }
+    }
+  }
+  scope();
+  if (U() && playing) JSON.parse(U().levels()).forEach((v, i) => { $("meters").children[i].firstChild.style.height = `${!bedOn || mutedNow.includes(LAYERS[i]) ? 0 : Math.min(100, Math.sqrt(v) * 140)}%`; });
+  requestAnimationFrame(meters);
+}
+
+// ---- the scope: a phosphor sweep of what each layer plays ----
+// A cursor sweeps left to right every SWEEP seconds and wraps. Each layer's
+// level leaves a faint trace and each note a bright dot placed by its pitch
+// within the row; marks fade by exp(-age/FADE), so what the cursor last
+// passed is still dimly there a sweep later. Faint ticks mark the beats and a
+// brighter one each pattern. The top lane is the bed: its level (blue) and
+// tension (purple) traced like sparklines, and a line where the mood or seed
+// changed or the chord moved. The bottom
+// lane is fired shots: a dot, over the shot's own loudness in amber.
+let FADE = 3;  // seconds; the fade slider sets it
+const SWEEP = 8, ROWS = ["bed", ...LAYERS, "shots"], SHOTS = ROWS.length - 1;
+const BEDC = { mood: "224,184,79", level: "95,168,201", tension: "180,138,214", seed: "214,209,194", chord: "156,196,106" };
+const marks = [];  // {t, kind: dot|level|tick|bed|shape, row, ...}
+const t0 = performance.now();
+const now = () => (performance.now() - t0) / 1000;
+const sweepX = (t) => ((t / SWEEP) % 1);
+// muted: the layer plays on unheard, drawn as a faint grey impression
+function scopeNote(row, note, gain, muted) { marks.push({ t: now(), kind: "dot", row, y: 1 - ((note % 36) / 36), a: Math.min(1, 0.45 + gain), muted }); }
+function bedMark(type, label) { if (playing) marks.push({ t: now(), kind: "bed", type, label, a: 1 }); }
+// A fired shot's loudness envelope, from the same render measure() uses but
+// with the music silent, cached by the take's hash: an edit changes the hash.
+const shapes = new Map();
+function shotShape(name, d, gain) { takeShape(JSON.stringify([{ shot: name, degree: d, gain }])); }
+// The render takes 2.5 s of audio on the main thread, and every slider step is
+// a new hash, so a miss waits until the edits pause and draws only the last
+// take, at the time it fired.
+let shapeWait = 0;
+function takeShape(take) {
+  const key = U().hash(take, 2.5, 0), t = now(), hit = shapes.get(key);
+  clearTimeout(shapeWait);
+  if (hit) return marks.push({ t, kind: "shape", env: hit.env, hop: hit.hop, a: 1 });
+  shapeWait = setTimeout(() => {
+    let m = JSON.parse(U().measure(take, 2.5, 0));
+    const n = Math.max(1, Math.ceil(m.length / m.envHop));
+    m = { env: m.envPeak.slice(0, n), hop: m.envHop };
+    shapes.set(key, m); if (shapes.size > 64) shapes.delete(shapes.keys().next().value);
+    if (now() - t < FADE) marks.push({ t, kind: "shape", env: m.env, hop: m.hop, a: 1 });
+  }, 300);
+}
+let lastSparkAt = 0, lastLevelAt = 0, lastPos = "", lastDrone = -1;
+function scope() {
+  const c = $("scope"), dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w * dpr || c.height !== h * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // the thin strip drops the labels and packs the lanes close
+  const thin = c.classList.contains("thin"), pad = thin ? 2 : 4;
+  // the bed lane is taller than a layer's, for its level and tension traces
+  const BW = thin ? 2 : 2.4, rh = (h - 2 * pad) / (ROWS.length - 1 + BW), bh = BW * rh;
+  const top = (i) => i === 0 ? pad : pad + bh + (i - 1) * rh;
+  const t = now(), L = thin ? 4 : 46, rw = w - L - 4;
+  const X = (tt) => L + sweepX(tt) * rw, colW = (dt) => rw / SWEEP * dt + 0.6;
+  if (U() && playing) {
+    // a level sample per layer about 30 times a second
+    if (t - lastLevelAt > 1 / 30) {
+      // each sample covers the time since the last, so frame jitter leaves no gaps
+      const dt = Math.min(0.1, t - lastLevelAt); lastLevelAt = t;
+      JSON.parse(U().levels()).forEach((v, i) => {
+        if (v > 0.001) marks.push({ t: t - dt, dt, kind: "level", row: i + 1, a: Math.min(1, Math.sqrt(v) * 1.6), muted: !bedOn || mutedNow.includes(LAYERS[i]) });
+      });
+    }
+    // the bed's level (0..10) and tension (0..1), traced like sparklines
+    if (t - lastSparkAt > 1 / 30) { const dt = Math.min(0.1, t - lastSparkAt); lastSparkAt = t; marks.push({ t: t - dt, dt, kind: "spark", lv: +$("level").value / 10, tn: +$("tension").value, a: 1 }); }
+    // a tick on each new beat (two rows), brighter at a pattern's start
+    const p = U().position();
+    if (p && `${p}` !== lastPos) { lastPos = `${p}`; if (p[0] % 2 === 0) marks.push({ t, kind: "tick", a: p[0] === 0 ? 0.32 : 0.1 }); }
+  }
+  while (marks.length && t - marks[0].t > FADE * 4) marks.shift();
+  g.fillStyle = "#07090a"; g.fillRect(0, 0, w, h);
+  g.font = "10px system-ui"; g.textBaseline = "middle";
+  ROWS.forEach((r, i) => {
+    const y = top(i), hi = i ? rh : bh;
+    if (!thin) { g.fillStyle = "#8a857680"; g.fillText(r, 6, y + hi / 2); }
+    if (!thin) { g.fillStyle = i ? "#ffffff08" : "#ffffff14"; g.fillRect(L, y + hi - 1, rw, 1); }
+  });
+  const inset = thin ? 0.5 : 2;
+  for (const m of marks) {
+    const f = Math.exp(-(t - m.t) / FADE) * m.a, x = X(m.t), y = top(m.row ?? 0);
+    if (m.kind === "tick") {
+      g.fillStyle = `rgba(150,220,130,${f})`; g.fillRect(x, pad + bh, 1, h - 2 * pad - bh);
+    } else if (m.kind === "spark") {
+      const sy = (v) => pad + inset + (1 - v) * (bh - 2 * inset) - 0.75;
+      g.fillStyle = `rgba(${BEDC.level},${0.85 * f})`; g.fillRect(x, sy(m.lv), colW(m.dt), 1.5);
+      g.fillStyle = `rgba(${BEDC.tension},${0.85 * f})`; g.fillRect(x, sy(m.tn), colW(m.dt), 1.5);
+    } else if (m.kind === "bed") {
+      // a change the traces can't show: mood, seed, chord
+      g.fillStyle = `rgba(${BEDC[m.type]},${0.55 * f})`; g.fillRect(x, pad, 1, bh);
+      if (!thin && m.label) { g.fillStyle = `rgba(${BEDC[m.type]},${0.9 * f})`; g.fillText(m.label, x + 3, pad + 6); }
+    } else if (m.kind === "shape") {
+      // drawn up to now only, each hop at its own time and fading from it
+      const ys = top(SHOTS);
+      for (let i = 0; i < m.env.length; i++) {
+        const ti = m.t + i * m.hop; if (ti > t) break;
+        const fi = Math.exp(-(t - ti) / FADE), hh = Math.max(0.5, Math.min(1, Math.sqrt(m.env[i]) * 1.5) * (rh - 2 * inset));
+        g.fillStyle = `rgba(224,184,79,${0.55 * fi})`; g.fillRect(X(ti), ys + rh - inset - hh, colW(m.hop), hh);
+      }
+    } else if (m.muted) {
+      // a muted layer: one thin grey line for its level, a grey speck per note
+      if (m.kind === "dot") { g.fillStyle = `rgba(170,170,170,${0.6 * f})`; g.fillRect(x - 0.5, y + inset + m.y * (rh - 2 * inset) - 0.5, 2, 2); }
+      else { g.fillStyle = `rgba(160,160,160,${(0.22 + 0.3 * m.a) * f})`; g.fillRect(x, y + rh / 2, colW(m.dt), 1); }
+    } else if (m.kind === "dot") {
+      const yy = y + inset + m.y * (rh - 2 * inset), r = thin ? 1.5 : 3;
+      g.fillStyle = `rgba(156,240,120,${0.25 * f})`; g.fillRect(x - r, yy - r, 2 * r, 2 * r);
+      g.fillStyle = `rgba(200,255,170,${f})`; g.fillRect(x - 1, yy - 1, thin ? 2 : 2.5, thin ? 2 : 2.5);
+    } else {
+      const hh = Math.max(1, m.a * (rh - 2 * inset));
+      g.fillStyle = `rgba(120,200,100,${0.35 * f})`; g.fillRect(x, y + (rh - hh) / 2, colW(m.dt), hh);
+    }
+  }
+  const cx = X(t);
+  g.fillStyle = "rgba(170,255,150,0.18)"; g.fillRect(cx - 6, 2, 6, h - 4);
+  g.fillStyle = "rgba(190,255,170,0.8)"; g.fillRect(cx, 2, 1, h - 4);
+}
+
+// The thin scope is a viewer's preference, kept across visits like compact units.
+const setThin = (on) => { $("scope").classList.toggle("thin", on);
+  $("thinscope").textContent = on ? "▾ expand scope" : "▴ thin scope";
+  $("thinscope").title = on ? "the full scope, with lane labels" : "the scope as a thin strip without labels (or click the scope)";
+  try { localStorage.setItem("studio-thin-scope", on ? "1" : ""); } catch {} };
+$("thinscope").onclick = $("scope").onclick = () => setThin(!$("scope").classList.contains("thin"));
+try { setThin(localStorage.getItem("studio-thin-scope") === "1"); } catch { setThin(false); }
+// fade runs 0.3 s to 30 s on a log scale, kept across visits
+const setFade = (s) => { FADE = s; $("fadeout").value = s < 10 ? `${s.toFixed(1)} s` : `${Math.round(s)} s`; try { localStorage.setItem("studio-fade", s); } catch {} };
+$("fade").oninput = () => setFade(0.3 * 100 ** +$("fade").value);
+{ let s = 3; try { s = +localStorage.getItem("studio-fade") || 3; } catch {} $("fade").value = Math.log(s / 0.3) / Math.log(100); setFade(s); }
+
+window.undertoneStudioFailed = (msg) => say("audio failed: " + msg, true);
+// Compact rows are a viewer's preference, kept across visits.
+const setCompact = (on) => { $("units").classList.toggle("compact", on); if (spec) renderUnits();
+  $("compact").textContent = on ? "▾ expand units" : "▴ compact units";
+  $("compact").title = on ? "full units: each argument with its name and slider" : "compact units: one line each";
+  try { localStorage.setItem("studio-compact", on ? "1" : ""); } catch {} };
+try { setCompact(localStorage.getItem("studio-compact") === "1"); } catch { setCompact(false); }
+$("compact").onclick = () => setCompact(!$("units").classList.contains("compact"));
+// The guide is out of the way until the guide chip shows it; closing it
+// hides it again.
+const showGuide = (on) => { $("guide").hidden = !on; $("guide").open = on; $("guidechip").classList.toggle("on", on); };
+showGuide(false);
+$("guidechip").onclick = () => { showGuide($("guide").hidden); if (!$("guide").hidden) $("guide").scrollIntoView({ behavior: "smooth" }); };
+$("guide").addEventListener("toggle", () => { if (!$("guide").open) showGuide(false); });
+// Open with a link: #shot=<EDN>, #lead=<EDN> or #palette=<EDN> imports a sound,
+// and &take=<JSON> (a vector of undertone/trigger maps) adds a button that
+// plays it. Other pages (an sfx board) link a card here this way.
+let take = null;
+function openFromHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  for (const k of ["shot", "lead", "palette"]) if (h.get(k)) { $("edn").value = h.get(k); importEDN(); }
+  if (h.get("take")) {
+    try { take = JSON.parse(h.get("take")); } catch { return say("take: not JSON", true); }
+    const n = Array.isArray(take) ? take.length : 1;
+    $("takebox").hidden = false; $("playtake").textContent = `▶ play take (${n} shot${n === 1 ? "" : "s"})`;
+    $("takehint").textContent = "from the link: each shot with its own note or degree, gain, pan, delay and seed";
+  }
+}
+$("playtake").onclick = () => { if (!playing) setPlaying(true); U().trigger(JSON.stringify(take)); };
+window.undertoneStudioReady = () => {
+  for (const m of JSON.parse(U().names("mood"))) { const o = el("option", null, m); o.selected = m === "dungeon"; $("mood").append(o); }
+  buildKinds(); openFirst(); measureNames();
+  $("play").disabled = false; setPlaying(false);
+  document.querySelector("main").classList.remove("loading");
+  requestAnimationFrame(meters);
+  if (location.hash.length > 1) openFromHash();
+};
+const go = new Go();
+WebAssembly.instantiateStreaming(fetch("main.wasm", { cache: "no-cache" }), go.importObject)
+  .then((r) => go.run(r.instance))
+  .catch((e) => say("wasm failed: " + e, true));
+</script>
+</body>
+</html>

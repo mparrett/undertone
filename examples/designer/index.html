@@ -146,7 +146,7 @@
         { int: "rootBase", label: "root", min: 36, max: 84, step: 1, tip: "root note at level 0 (MIDI)" },
         { int: "rootStep", label: "climb", min: -3, max: 3, step: 1, tip: "root semitones per level" },
         { int: "calm", label: "2nd", min: -12, max: 12, step: 1, tip: "second voice vs the chord, at rest" },
-        { int: "bellLift", label: "lift", min: 0, max: 24, step: 12, tip: "lead lifted by octaves" },
+        { int: "leadLift", label: "lift", min: 0, max: 24, step: 12, tip: "lead lifted by octaves" },
       ]},
       { patches: true },
     ]},
@@ -154,7 +154,7 @@
       { line: "drone", ...GAIN, note: "the floor: low drone gain" },
       { line: "fifth", ...GAIN, note: "the second voice's gain" },
       { line: "pad",   ...GAIN, note: "pad chords: how often they play" },
-      { line: "bell",  ...GAIN, note: "the lead: how often it plays" },
+      { line: "lead",  ...GAIN, note: "the lead: how often it plays" },
       { line: "air",   ...GAIN, note: "the top: air or breeze gain" },
       { line: "open",  min: -1, max: 1, step: 0.05, smin: -0.3, smax: 0.3, sstep: 0.01, note: "the resonant filters: level opens (+) or closes (−) them, up to two octaves" },
     ]},
@@ -174,10 +174,9 @@
     { name: "dread", level: 4, tension: 1 },
   ];
   let spec = null, ready = false, playing = false, stashedGrooves = null, grooveCopies = {};
-  // The layers apply() can silence, floor to sky; a line card names the lead "bell".
+  // The layers apply() can silence, floor to sky.
   const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums"];
   const muted = new Set();
-  const layerOf = (line) => line === "bell" ? "lead" : line;
   const lineAt = (l, x) => Math.min(l.hi ?? Infinity, Math.max(l.lo ?? -Infinity, l.base + l.step * x));
   const fmt = (v) => Number.isInteger(v) ? String(v) : v.toFixed(2);
   const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
@@ -220,7 +219,7 @@
         b.classList.toggle("neg", vals[l] < 0);
         b.classList.toggle("cur", l === level);
       });
-      const off = muted.has(layerOf(k));
+      const off = muted.has(k);
       card.classList.toggle("muted", off);
       card.querySelector(".hd span").textContent = (off ? "muted · " : "") + fmt(lineAt(spec[k], level));
     });
@@ -411,8 +410,8 @@
     if ($("buildup").querySelector("input").checked) {
       // Start from the lowest layer the mood has at this level: aurora has no drone.
       const level = +$("level").value;
-      const first = ["drone", "fifth", "pad", "bell", "air"].find((k) => lineAt(spec[k], level) > 0.01) || "drone";
-      setMuted(LAYERS.filter((l) => l !== layerOf(first)));
+      const first = ["drone", "fifth", "pad", "lead", "air"].find((k) => lineAt(spec[k], level) > 0.01) || "drone";
+      setMuted(LAYERS.filter((l) => l !== first));
     }
     sync(); changed();
   }

@@ -185,3 +185,30 @@ func TestRenderWAVRejectsBadScripts(t *testing.T) {
 		}
 	}
 }
+
+// A scripted render serves reads of any length, landing its steps on the
+// same frames as aligned reads do.
+func TestScriptedReadAnyLength(t *testing.T) {
+	p := engine.DeriveDungeon(7, 2, 0)
+	mk := func() *scripted {
+		q := p
+		q.Root = p.Root + 5
+		return &scripted{s: engine.NewSynth(p), steps: []step{{frame: 3, apply: func(s *engine.Synth) { s.SetParametersNow(q) }}}}
+	}
+	want := make([]byte, 4*600)
+	mk().Read(want)
+	for _, size := range []int{1, 3, 5, 7} {
+		r, got := mk(), make([]byte, 0, len(want))
+		buf := make([]byte, size)
+		for len(got) < len(want) {
+			n, _ := r.Read(buf[:min(size, len(want)-len(got))])
+			if n == 0 {
+				t.Fatalf("size %d: no progress after %d bytes", size, len(got))
+			}
+			got = append(got, buf[:n]...)
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("size %d: stream differs from one aligned read", size)
+		}
+	}
+}

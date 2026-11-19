@@ -55,11 +55,11 @@ func checkParams(t *testing.T, name string, got, want engine.Params) {
 		t.Errorf("%s: lead = %s/%d, want %s/%d", name, got.LeadName, got.LeadGate, want.LeadName, want.LeadGate)
 	}
 	// The lead slot's patch is heard by a grid even with no lead named.
-	if !reflect.DeepEqual(got.Palette.Bell, want.Palette.Bell) {
+	if !reflect.DeepEqual(got.Palette.Lead, want.Palette.Lead) {
 		t.Errorf("%s: the lead slot holds another patch than the derivation's", name)
 	}
-	if got.FifthOffset != want.FifthOffset || got.BellLift != want.BellLift {
-		t.Errorf("%s: offset/lift = %d/%d, want %d/%d", name, got.FifthOffset, got.BellLift, want.FifthOffset, want.BellLift)
+	if got.FifthOffset != want.FifthOffset || got.LeadLift != want.LeadLift {
+		t.Errorf("%s: offset/lift = %d/%d, want %d/%d", name, got.FifthOffset, got.LeadLift, want.FifthOffset, want.LeadLift)
 	}
 	if got.Groove != want.Groove {
 		t.Errorf("%s: groove = %q, want %q", name, got.Groove, want.Groove)
@@ -75,7 +75,7 @@ func checkParams(t *testing.T, name string, got, want engine.Params) {
 		{"drone-gain", got.DroneGain, want.DroneGain},
 		{"fifth-gain", got.FifthGain, want.FifthGain},
 		{"pad-density", got.PadDensity, want.PadDensity},
-		{"bell-density", got.BellDensity, want.BellDensity},
+		{"lead-density", got.LeadDensity, want.LeadDensity},
 		{"air-gain", got.AirGain, want.AirGain},
 		{"pulse-gain", got.PulseGain, want.PulseGain},
 		{"grit", got.Grit, want.Grit},
@@ -98,9 +98,13 @@ func checkParams(t *testing.T, name string, got, want engine.Params) {
 func TestScoreMoodReachesTheEngineAsDerived(t *testing.T) {
 	c, m := lgRuntime(t)
 
-	for _, seed := range []uint64{1, 7, 42} {
-		for _, depth := range []int{-5, -2, 0, 1, 2, 3, 5, 8} {
-			for _, tension := range []float64{0, 0.3, 0.6, 1} {
+	seeds, depths, tensions := []uint64{1, 7, 42}, []int{-5, -2, 0, 1, 2, 3, 5, 8}, []float64{0, 0.3, 0.6, 1}
+	if testing.Short() { // the ends of each range: what just test-wasm can afford
+		seeds, depths, tensions = []uint64{7}, []int{-5, 0, 8}, []float64{0, 1}
+	}
+	for _, seed := range seeds {
+		for _, depth := range depths {
+			for _, tension := range tensions {
 				for _, mood := range engine.MoodNames() {
 					// Name the mood explicitly rather than going through the
 					// signed-depth sugar, which cannot express overworld at
@@ -141,7 +145,7 @@ func TestSetParametersMergesPartialMap(t *testing.T) {
 		t.Errorf("bpm = %v, want 42", m.params.BPM)
 	}
 	if m.params.Root != before.Root || m.params.LeadName != before.LeadName ||
-		m.params.BellDensity != before.BellDensity {
+		m.params.LeadDensity != before.LeadDensity {
 		t.Errorf("partial map disturbed untouched fields: %+v", m.params)
 	}
 }

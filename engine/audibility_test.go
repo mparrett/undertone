@@ -51,7 +51,7 @@ func bandStats(s *Synth, n int) (rms, peak [4]float64) {
 }
 
 func bedOnly(p Params) Params {
-	p.DroneGain, p.FifthGain, p.PadDensity, p.BellDensity, p.AirGain, p.PulseGain = 0, 0, 0, 0, 0, 0
+	p.DroneGain, p.FifthGain, p.PadDensity, p.LeadDensity, p.AirGain, p.PulseGain = 0, 0, 0, 0, 0, 0
 	return p
 }
 

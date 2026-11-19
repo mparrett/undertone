@@ -20,6 +20,7 @@ The module has these parts:
 | `letgo` | The let-go binding: an `undertone` namespace that drives the engine from lg code, plus `undertone.ambience`, the derivation's lg names (it runs in Go). |
 | `webaudio` | Browser output: an AudioWorklet fed in small slices from the page's event loop (see [In the browser](#in-the-browser)). |
 | `cmd/undertone` | A CLI that plays live, renders WAVs, and draws a four-band VU meter. |
+| `cmd/slab2theme` | Exports a melody written in [Slab](https://github.com/nooga/slab) (its `.slab` project JSON) as a theme in the EDN `undertone/play-theme` takes, linting what a theme cannot hold. |
 | [`examples/`](examples) | A step sequencer, the engine in a web page, and a let-go-driven game demo, each runnable in a browser. |
 
 [VISION.md](VISION.md) says what undertone is for and what it won't be.

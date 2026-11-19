@@ -256,3 +256,15 @@ func TestMIDIFileWithWAVMatches(t *testing.T) {
 		t.Errorf("the file rendered with a WAV (%d bytes) differs from the one without (%d)", len(a), len(b))
 	}
 }
+
+// The engine's notes run -48..180; MIDI's data bytes stop at 127.
+func TestMIDINoteFoldsIntoRange(t *testing.T) {
+	for _, c := range []struct {
+		in   int
+		want byte
+	}{{60, 60}, {0, 0}, {127, 127}, {-1, 11}, {-48, 0}, {128, 116}, {180, 120}} {
+		if got := midiNote(c.in); got != c.want {
+			t.Errorf("midiNote(%d) = %d, want %d", c.in, got, c.want)
+		}
+	}
+}

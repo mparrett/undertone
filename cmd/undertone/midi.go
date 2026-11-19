@@ -111,6 +111,20 @@ func (m *noteMapper) advance(frame int64) {
 	}
 }
 
+// midiNote folds a voice's note (minNote..maxNote, wider than MIDI's) into
+// 0..127 by octaves, keeping its pitch class. Unfolded, a note past 127 or
+// under 0 would set a data byte's top bit, which a receiver reads as a status
+// byte, garbling the rest of the stream.
+func midiNote(n int) byte {
+	for n < 0 {
+		n += 12
+	}
+	for n > 127 {
+		n -= 12
+	}
+	return byte(n)
+}
+
 // add plays e, ending the note its slot held first.
 func (m *noteMapper) add(e engine.NoteEvent) {
 	m.advance(e.Frame)
@@ -121,7 +135,7 @@ func (m *noteMapper) add(e engine.NoteEvent) {
 		h = held{ch: drumChannel, note: gmDrum[e.Lane], off: e.Frame + m.hit}
 	} else {
 		slot = e.Layer
-		h = held{ch: byte(e.Layer), note: byte(e.Note), off: e.Frame + m.gate[e.Layer]}
+		h = held{ch: byte(e.Layer), note: midiNote(e.Note), off: e.Frame + m.gate[e.Layer]}
 	}
 	m.release(slot, e.Frame)
 	h.on = true

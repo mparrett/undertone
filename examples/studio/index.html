@@ -142,7 +142,7 @@
   .head label { color: var(--mut); font-size: 13px; display: flex; gap: 6px; align-items: center; }
   .head input[type=number] { width: 6.5em; }
   #units { display: grid; gap: 6px; margin-top: 10px; }
-  .unit { display: grid; grid-template-columns: 3.5ch 5.5em 4.5em 1fr auto; gap: 8px; align-items: center;
+  .unit { display: grid; grid-template-columns: 3.5ch 5.5em 96px 1fr auto; gap: 8px; align-items: center;
           background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--k, var(--line)); border-radius: 8px; padding: 6px 8px; }
   .unit.bad { border-color: var(--err); }
   .unit .ix { color: var(--mut); font-size: 12px; }
@@ -156,7 +156,7 @@
      glance shows how full it is and the outline doesn't jump as it grows */
   .unit .stack { display: flex; gap: 2px; align-items: center; box-sizing: content-box;
     min-width: calc(8 * 6px + 7 * 2px); min-height: 12px; padding: 3px 7px;
-    border: 1px solid color-mix(in srgb, var(--mut, #999) 55%, transparent); border-radius: 99px; margin-right: 12px; }
+    border: 1px solid color-mix(in srgb, var(--mut, #999) 55%, transparent); border-radius: 99px; }
   .unit .stack b { width: 6px; height: 12px; border-radius: 2px; background: var(--mod); }
   .unit .stack b.sig { background: var(--src); }
   .unit .args { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 14px; }
@@ -167,13 +167,13 @@
   .unit .doc { grid-column: 2 / -1; color: var(--mut); font-size: 11px; margin-top: -2px; }
   /* phone: a unit's arguments take a full row under its name and buttons */
   @media (max-width: 560px) {
-    .unit, #units.compact .unit { grid-template-columns: 3.5ch 5.5em 4.5em minmax(0, 1fr) auto; }
+    .unit, #units.compact .unit { grid-template-columns: 3.5ch 5.5em 96px minmax(0, 1fr) auto; }
     .unit .args { grid-column: 1 / -1; grid-row: 2; grid-template-columns: 1fr; }  /* one argument a line, so each slider has room */
     .unit .doc { grid-column: 1 / -1; grid-row: 3; }
   }
   /* compact: a unit to a line, for long patches and palettes */
   #units.compact { gap: 3px; }
-  #units.compact .unit { padding: 2px 6px; gap: 6px; grid-template-columns: 3.5ch 5em 3.5em 1fr auto; border-radius: 6px; }
+  #units.compact .unit { padding: 2px 6px; gap: 6px; grid-template-columns: 3.5ch 5em 82px 1fr auto; border-radius: 6px; }
   #units.compact .unit .doc { display: none; }
   #units.compact .unit select { padding: 1px 4px; font-size: 12px; height: 20px; }
   #units.compact .unit .args { display: flex; flex-wrap: wrap; gap: 0 12px; }

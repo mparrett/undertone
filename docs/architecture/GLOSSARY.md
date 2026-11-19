@@ -58,11 +58,11 @@ working vocabulary. `engine/` is the source of truth for anything in code font.
 | **palette** | A mood's patch bank: which patch each track uses, plus a drum kit. |
 | **kit** | The patches for the three drum lanes, either village or industrial. |
 | **shot pool** | Eight voices reserved for one-shots, mixed above the music gain, so the shots never steal the music's voices. A new shot takes a free voice, or else steals the quietest. |
-| **thinning** | The same shot on the same note can't start again within 30 ms (`shotGapMS`), so a burst of identical triggers doesn't stack into one loud click. |
+| **thinning** | The same shot on the same note can't start again within 30 ms (`shotGapMS`), so a burst of identical triggers can't take every shot voice and cut the other sounds. Of repeats in one frame, the loudest plays. |
 | **buses** | The shared stereo delay and reverb that `send` and `verb` feed, then a `tanh` on the mix. |
 | **`io.Reader`** | `Synth.Read` fills interleaved PCM. It is the one output boundary, and every host reads through it. |
 | **layer levels** | A peak meter on each of the seven layers (the six tracks and the drums), read with `LayerLevels`, so a host can show what is sounding. |
-| **take** | A render of shots over a bed from a fresh synth, what the sfx studio and board audition (`Take`). Its samples are a function of its fields and `RenderVersion`, and `Take.Hash` digests exactly those. |
+| **take** | A render of shots over a bed from a fresh synth, what the sfx studio and board audition (`Take`). Its samples are a function of its fields, the patches its shots resolve to, and `RenderVersion`, and `Take.Hash` digests exactly those. |
 
 ## Output
 
@@ -77,8 +77,8 @@ working vocabulary. `engine/` is the source of truth for anything in code font.
 
 | term | meaning |
 |---|---|
-| **sample** | One number for where the speaker should be at one instant, and the slot it is held for: 1/44,100 s, about 22.7 µs (`SampleRate`). Producing one is one pass of the engine: every voice runs its patch once, then the buses and the `tanh`. |
-| **frame** | One stereo pair of samples; `Read` writes four bytes per frame. |
+| **sample** | One number for where a speaker should be at one instant. Each channel gets one per frame. |
+| **frame** | One stereo pair of samples, and the slot they are held for: 1/44,100 s, about 22.7 µs (`SampleRate` counts frames per second). Producing one is one pass of the engine: every voice runs its patch once, then the buses and the `tanh`. `Read` writes four bytes per frame. |
 | **block** | 128 frames, about 2.9 ms. `SetParametersNow` and `PlayTheme` are picked up on block boundaries (`nowBlock`). |
-| **control rate** | Every 16 samples. `grit` and `open` glide a step, and the units they scale recompute their constants, so that work isn't done per sample. |
-| **render ahead** | The engine computes samples in batches, far faster than real time, and the host plays them out at the steady rate. A sample's computation doesn't happen during its own 22.7 µs. |
+| **control rate** | Every 16 frames. `grit` and `open` glide a step, and the units they scale recompute their constants, so that work isn't done per sample. |
+| **render ahead** | The engine computes samples in batches, far faster than real time, and the host plays them out at the steady rate. A frame's computation doesn't happen during its own 22.7 µs. |

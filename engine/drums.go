@@ -243,9 +243,8 @@ func (s *Synth) flamsAhead(strike bool) bool {
 // flam, with its gain and the sound it will play.
 func (s *Synth) flamAhead(d int) (float64, drumSound, bool) {
 	p := &s.params
-	if n := s.next.Load(); n != nil && s.row == 0 {
-		q := n.sanitized() // step applies it before this row
-		p = &q
+	if n := s.next.Load(); n != nil && n.seq > s.applied && s.row == 0 {
+		p = &n.p // step applies it before this row
 	}
 	var h drumHit
 	switch g, _, from := s.nextOwner(); {

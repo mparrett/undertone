@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -82,11 +83,14 @@ func NewMusic(p engine.Params) *Music {
 }
 
 // Params returns a snapshot of the current parameter state — the demo trace
-// reads BPM and PulseGain off it. Read-only by construction: it is a copy.
+// reads BPM and PulseGain off it. Read-only by construction: it is a copy,
+// scale slice included.
 func (m *Music) Params() engine.Params {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.params
+	p := m.params
+	p.Scale = slices.Clone(p.Scale)
+	return p
 }
 
 // setParameters merges a partial lg map over current state and stages it.

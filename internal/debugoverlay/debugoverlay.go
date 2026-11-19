@@ -87,17 +87,28 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 		resetAt time.Time
 		report  atomic.Pointer[string] // the latest, for copy
 	)
-	none := "undertone debug: audio not started"
+	// a phone that never starts audio is the report that most needs the header
+	none := header() + "audio not started\n"
 	report.Store(&none)
 	// Made once, not per tap: a js.Func lives until released.
-	var copied, showManual js.Func
+	var (
+		copied, showManual js.Func
+		relabel            *time.Timer // puts "copy" back after "copied"
+	)
+	stopRelabel := func() {
+		if relabel != nil {
+			relabel.Stop()
+		}
+	}
 	copied = js.FuncOf(func(js.Value, []js.Value) any {
+		stopRelabel()
 		manual.Get("style").Set("display", "none")
 		copyBtn.Set("textContent", "copied")
-		time.AfterFunc(1500*time.Millisecond, func() { copyBtn.Set("textContent", "copy") })
+		relabel = time.AfterFunc(1500*time.Millisecond, func() { copyBtn.Set("textContent", "copy") })
 		return nil
 	})
 	showManual = js.FuncOf(func(js.Value, []js.Value) any {
+		stopRelabel()
 		manual.Set("value", *report.Load())
 		manual.Get("style").Set("display", "block")
 		manual.Call("select")
@@ -143,6 +154,8 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 			p := player()
 			if p == nil {
 				text.Set("textContent", "undertone debug\ntap the page to start audio")
+				r := header() + "audio not started\n"
+				report.Store(&r)
 				continue
 			}
 			if opened.IsZero() {
@@ -220,17 +233,24 @@ func (c counts) format(now counts, lowest time.Duration) string {
 	return b.String()
 }
 
-// report is the panel's numbers as text to paste: when, where and in what,
-// then what the panel shows. The browser line is what a failed step most
-// needs and a tester most often leaves out.
+// report is the panel's numbers as text to paste: the header, then what the
+// panel shows.
 func (c counts) report(now counts, lowest, sinceReset time.Duration) string {
-	g := js.Global()
 	lines := strings.SplitN(c.format(now, lowest), "\n", 2)
-	return fmt.Sprintf("undertone debug, %s\npage      %s\nbrowser   %s\nsince reset (%.0f s):\n%s\n",
+	return fmt.Sprintf("%ssince reset (%.0f s):\n%s\n", header(), sinceReset.Seconds(), lines[len(lines)-1])
+}
+
+// header is when, where and in what: the browser line is what a failed step
+// most needs and a tester most often leaves out. The page is its path alone,
+// since the report is meant for a public PR and a host can name a machine
+// (tailscale serve's do).
+func header() string {
+	g := js.Global()
+	loc := g.Get("location")
+	return fmt.Sprintf("undertone debug, %s\npage      %s%s\nbrowser   %s\n",
 		time.Now().Format("2006-01-02 15:04:05"),
-		g.Get("location").Get("href").String(),
-		g.Get("navigator").Get("userAgent").String(),
-		sinceReset.Seconds(), lines[len(lines)-1])
+		loc.Get("pathname").String(), loc.Get("search").String(),
+		g.Get("navigator").Get("userAgent").String())
 }
 
 func ms(d time.Duration) float64 {

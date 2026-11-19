@@ -152,7 +152,11 @@
   .unit.dragging .grip { cursor: grabbing; }
   .unit.drop-before { box-shadow: 0 -3px 0 var(--src); }
   .unit.drop-after { box-shadow: 0 3px 0 var(--src); }
-  .unit .stack { display: flex; gap: 2px; align-items: center; }
+  /* a pill sized for the engine's 8-value stack, bottom on the left, so a
+     glance shows how full it is and the outline doesn't jump as it grows */
+  .unit .stack { display: flex; gap: 2px; align-items: center; box-sizing: content-box;
+    min-width: calc(8 * 6px + 7 * 2px); min-height: 12px; padding: 3px 7px;
+    border: 1px solid color-mix(in srgb, var(--mut, #999) 55%, transparent); border-radius: 99px; margin-right: 12px; }
   .unit .stack b { width: 6px; height: 12px; border-radius: 2px; background: var(--mod); }
   .unit .stack b.sig { background: var(--src); }
   .unit .args { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 14px; }
@@ -182,6 +186,7 @@
   #units.compact .unit .args input[type=range] { height: 12px; }
   #units.compact .unit .ops button { padding: 0 5px; font-size: 11px; height: 20px; }
   #units.compact .unit .stack b { height: 9px; width: 5px; }
+  #units.compact .unit .stack { min-width: calc(8 * 5px + 7 * 2px); min-height: 9px; padding: 2px 6px; }
   #pads button { min-width: 2.6em; transition: background .25s, color .25s; }
   /* the bed is running but silent (mute): the mood select breathes, so it's clear the music is there to bring in */
   #mood.quiet { animation: breathe 2.4s ease-in-out infinite; }

@@ -99,7 +99,9 @@ func TestPluckIsInTune(t *testing.T) {
 	if testing.Short() {
 		step = 5
 	}
-	for note := 45; note <= 108; note += step {
+	// down from the top, so a short run still checks C8, where the period is
+	// shortest and an approximate coefficient drifts most
+	for note := 108; note >= 45; note -= step {
 		if c := stringCents(t, note); math.Abs(c) > 1 {
 			t.Errorf("note %d: %+.2f cents, want within 1", note, c)
 		}

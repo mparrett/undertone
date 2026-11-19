@@ -602,7 +602,7 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			// fraction of a sample at the fundamental, and gain 1 at every
 			// frequency, so the string decays as it would without it
 			a := s.k*y + s.lp
-			s.lp = y - s.k*a
+			s.lp = flush(y - s.k*a) // recursive, so kept out of subnormals as the svf's state is
 			s.ks[s.kpos] = a
 			s.kpos = (s.kpos + 1) % len(s.ks)
 			stack[sp] = x

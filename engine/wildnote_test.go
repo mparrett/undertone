@@ -129,8 +129,10 @@ func TestPluckLineIsBoundedNotRetuned(t *testing.T) {
 		}
 	}
 	for _, note := range wildNotes {
-		if got := line(note); got < 2 || got > maxPluckLine {
-			t.Errorf("note %d: a line of %d samples, want 2 to %d", note, got, maxPluckLine)
+		// 4 is pluckTuning's floor: shorter, and the allpass coefficient
+		// nears -1 and the string stops decaying
+		if got := line(note); got < 4 || got > maxPluckLine {
+			t.Errorf("note %d: a line of %d samples, want 4 to %d", note, got, maxPluckLine)
 		}
 	}
 }

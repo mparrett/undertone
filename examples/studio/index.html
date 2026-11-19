@@ -721,11 +721,17 @@ let melodyTimers = [];
 // (the button turns "forever"); a click then stops it.
 const melodyClick = (fireFn, btn) => btn.classList.contains("forever") ? stopLoop()
   : btn.classList.contains("loop") ? btn.classList.add("forever") : melody(fireFn, btn);
+// A colour token from :root, so the canvas follows the same palette as the CSS.
+const tokens = {};
+const tok = (n) => tokens[n] ??= getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function melody(fireFn = fire, btn = $("melody"), again = false) {
   if (again) { clearInterval(themeWatch); themeWatch = 0; melodyTimers = []; } else { stopLoop(); btn.classList.add("loop"); }
   const end = () => btn.classList.contains("forever") ? melody(fireFn, btn, true) : stopLoop();
   if (kind !== "shot") {
-    audible(); const err = U().theme(JSON.stringify(TITLE)); if (err) return say(err, true);
+    // only the first play turns the bed on: a loop's restart keeps whatever
+    // mute or solo the user set meanwhile
+    if (!again) audible();
+    const err = U().theme(JSON.stringify(TITLE)); if (err) return say(err, true);
     themeWatch = setInterval(() => { if (!U().themePlaying()) end(); }, 250);
     return;
   }
@@ -747,6 +753,7 @@ function flash(e) { if (!e) return; e.classList.add("hit"); clearTimeout(e._t); 
 // theme player's lead lane: the bed's lead, the one being edited, the way a
 // game's theme would sound it. The rest of that pattern rests the generated lead.
 let themeNote = false;
+document.addEventListener("focusin", (e) => { if (e.target.type === "number") e.target.dataset.was = e.target.value; });
 function audible() {
   if (!playing) setPlaying(true);
   if (!bedOn || (kind === "palette" && solo)) { bedOn = true; solo = kind === "lead"; bedChips(); }
@@ -1200,8 +1207,16 @@ addEventListener("keydown", (e) => {
   // space plays or stops the bed (and ends a repeat) rather than scrolling the page
   if (e.key === "m" && !typing && !e.metaKey && !e.ctrlKey) { $("silent").click(); return; }  // m mutes or unmutes the bed
   if (e.key === " " && !typing) { e.preventDefault(); if (playing) { stopLoop(); setPlaying(false); } else setPlaying(true); return; }
-  // Enter or Escape leaves a number box, so the next 1-8 auditions instead of typing into it
-  if ((e.key === "Enter" || e.key === "Escape") && document.activeElement.type === "number") { document.activeElement.blur(); return; }
+  // Enter or Escape leaves a number box, so the next 1-8 auditions instead of
+  // typing into it. Escape backs out first: boxes apply as you type, so the
+  // value from focus is restored and re-applied before the blur commits it.
+  const nb = document.activeElement;
+  if ((e.key === "Enter" || e.key === "Escape") && nb.type === "number") {
+    if (e.key === "Escape" && nb.dataset.was !== undefined && nb.value !== nb.dataset.was) {
+      nb.value = nb.dataset.was; nb.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    nb.blur(); return;
+  }
   if (typing || e.metaKey || e.ctrlKey || e.altKey) return;  // a focused slider still lets 1-8 fire; a text box keeps its digits
   const d = +e.key;
   if (kind === "shot" && takes[selRow]) {
@@ -1299,7 +1314,7 @@ function scope() {
   g.font = "10px system-ui"; g.textBaseline = "middle";
   ROWS.forEach((r, i) => {
     const y = top(i), hi = i ? rh : bh;
-    if (!thin) { g.fillStyle = "#8a857680"; g.fillText(r, 6, y + hi / 2); }
+    if (!thin) { g.fillStyle = tok("--mut") + "80"; g.fillText(r, 6, y + hi / 2); }
     if (!thin) { g.fillStyle = i ? "#ffffff08" : "#ffffff14"; g.fillRect(L, y + hi - 1, rw, 1); }
   });
   const inset = thin ? 0.5 : 2;
@@ -1341,7 +1356,7 @@ function scope() {
   g.fillStyle = "rgba(190,255,170,0.8)"; g.fillRect(cx, 2, 1, h - 4);
   // The cursor sweeps whether or not anything sounds, so it says which: stopped,
   // playing, or playing with the bed muted (shots still sound).
-  const [word, col] = !playing ? ["stopped", "#8a8576"] : bedOn ? ["playing", "#9cc46a"] : ["muted", "#f0962e"];
+  const [word, col] = !playing ? ["stopped", tok("--mut")] : bedOn ? ["playing", tok("--out")] : ["muted", tok("--amber")];
   g.font = `${thin ? 9 : 10}px ui-monospace, Menlo, monospace`; g.textBaseline = "bottom";
   const tw = g.measureText(word).width, tx = cx + 4 + tw > w - 2 ? cx - 4 - tw : cx + 4;
   g.fillStyle = "#07090acc"; g.fillRect(tx - 2, h - (thin ? 12 : 15), tw + 4, thin ? 11 : 13);

@@ -220,7 +220,7 @@
     <p>The usual voice is <code>env → osc → mul → out</code>: an envelope and an oscillator are pushed, <code>mul</code> multiplies them
     (the envelope shapes the tone), <code>out</code> mixes it. Two such chains in one patch are two layers. The coloured bars after a unit
     are the stack after it runs: <b style="color:var(--src)">signal</b> (from an osc or pluck) or <b style="color:var(--mod)">control</b>
-    (from an env or lfo). A <b>!</b> marks the unit the engine refuses (the stack runs dry or overflows there, say); hover it for why.</p>
+    (from an env or lfo). A <b>!</b> marks a unit the engine refuses (the stack runs dry or overflows there, or a value is out of range); hover it for why.</p>
     <ul>
       <li><b>modulate</b>: push an <code>lfo</code> or <code>env</code>, then an <code>svf</code> with a nonzero <i>depth</i> pops it to sweep the cutoff;
         <code>pitch</code> pops it to bend the oscillators after it; <code>scale</code> turns it into a range for a tremolo with <code>mul</code>.</li>
@@ -463,13 +463,19 @@ function render() {
 
 // The stack after each unit, from the engine's own walk (StackTrace), so the
 // bars cannot disagree with what registering the patch accepts. The trace
-// stops at the first unit that fails; the units after it get no bars.
-const stacks = (units) => JSON.parse(U().stack(JSON.stringify(units)));
+// stops where the stack fails, and the units after that get no bars; an
+// argument out of range marks its unit and the walk goes on.
+function stacks(units) {
+  const r = JSON.parse(U().stack(JSON.stringify(units)));
+  if (Array.isArray(r)) return r;
+  say("stack: " + r.error, true);
+  return [];
+}
 function drawStack(box, step) {
   box.replaceChildren();
   if (!step) return;
-  if (step.Error) { const x = el("span", "hint", "!"); x.title = step.Error; box.append(x); return; }
   for (const s of step.Signal) box.append(el("b", s ? "sig" : ""));
+  if (step.Error) { const x = el("span", "hint", "!"); x.title = step.Error; box.append(x); }
 }
 
 function renderUnits() {

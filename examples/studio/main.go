@@ -15,8 +15,8 @@
 //	register(kind, json)     validate and register; "" or the error
 //	edn(kind, json)          the spec as the map its register-* takes
 //	stack(json)              the stack after each of a patch's units (engine.StackTrace):
-//	                         [{Signal: [bool, ...], Error}], as JSON; it stops at the
-//	                         first unit that fails
+//	                         [{Signal: [bool, ...], Error}], as JSON, or {error} when
+//	                         the units don't parse
 //	bed(json)                play a mood under the sound: {mood, seed, level, tension,
 //	                         palette, lead, muted, musicGain}; "" or the error. musicGain 0
 //	                         silences the bed while shots still feed its delay and room
@@ -324,7 +324,7 @@ func main() {
 		"stack": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			var units []engine.UnitSpec
 			if err := json.Unmarshal([]byte(a[0].String()), &units); err != nil {
-				return marshal([]engine.StackStep{{Signal: []bool{}, Error: err.Error()}})
+				return marshal(map[string]string{"error": err.Error()})
 			}
 			return marshal(engine.StackTrace(units))
 		}),

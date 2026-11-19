@@ -224,31 +224,50 @@ type StackStep struct {
 	// the value is signal (from an osc or pluck), false where it is control
 	// (from an env or lfo).
 	Signal []bool
-	// Error is why the unit cannot run, as registering the patch would
-	// report it; Signal is empty then.
+	// Error is why registering the patch would refuse this unit, without
+	// the "unit N (op): " that registering puts before it, since an editor
+	// shows it on the unit. When the stack itself fails here, Signal is
+	// empty and the walk stops; an argument out of range leaves Signal as the
+	// stack would be.
 	Error string
 }
 
 // StackTrace walks units as registering them as a patch does and returns the
 // stack after each, for an editor to draw the engine's answer rather than a
-// copy of its rules. The walk stops at the first unit that fails, so the
-// trace is shorter than units when one does. A unit's args are held to a
-// music patch's bounds, the wider ones: a shot's tighter release and gain
-// are for registering it to refuse, and the stack does not depend on them.
-// What a whole patch needs (its count of units, an env and an out) is
-// registering's to report too.
+// copy of its rules. A stack that runs dry or overflows, or an offset on a
+// signal, stops the walk as it stops registering, so the trace is shorter
+// than units then. An argument out of range does not: the stack's shape
+// depends only on the op and on whether a few args are zero, so the walk
+// goes on and later units keep their bars while one value is being fixed.
+// Args are held to a music patch's bounds, the wider ones: a shot's tighter
+// release and gain are for registering it to refuse. What a whole patch
+// needs (its count of units, an env and an out) is registering's to report.
 func StackTrace(units []UnitSpec) []StackStep {
 	var w stackWalk
 	out := make([]StackStep, 0, len(units))
 	for _, us := range units {
-		u, err := us.unit(musicBounds)
-		if err == nil {
-			err = w.step(u)
+		u, argErr := us.unit(musicBounds)
+		if argErr != nil {
+			op := indexOf(opNames, us.Op)
+			if op < 0 { // an unknown op has no shape to walk
+				return append(out, StackStep{Signal: []bool{}, Error: argErr.Error()})
+			}
+			// unchecked args: step reads only svf's depth and scale's
+			// offset, at the indexes UnitSpec gives them
+			u = Unit{op: op}
+			copy(u.p[:], us.Args)
 		}
-		if err != nil {
+		if err := w.step(u); err != nil {
+			if argErr != nil { // registering checks args first, so names them
+				err = argErr
+			}
 			return append(out, StackStep{Signal: []bool{}, Error: err.Error()})
 		}
-		out = append(out, StackStep{Signal: append([]bool{}, w.signal[:w.depth]...)})
+		st := StackStep{Signal: append([]bool{}, w.signal[:w.depth]...)}
+		if argErr != nil {
+			st.Error = argErr.Error()
+		}
+		out = append(out, st)
 	}
 	return out
 }

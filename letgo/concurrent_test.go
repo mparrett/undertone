@@ -26,7 +26,7 @@ func openReading(src io.Reader) (output, error) {
 		buf := make([]byte, 512*4)
 		for !o.closed.Load() {
 			src.Read(buf)
-			runtime.Gosched() // see yield
+			runtime.Gosched() // see the note on the loops below
 		}
 	}()
 	return o, nil

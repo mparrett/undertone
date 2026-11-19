@@ -14,7 +14,8 @@ test:
 # The engine and binding suites as a browser runs them: js/wasm under node, one
 # thread that switches goroutines only when one blocks. CI runs only the seam
 # test under wasm, so run this before a PR (just ready does). -short trims the
-# widest test matrices, which wasm runs about ten times slower than native.
+# widest test matrices, which wasm ran about ten times slower than native (as
+# of 2026-11-19).
 test-wasm:
     {{wasm}} -short ./engine ./letgo
 

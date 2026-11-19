@@ -147,7 +147,8 @@
       [mood, depth, seed, tension, lead] = [p.get("mood") ?? "dungeon", p.get("depth") ?? "0",
         p.get("seed") ?? "1", p.get("tension") ?? "0", p.get("lead") ?? ""];
       window.undertoneScene(qs);
-      history.replaceState(null, "", qs);
+      // keep ?debug, so a reload (iOS reloads a discarded tab) still shows the panel
+      history.replaceState(null, "", q.has("debug") ? qs + "&debug" : qs);
       for (const x of sc.children) x.classList.toggle("active", x === a);
       status.textContent = window.__undertoneAudio ? playing() : `${mood} ${depth}, seed ${seed}, tension ${tension}`;
     });

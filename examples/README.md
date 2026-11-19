@@ -53,6 +53,44 @@ python3 examples/serve.py 8901 descent/web
 phone on the LAN won't run a stale wasm. A phone needs HTTPS to get
 AudioWorklet, though; `tailscale serve` is one way to give it that.
 
+## Manual browser check
+
+`just test-wasm` runs the suites under node, but node is not a browser: the
+`webaudio` pump, the AudioWorklet and a phone's scheduling only run in a real
+one. Before merging a change to the engine's timing (tempo, patterns, drums,
+parameter changes), to `webaudio`, or to `letgo`'s output, work through this
+list in a desktop browser and on a phone. It takes about ten minutes.
+
+Add `?debug` to any demo's URL (`…/grid/?debug`, or `&debug` after the
+player's own query) to show a panel in the corner. It counts **underruns**
+(the speaker got silence because the queue ran dry), **over budget** (renders
+that took longer than the audio they made), the slowest render, and how full
+the queue is. Underruns are the count to trust; the lowest queue can miss a
+dip that the page itself caused. **reset** zeroes the counts, so reset before
+each step and read the panel after it. On a phone the panel starts folded to
+one line; tap it to unfold it and reach **reset**. The counts are also published as
+`window.__undertoneDebug` for the console.
+
+Serve locally (see [Run](#run)) or use the live pages. A phone needs HTTPS:
+use the live pages or `tailscale serve`.
+
+| # | Demo | Do | Pass |
+|---|---|---|---|
+| 1 | player | Tap to start. Play for a minute without touching anything. | 0 underruns, 0 over budget |
+| 2 | player | Switch scenes with the links several times, mid-phrase. | The change is heard at once, with no click, gap or stuck note |
+| 3 | designer | With drums playing, click through four or five moods under **start from**, quickly. | No dropped beat at the switch, no held note from the old mood |
+| 4 | designer | Drag the **bpm** base slider from one end to the other and back while drums play. | Hits stay in time at every tempo; none vanish at the moment of change |
+| 5 | grid | Press **play**, enable some drum steps, then toggle **bed** off and on mid-pattern. | The drone and pad stop at the next row, not at the end of the pattern |
+| 6 | grid | Switch moods while the lead and bass play. | The lead and bass move to the new key at once, without a click |
+| 7 | studio | Audition a short shot ten times as fast as you can tap. | Every tap sounds; no crackle; underruns stay 0 |
+| 8 | any | Switch to another tab for ten seconds, then come back. | Audio resumes by itself or on the next tap; any underruns stop once it plays again |
+| 9 | any | On a phone: lock the screen for ten seconds, unlock, return to the page. | As 8 |
+
+Steps 1 to 7 should end with 0 underruns and 0 over budget on a desktop. A
+phone may count a few underruns at the moment it resumes (steps 8 and 9); a
+count that keeps climbing while audio plays is a failure. When a step fails,
+note the browser, the device and the panel's numbers in the PR.
+
 ## The descent demo's lg
 
 `descent/lg/music.lg` and `descent/lg/sfx.lg` are frozen prototypes of a game's

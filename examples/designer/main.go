@@ -28,6 +28,7 @@ import (
 	"syscall/js"
 
 	"github.com/mparrett/undertone/engine"
+	"github.com/mparrett/undertone/internal/debugoverlay"
 	"github.com/mparrett/undertone/webaudio"
 )
 
@@ -158,6 +159,7 @@ func main() {
 			p.Pause()
 		}
 	}()
+	debugoverlay.Show(syn, player.Load)
 
 	parse := func(v js.Value) (engine.MoodSpec, bool) {
 		var j specJSON

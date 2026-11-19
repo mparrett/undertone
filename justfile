@@ -43,11 +43,11 @@ bench-wasm pattern=".":
 lint:
     go vet ./...
     go vet -tags audio_oto ./...
-    GOOS=js GOARCH=wasm go vet ./examples/designer ./examples/studio ./webaudio ./letgo
+    GOOS=js GOARCH=wasm go vet ./cmd/undertone ./examples/designer ./examples/grid ./examples/studio ./webaudio ./internal/debugoverlay ./letgo
     GOBIN="$(go env GOPATH)/bin" go install {{staticcheck}}
     "$(go env GOPATH)/bin/staticcheck" ./...
     "$(go env GOPATH)/bin/staticcheck" -tags audio_oto ./...
-    GOOS=js GOARCH=wasm "$(go env GOPATH)/bin/staticcheck" ./examples/designer ./examples/studio ./webaudio ./letgo
+    GOOS=js GOARCH=wasm "$(go env GOPATH)/bin/staticcheck" ./cmd/undertone ./examples/designer ./examples/grid ./examples/studio ./webaudio ./internal/debugoverlay ./letgo
 
 # build the mood designer and serve it on localhost:{{port}}
 designer port="8373": designer-build

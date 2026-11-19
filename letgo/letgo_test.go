@@ -157,3 +157,13 @@ func TestSetParametersNowDuringStartIsHeardAtOnce(t *testing.T) {
 		t.Error("a set-parameters-now during the start wait was not applied at once")
 	}
 }
+
+// Params is a snapshot: editing its scale leaves the music's own alone.
+func TestParamsSnapshotOwnsItsScale(t *testing.T) {
+	m := NewMusic(engine.DeriveDungeon(7, 2, 0))
+	want := m.Params().Scale[0]
+	m.Params().Scale[0] = 99
+	if got := m.Params().Scale[0]; got != want {
+		t.Errorf("scale[0] = %d after editing a snapshot, want %d", got, want)
+	}
+}

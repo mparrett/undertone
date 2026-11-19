@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -122,12 +123,16 @@ func TestConcurrentControlWhileRendering(t *testing.T) {
 			defer wg.Done()
 			for i := 0; !stop.Load(); i++ {
 				control(i)
+				// js/wasm switches goroutines only when one blocks: without
+				// a yield the controls would not run until the reads ended
+				runtime.Gosched()
 			}
 		}()
 	}
 	buf := make([]byte, 512*4)
 	for i := 0; i < 2*SampleRate/512; i++ { // two seconds, a slice at a time as an output reads
 		s.Read(buf)
+		runtime.Gosched()
 	}
 	stop.Store(true)
 	wg.Wait()

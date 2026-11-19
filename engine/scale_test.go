@@ -77,8 +77,12 @@ func TestMoodSpecScaleLengths(t *testing.T) {
 // pattern's chord.
 func TestFiveNoteMoodRenders(t *testing.T) {
 	spec := fiveNoteSpec()
-	for _, level := range []int{0, 1, 2, 3, 5, 8} {
-		for _, tension := range []float64{0, 0.3, 0.6, 1} {
+	levels, tensions := []int{0, 1, 2, 3, 5, 8}, []float64{0, 0.3, 0.6, 1}
+	if testing.Short() { // the ends of each range: what just test-wasm can afford
+		levels, tensions = []int{0, 8}, []float64{0, 1}
+	}
+	for _, level := range levels {
+		for _, tension := range tensions {
 			name := fmt.Sprintf("level %d tension %.1f", level, tension)
 			p, err := spec.Derive(7, level, tension)
 			if err != nil {

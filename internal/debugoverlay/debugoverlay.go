@@ -12,6 +12,9 @@
 // stall that empties the queue also stops the sampling until the pump has
 // refilled it.
 //
+// copy puts the panel's numbers on the clipboard with the time, the page and
+// the browser, as plain text to paste into a PR or an issue.
+//
 // The same numbers are published as window.__undertoneDebug, for a console or
 // an automated probe.
 package debugoverlay
@@ -59,10 +62,20 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 	text := doc.Call("createElement", "div")
 	text.Set("title", "tap to fold or unfold")
 	text.Get("style").Set("cursor", "pointer")
-	reset := doc.Call("createElement", "button")
-	reset.Set("textContent", "reset")
-	reset.Get("style").Set("cssText", "margin-top:6px;font:inherit;cursor:pointer")
-	box.Call("append", text, reset)
+	button := func(label string) js.Value {
+		b := doc.Call("createElement", "button")
+		b.Set("textContent", label)
+		b.Get("style").Set("cssText", "margin:6px 6px 0 0;font:inherit;cursor:pointer")
+		return b
+	}
+	reset, copyBtn := button("reset"), button("copy")
+	buttons := doc.Call("createElement", "div")
+	buttons.Call("append", reset, copyBtn)
+	// where the clipboard is unavailable, the report is shown here to copy by hand
+	manual := doc.Call("createElement", "textarea")
+	manual.Set("readOnly", true)
+	manual.Get("style").Set("cssText", "display:none;margin-top:6px;width:30em;max-width:80vw;height:10em;font:inherit")
+	box.Call("append", text, buttons, manual)
 	doc.Get("body").Call("append", box)
 
 	var (
@@ -71,7 +84,48 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 		lowest  = time.Duration(-1)
 		pending atomic.Bool // a reset waits for the next tick, on the overlay's goroutine
 		folded  atomic.Bool // one line, for a small screen
+		resetAt time.Time
+		report  atomic.Pointer[string] // the latest, for copy
 	)
+	// a phone that never starts audio is the report that most needs the header
+	none := header() + "audio not started\n"
+	report.Store(&none)
+	// Made once, not per tap: a js.Func lives until released.
+	var (
+		copied, showManual js.Func
+		relabel            *time.Timer // puts "copy" back after "copied"
+	)
+	stopRelabel := func() {
+		if relabel != nil {
+			relabel.Stop()
+		}
+	}
+	copied = js.FuncOf(func(js.Value, []js.Value) any {
+		stopRelabel()
+		manual.Get("style").Set("display", "none")
+		copyBtn.Set("textContent", "copied")
+		relabel = time.AfterFunc(1500*time.Millisecond, func() { copyBtn.Set("textContent", "copy") })
+		return nil
+	})
+	showManual = js.FuncOf(func(js.Value, []js.Value) any {
+		stopRelabel()
+		manual.Set("value", *report.Load())
+		manual.Get("style").Set("display", "block")
+		manual.Call("select")
+		copyBtn.Set("textContent", "select and copy")
+		return nil
+	})
+	copyBtn.Call("addEventListener", "click", js.FuncOf(func(js.Value, []js.Value) any {
+		// Inside the tap's handler: browsers grant the clipboard only to a
+		// user gesture, and only in a secure context.
+		clip := js.Global().Get("navigator").Get("clipboard")
+		if clip.IsUndefined() {
+			showManual.Invoke()
+			return nil
+		}
+		clip.Call("writeText", *report.Load()).Call("then", copied, showManual)
+		return nil
+	}))
 	pending.Store(true)
 	reset.Call("addEventListener", "click", js.FuncOf(func(js.Value, []js.Value) any {
 		pending.Store(true)
@@ -83,7 +137,10 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 		if f {
 			display = "none"
 		}
-		reset.Get("style").Set("display", display)
+		buttons.Get("style").Set("display", display)
+		if f {
+			manual.Get("style").Set("display", "none")
+		}
 	}
 	text.Call("addEventListener", "click", js.FuncOf(func(js.Value, []js.Value) any {
 		fold(!folded.Load())
@@ -97,6 +154,8 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 			p := player()
 			if p == nil {
 				text.Set("textContent", "undertone debug\ntap the page to start audio")
+				r := header() + "audio not started\n"
+				report.Store(&r)
 				continue
 			}
 			if opened.IsZero() {
@@ -104,12 +163,14 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 			}
 			now := read(syn, p)
 			if pending.Swap(false) {
-				base, lowest = now, -1
+				base, lowest, resetAt = now, -1, time.Now()
 			}
 			if time.Since(opened) >= warmup && (lowest < 0 || now.queued < lowest) {
 				lowest = now.queued
 			}
 			d := now.since(base)
+			r := d.report(now, lowest, time.Since(resetAt))
+			report.Store(&r)
 			if folded.Load() {
 				text.Set("textContent", fmt.Sprintf("debug: %d underruns, %d over", d.underruns, d.over))
 			} else {
@@ -170,6 +231,26 @@ func (c counts) format(now counts, lowest time.Duration) string {
 	fmt.Fprintf(&b, "queued        %.0f ms, lowest %s\n", ms(now.queued), low)
 	fmt.Fprintf(&b, "ring          %s", ring)
 	return b.String()
+}
+
+// report is the panel's numbers as text to paste: the header, then what the
+// panel shows.
+func (c counts) report(now counts, lowest, sinceReset time.Duration) string {
+	lines := strings.SplitN(c.format(now, lowest), "\n", 2)
+	return fmt.Sprintf("%ssince reset (%.0f s):\n%s\n", header(), sinceReset.Seconds(), lines[len(lines)-1])
+}
+
+// header is when, where and in what: the browser line is what a failed step
+// most needs and a tester most often leaves out. The page is its path alone,
+// since the report is meant for a public PR and a host can name a machine
+// (tailscale serve's do).
+func header() string {
+	g := js.Global()
+	loc := g.Get("location")
+	return fmt.Sprintf("undertone debug, %s\npage      %s%s\nbrowser   %s\n",
+		time.Now().Format("2006-01-02 15:04:05"),
+		loc.Get("pathname").String(), loc.Get("search").String(),
+		g.Get("navigator").Get("userAgent").String())
 }
 
 func ms(d time.Duration) float64 {

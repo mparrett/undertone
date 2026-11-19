@@ -324,7 +324,7 @@
     <p>The usual voice is <code>env → osc → mul → out</code>: an envelope and an oscillator are pushed, <code>mul</code> multiplies them
     (the envelope shapes the tone), <code>out</code> mixes it. Two such chains in one patch are two layers. The coloured bars after a unit
     are the stack after it runs: <b style="color:var(--src)">signal</b> (from an osc or pluck) or <b style="color:var(--mod)">control</b>
-    (from an env or lfo). A <b>!</b> means the stack runs dry or overflows there.</p>
+    (from an env or lfo). A <b>!</b> marks a unit the engine refuses (the stack runs dry or overflows there, or a value is out of range); hover it for why.</p>
     <p>The strip on a unit's left edge says what kind of unit it is:</p>
     <ul>
       <li><b style="color:var(--src)">source</b>, which makes a sound: <code>osc</code>, <code>pluck</code>.</li>
@@ -579,30 +579,21 @@ function render() {
   buildNames();
 }
 
-// stack depth and which slots carry signal after each unit, as buildPatch counts them
-// What each unit reads off the stack, as buildPatch counts it (shotspec.go);
-// an svf with a depth reads two, its modulator on top of the signal.
-// The engine is the authority here and its ops change from time to time: when
-// one is added or its stack use changes, check buildPatch and the VM's switch
-// in engine.go and update NEED and stacks() to match, or the bars mislead.
-const NEED = { mul: 2, out: 1, lpf: 1, hpf: 1, send: 1, drive: 1, crush: 1, verb: 1, scale: 1, pitch: 1, svf: 1 };
-// The stack after each unit, true for signal and false for control; null
-// where the engine would refuse it (too few values, or more than eight).
+// The stack after each unit, from the engine's own walk (StackTrace), so the
+// bars cannot disagree with what registering the patch accepts. The trace
+// stops where the stack fails, and the units after that get no bars; an
+// argument out of range marks its unit and the walk goes on.
 function stacks(units) {
-  const out = []; let st = [];
-  for (const u of units) {
-    const a = u.Args || [], need = u.Op === "svf" && a[3] ? 2 : NEED[u.Op] || 0;
-    if (st.length < need) { out.push(null); continue; }
-    switch (u.Op) {
-      case "env": case "lfo": st.push(false); break;
-      case "osc": case "pluck": st.push(true); break;
-      case "mul": { const b = st.pop(), x = st.pop(); st.push(x || b); break; }
-      case "out": case "pitch": st.pop(); break;
-      case "svf": if (a[3]) st.pop(); break;  // the modulator, off the top; the filtered signal stays
-    }
-    out.push(st.length > 8 ? null : [...st]);
-  }
-  return out;
+  const r = JSON.parse(U().stack(JSON.stringify(units)));
+  if (Array.isArray(r)) return r;
+  say("stack: " + r.error, true);
+  return [];
+}
+function drawStack(box, step) {
+  box.replaceChildren();
+  if (!step) return;
+  for (const s of step.Signal) box.append(el("b", s ? "sig" : ""));
+  if (step.Error) { const x = el("span", "hint", "!"); x.title = step.Error; box.append(x); }
 }
 
 function renderUnits() {
@@ -620,8 +611,7 @@ function renderUnits() {
     sel.onchange = () => { u.Op = sel.value; u.Args = [...DEFAULT_ARGS[u.Op]]; u.Shape = u.Op === "osc" ? "sine" : ""; edited(); };
     row.append(sel);
     const stk = el("span", "stack");
-    if (st[i]) for (const s of st[i]) stk.append(el("b", s ? "sig" : ""));
-    else stk.append(el("span", "hint", "!"));
+    drawStack(stk, st[i]);
     row.append(stk);
     const args = el("div", "args");
     if (op && op.shape) {
@@ -801,7 +791,7 @@ function edited(fromSlider) {
   if (kind === "palette" && patch().Name && !LANES.includes(track)) patch().Name = "";  // edited units are no longer the built-in's
   if (kind === "palette" && LANES.includes(track)) patch().Default = false;
   if (!fromSlider) renderUnits();
-  else { const st = stacks(patch().Units); $("units").querySelectorAll(".stack").forEach((s, i) => { s.replaceChildren(); (st[i] || []).forEach((x) => s.append(el("b", x ? "sig" : ""))); }); }
+  else { const st = stacks(patch().Units); $("units").querySelectorAll(".stack").forEach((s, i) => drawStack(s, st[i])); }
   clearTimeout(refireTimer);
   refireTimer = setTimeout(() => commit(true), fromSlider ? 90 : 0);
 }

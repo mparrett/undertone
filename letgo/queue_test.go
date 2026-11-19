@@ -4,6 +4,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +32,9 @@ func (o *queueTestOutput) SetQueue(d time.Duration) time.Duration {
 // stderrOf returns what f writes to os.Stderr.
 func stderrOf(t *testing.T, f func()) string {
 	t.Helper()
+	if runtime.GOOS == "js" {
+		t.Skip("os.Pipe is not implemented on js; what is reported is the same natively")
+	}
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)

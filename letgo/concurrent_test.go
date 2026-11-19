@@ -2,6 +2,7 @@ package letgo
 
 import (
 	"io"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -25,6 +26,7 @@ func openReading(src io.Reader) (output, error) {
 		buf := make([]byte, 512*4)
 		for !o.closed.Load() {
 			src.Read(buf)
+			runtime.Gosched() // see yield
 		}
 	}()
 	return o, nil
@@ -33,6 +35,11 @@ func openReading(src io.Reader) (output, error) {
 func (o *readingOutput) Close()  { o.closed.Store(true); <-o.done }
 func (o *readingOutput) Pause()  {}
 func (o *readingOutput) Resume() {}
+
+// The loops here yield on every pass because js/wasm runs every goroutine on
+// one thread and switches only when one blocks: a loop that never blocks
+// spins forever there, and the test never ends. Natively the yields cost
+// next to nothing, and under js/wasm they give real interleavings to test.
 
 func kwMap(kv ...vm.Value) vm.Value { return vm.NewPersistentMap(kv) }
 
@@ -92,6 +99,7 @@ func TestConcurrentCallsWhilePlaying(t *testing.T) {
 			defer wg.Done()
 			for i := 0; !stop.Load(); i++ {
 				control(i)
+				runtime.Gosched()
 			}
 		}()
 	}
@@ -103,6 +111,7 @@ func TestConcurrentCallsWhilePlaying(t *testing.T) {
 				f = m.synth.Frames()
 			}
 			m.mu.Unlock()
+			runtime.Gosched()
 		}
 		m.Stop()
 	}

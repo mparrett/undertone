@@ -1,9 +1,25 @@
 staticcheck := "honnef.co/go/tools/cmd/staticcheck@2026.2.2"
 
+# Runs a go test under node as js/wasm. go_js_wasm_exec hands the whole
+# environment to the wasm program, which fails outright when it is large
+# ("total length of command line and environment variables exceeds limit"),
+# so it gets only what go needs.
+wasm := 'env -i PATH="$PATH" HOME="$HOME" GOPATH="$(go env GOPATH)" GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)" GOOS=js GOARCH=wasm go test -exec "$(go env GOROOT)/lib/wasm/go_js_wasm_exec"'
+
 test:
     go test ./...
     go test -tags audio_oto ./letgo
-    GOOS=js GOARCH=wasm go test -exec "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" -run SeamDevice ./letgo
+    {{wasm}} -run SeamDevice ./letgo
+
+# The engine and binding suites as a browser runs them: js/wasm under node, one
+# thread that switches goroutines only when one blocks. CI runs only the seam
+# test under wasm, so run this before a PR (just ready does). -short trims the
+# widest test matrices, which wasm runs about ten times slower than native.
+test-wasm:
+    {{wasm}} -short ./engine ./letgo
+
+# Everything to run before opening a PR.
+ready: test race lint test-wasm
 
 # The tests that share a synth between goroutines, under the race detector,
 # as CI runs them. Only those: the detector slows rendering many times over,
@@ -18,7 +34,7 @@ bench pattern=".":
 
 # The same as wasm under node: what a browser runs, several times slower.
 bench-wasm pattern=".":
-    GOOS=js GOARCH=wasm go test -exec "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" -run '^$' -bench '{{pattern}}' ./engine
+    {{wasm}} -run '^$' -bench '{{pattern}}' ./engine
 
 # vet and staticcheck, native and for the wasm packages, as CI runs them.
 # staticcheck is installed natively first: `go run` under GOOS=js would build

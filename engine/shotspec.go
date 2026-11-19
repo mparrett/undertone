@@ -148,51 +148,15 @@ func buildPatch(units []UnitSpec, b bounds) (Patch, error) {
 		return nil, fmt.Errorf("%d units: want 1 to %d", len(units), maxUnits)
 	}
 	p := make(Patch, len(units))
-	depth, envs, outs := 0, 0, 0
-	// whether each stack slot carries signal (from an osc or pluck) or a
-	// control value (an env or lfo): an offset is DC on a signal, which the
-	// envelope does not shape and which clicks when the voice ends
-	var signal [9]bool
+	envs, outs := 0, 0
+	var w stackWalk
 	for i, us := range units {
 		u, err := us.unit(b)
 		if err != nil {
 			return nil, fmt.Errorf("unit %d (%s): %w", i, us.Op, err)
 		}
-		// The VM's stack holds eight and checks nothing, so the spec must.
-		need := 0 // values the unit reads off the stack
-		switch u.op {
-		case opMul:
-			need = 2
-		case opOut, opLpf, opHpf, opSend, opDrive, opCrush, opVerb, opScale, opPitch:
-			need = 1
-		case opSvf:
-			need = 1
-			if u.p[3] != 0 { // the modulation value, then the signal
-				need = 2
-			}
-		}
-		if depth < need {
-			return nil, fmt.Errorf("unit %d (%s): the stack would run dry", i, us.Op)
-		}
-		if u.op == opScale && u.p[1] != 0 && signal[depth-1] {
-			return nil, fmt.Errorf("unit %d (scale): an offset on a signal is DC; scale an env or lfo, then mul it in", i)
-		}
-		switch u.op {
-		case opEnv, opOsc, opPluck, opLfo:
-			if depth < len(signal) {
-				signal[depth] = u.op == opOsc || u.op == opPluck
-			}
-			depth++
-		case opMul:
-			depth--
-			signal[depth-1] = signal[depth-1] || signal[depth]
-		case opOut, opPitch:
-			depth--
-		case opSvf:
-			depth -= need - 1
-		}
-		if depth > 8 {
-			return nil, fmt.Errorf("unit %d (%s): the stack would overflow", i, us.Op)
+		if err := w.step(u); err != nil {
+			return nil, fmt.Errorf("unit %d (%s): %w", i, us.Op, err)
 		}
 		envs += b2i(u.op == opEnv)
 		outs += b2i(u.op == opOut)
@@ -202,6 +166,110 @@ func buildPatch(units []UnitSpec, b bounds) (Patch, error) {
 		return nil, fmt.Errorf("a patch needs an env, which ends the sound, and an out, which makes it heard")
 	}
 	return p, nil
+}
+
+// stackWalk is the patch's stack as buildPatch counts it, unit by unit. The
+// VM's stack holds eight and checks nothing, so the spec must.
+type stackWalk struct {
+	depth int
+	// whether each stack slot carries signal (from an osc or pluck) or a
+	// control value (an env or lfo): an offset is DC on a signal, which the
+	// envelope does not shape and which clicks when the voice ends
+	signal [9]bool
+}
+
+// step runs one unit over the stack, or says why the unit cannot run there.
+func (w *stackWalk) step(u Unit) error {
+	need := 0 // values the unit reads off the stack
+	switch u.op {
+	case opMul:
+		need = 2
+	case opOut, opLpf, opHpf, opSend, opDrive, opCrush, opVerb, opScale, opPitch:
+		need = 1
+	case opSvf:
+		need = 1
+		if u.p[3] != 0 { // the modulation value, then the signal
+			need = 2
+		}
+	}
+	if w.depth < need {
+		return fmt.Errorf("the stack would run dry")
+	}
+	if u.op == opScale && u.p[1] != 0 && w.signal[w.depth-1] {
+		return fmt.Errorf("an offset on a signal is DC; scale an env or lfo, then mul it in")
+	}
+	switch u.op {
+	case opEnv, opOsc, opPluck, opLfo:
+		if w.depth < len(w.signal) {
+			w.signal[w.depth] = u.op == opOsc || u.op == opPluck
+		}
+		w.depth++
+	case opMul:
+		w.depth--
+		w.signal[w.depth-1] = w.signal[w.depth-1] || w.signal[w.depth]
+	case opOut, opPitch:
+		w.depth--
+	case opSvf:
+		w.depth -= need - 1
+	}
+	if w.depth > 8 {
+		return fmt.Errorf("the stack would overflow")
+	}
+	return nil
+}
+
+// StackStep is the stack after one unit of a patch, as StackTrace walks it.
+type StackStep struct {
+	// Signal has a slot per value on the stack, bottom first: true where
+	// the value is signal (from an osc or pluck), false where it is control
+	// (from an env or lfo).
+	Signal []bool
+	// Error is why registering the patch would refuse this unit, without
+	// the "unit N (op): " that registering puts before it, since an editor
+	// shows it on the unit. When the stack itself fails here, Signal is
+	// empty and the walk stops; an argument out of range leaves Signal as the
+	// stack would be.
+	Error string
+}
+
+// StackTrace walks units as registering them as a patch does and returns the
+// stack after each, for an editor to draw the engine's answer rather than a
+// copy of its rules. A stack that runs dry or overflows, or an offset on a
+// signal, stops the walk as it stops registering, so the trace is shorter
+// than units then. An argument out of range does not: the stack's shape
+// depends only on the op and on whether a few args are zero, so the walk
+// goes on and later units keep their bars while one value is being fixed.
+// Args are held to a music patch's bounds, the wider ones: a shot's tighter
+// release and gain are for registering it to refuse. What a whole patch
+// needs (its count of units, an env and an out) is registering's to report.
+func StackTrace(units []UnitSpec) []StackStep {
+	var w stackWalk
+	out := make([]StackStep, 0, len(units))
+	for _, us := range units {
+		u, argErr := us.unit(musicBounds)
+		if argErr != nil {
+			op := indexOf(opNames, us.Op)
+			if op < 0 { // an unknown op has no shape to walk
+				return append(out, StackStep{Signal: []bool{}, Error: argErr.Error()})
+			}
+			// unchecked args: step reads only svf's depth and scale's
+			// offset, at the indexes UnitSpec gives them
+			u = Unit{op: op}
+			copy(u.p[:], us.Args)
+		}
+		if err := w.step(u); err != nil {
+			if argErr != nil { // registering checks args first, so names them
+				err = argErr
+			}
+			return append(out, StackStep{Signal: []bool{}, Error: err.Error()})
+		}
+		st := StackStep{Signal: append([]bool{}, w.signal[:w.depth]...)}
+		if argErr != nil {
+			st.Error = argErr.Error()
+		}
+		out = append(out, st)
+	}
+	return out
 }
 
 // validName keeps a name one EDN reads back as a keyword.

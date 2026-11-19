@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/mparrett/undertone/engine"
+	"github.com/mparrett/undertone/internal/debugoverlay"
 	"github.com/mparrett/undertone/webaudio"
 )
 
@@ -162,6 +163,7 @@ func main() {
 			p.Pause()
 		}
 	}()
+	debugoverlay.Show(syn, player.Load)
 
 	api := map[string]any{
 		"setGrid": js.FuncOf(func(_ js.Value, a []js.Value) any {

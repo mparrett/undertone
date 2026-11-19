@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/mparrett/undertone/engine"
+	"github.com/mparrett/undertone/internal/debugoverlay"
+	"github.com/mparrett/undertone/webaudio"
 )
 
 // runMeterUI publishes band levels to window.__homageMeter ~30x/s for the
@@ -15,6 +17,7 @@ import (
 // stdout shim buffers until newline, so a \r-redraw line would never flush.
 func runMeterUI(s *engine.Synth, desc, _ string) {
 	fmt.Printf("playing %s\n", desc)
+	debugoverlay.Show(s, func() *webaudio.Player { return keep })
 	go func() {
 		for range time.Tick(33 * time.Millisecond) {
 			// Nothing until sound is out: the engine renders ahead while the

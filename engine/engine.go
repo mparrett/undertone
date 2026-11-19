@@ -259,6 +259,30 @@ func clampNote(n int) int { return max(minNote, min(n, maxNote)) }
 // long to make, which panicked. No built-in plucks below note 12.
 const maxPluckLine = SampleRate / 16
 
+// pluckTuning sizes a string for freq: a line of n samples, and the
+// coefficient c of the one-pole allpass in its loop. Averaging each sample
+// with the next makes the loop the line less half a sample, so a line of
+// whole samples alone plays sharp, by tens of cents and up to most of a
+// tone in the top octaves, and rounds a detune of a few cents away. With the
+// allpass's delay d the loop is n - 1/2 + d, so n is the period's whole
+// samples and d = period - n + 1/2.
+//
+// d stays in 1/2..3/2, away from 0 as Jaffe and Smith advise: near 0 the
+// allpass's pole nears the unit circle and it rings on each strike. c is the
+// exact coefficient for delay d at the fundamental, not the low-frequency
+// (1-d)/(1+d): the two differ by several cents in the top octaves, where a
+// period is a dozen samples. A period is held to at least 4 samples (a note
+// near 11 kHz), above which c would near -1 and the loop ring forever; it is
+// bounded as a float, since converting a period too long for an int gives a
+// different answer on each architecture.
+func pluckTuning(freq float64) (n int, c float64) {
+	period := max(4, min(SampleRate/freq, maxPluckLine))
+	n = int(period)
+	d := period - float64(n) + 0.5
+	w := 2 * math.Pi / period
+	return n, math.Sin(w*(1-d)/2) / math.Sin(w*(1+d)/2)
+}
+
 // fadeFrames is how long a gain glide takes: about 5 ms, short enough to
 // sound like a switch and long enough not to click.
 const fadeFrames = 220
@@ -545,12 +569,16 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			bend = max(-24, min(stack[sp]*u.p[0], 24))
 		case opPluck:
 			// Karplus-Strong: a noise burst circulating in a delay line
-			// the length of the period, averaged (lowpassed) each pass.
+			// the length of the period, averaged (lowpassed) each pass,
+			// with an allpass making up the period's fraction of a sample
+			// (pluckTuning).
 			if len(s.ks) == 0 { // a new note: strike the string
 				freq := 440 * math.Pow(2, (float64(v.note)+u.p[0]-69)/12)
-				// bounded as a float: converting a period too long for an
-				// int gives a different answer on each architecture
-				n := int(max(2, min(SampleRate/freq, maxPluckLine)))
+				var n int
+				n, s.k = pluckTuning(freq)
+				// lp is the allpass's state: a legato retrigger keeps lp,
+				// and a new string starts from rest
+				s.lp = 0
 				// The voice's line if it has one free, else the unit's own.
 				// One it has to make takes room for the longest, so no
 				// later note makes another: sized to its own note, a lead
@@ -569,7 +597,13 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			}
 			x := s.ks[s.kpos]
 			next := s.ks[(s.kpos+1)%len(s.ks)]
-			s.ks[s.kpos] = (x + next) * 0.5 * u.p[1]
+			y := (x + next) * 0.5 * u.p[1]
+			// one-pole allpass, transposed direct form II: a delay of a
+			// fraction of a sample at the fundamental, and gain 1 at every
+			// frequency, so the string decays as it would without it
+			a := s.k*y + s.lp
+			s.lp = y - s.k*a
+			s.ks[s.kpos] = a
 			s.kpos = (s.kpos + 1) % len(s.ks)
 			stack[sp] = x
 			sp++

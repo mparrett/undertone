@@ -35,6 +35,11 @@ type ShotSpec struct {
 //	verb  amount                                      add the top to the reverb bus
 //	scale gain, offset                                top = top*gain + offset
 //	pitch depth semis                                 pop m, bend every later osc by m*depth
+//	dust  rate Hz, bipolar 0|1, depth 0..1            push random impulses, ~rate a second;
+//	      depth lets the music's tension make them up to 3x as busy
+//	comb  transpose semis, feedback, damp 0..1        resonate the top at the note + transpose
+//	room  freq Hz, feedback, damp 0..1                resonate the top at a fixed frequency
+//	      (comb, room: feedback -0.99..0.99, negative rings hollow, an octave down)
 //	out   gain, pan 0..1                              pop and mix
 type UnitSpec struct {
 	Op    string
@@ -42,11 +47,11 @@ type UnitSpec struct {
 	Args  []float64
 }
 
-var opNames = []string{opEnv: "env", opOsc: "osc", opMul: "mul", opLpf: "lpf", opSend: "send", opOut: "out", opPluck: "pluck", opHpf: "hpf", opSvf: "svf", opLfo: "lfo", opDrive: "drive", opCrush: "crush", opVerb: "verb", opScale: "scale", opPitch: "pitch"}
+var opNames = []string{opEnv: "env", opOsc: "osc", opMul: "mul", opLpf: "lpf", opSend: "send", opOut: "out", opPluck: "pluck", opHpf: "hpf", opSvf: "svf", opLfo: "lfo", opDrive: "drive", opCrush: "crush", opVerb: "verb", opScale: "scale", opPitch: "pitch", opDust: "dust", opComb: "comb", opRoom: "room"}
 
 // opArgs is how many Args a unit of each op takes: the parameters its op
 // reads, less an osc's shape, which travels in UnitSpec.Shape.
-var opArgs = []int{opEnv: 4, opOsc: 3, opMul: 0, opLpf: 1, opSend: 1, opOut: 2, opPluck: 2, opHpf: 1, opSvf: 4, opLfo: 2, opDrive: 2, opCrush: 2, opVerb: 1, opScale: 2, opPitch: 1}
+var opArgs = []int{opEnv: 4, opOsc: 3, opMul: 0, opLpf: 1, opSend: 1, opOut: 2, opPluck: 2, opHpf: 1, opSvf: 4, opLfo: 2, opDrive: 2, opCrush: 2, opVerb: 1, opScale: 2, opPitch: 1, opDust: 3, opComb: 3, opRoom: 3}
 
 var shapeNames = []string{shpSine: "sine", shpSaw: "saw", shpPulse: "pulse", shpNoise: "noise"}
 
@@ -184,7 +189,7 @@ func (w *stackWalk) step(u Unit) error {
 	switch u.op {
 	case opMul:
 		need = 2
-	case opOut, opLpf, opHpf, opSend, opDrive, opCrush, opVerb, opScale, opPitch:
+	case opOut, opLpf, opHpf, opSend, opDrive, opCrush, opVerb, opScale, opPitch, opComb, opRoom:
 		need = 1
 	case opSvf:
 		need = 1
@@ -199,9 +204,9 @@ func (w *stackWalk) step(u Unit) error {
 		return fmt.Errorf("an offset on a signal is DC; scale an env or lfo, then mul it in")
 	}
 	switch u.op {
-	case opEnv, opOsc, opPluck, opLfo:
+	case opEnv, opOsc, opPluck, opLfo, opDust:
 		if w.depth < len(w.signal) {
-			w.signal[w.depth] = u.op == opOsc || u.op == opPluck
+			w.signal[w.depth] = u.op == opOsc || u.op == opPluck || u.op == opDust
 		}
 		w.depth++
 	case opMul:
@@ -359,6 +364,24 @@ func (us UnitSpec) unit(b bounds) (Unit, error) {
 	case opSend, opVerb:
 		ok = a[0] >= 0 && a[0] <= 1
 		rule = "an amount 0..1"
+	case opDust:
+		// at full depth and tension three times the rate, still under one
+		// impulse a sample
+		ok = a[0] >= 0 && a[0] <= 10000 && whole(a[1], 1) && a[2] >= 0 && a[2] <= 1
+		rule = "rate 0..10000 Hz, bipolar 0 or 1, depth 0..1"
+	case opComb, opRoom:
+		// |feedback| under 1 so the ring always decays and the voice dies
+		// with its env. The line is allocated on the audio thread, a
+		// period long, so room's lowest frequency is the longest line's.
+		ok = math.Abs(a[1]) <= 0.99 && a[2] >= 0 && a[2] <= 1
+		rule = "feedback -0.99..0.99, damp 0..1"
+		if op == opComb {
+			ok = ok && math.Abs(a[0]) <= 24
+			rule = "transpose within 24 semitones, " + rule
+		} else {
+			ok = ok && a[0] >= 16 && a[0] <= 4000
+			rule = "freq 16..4000 Hz, " + rule
+		}
 	case opOut:
 		ok = a[0] >= 0 && a[0] <= b.gain && a[1] >= 0 && a[1] <= 1
 		rule = fmt.Sprintf("gain 0..%g, pan 0..1", b.gain)

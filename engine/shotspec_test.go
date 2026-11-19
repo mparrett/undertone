@@ -133,7 +133,7 @@ func TestAcceptedShotsAreSafe(t *testing.T) {
 				pt.Args[0] = pick([]float64{-13, -12, 0.3, 2, 12, 13})
 				units = append(units, l, pt)
 			}
-			units = append(units, unit("env"), unit([]string{"osc", "pluck"}[r.n(2)]), unit("mul"))
+			units = append(units, unit("env"), unit([]string{"osc", "pluck", "dust"}[r.n(3)]), unit("mul"))
 			for _, op := range []string{"lpf", "hpf", "send", "verb"} {
 				if r.n(2) == 0 {
 					units = append(units, unit(op))
@@ -166,6 +166,15 @@ func TestAcceptedShotsAreSafe(t *testing.T) {
 					units = append(units, m)
 				}
 				units = append(units, f)
+			}
+			if r.n(2) == 0 {
+				// a resonator at the edges of its feedback and range
+				c := unit([]string{"comb", "room"}[r.n(2)])
+				c.Args[1] = pick([]float64{-1, -0.99, 0, 0.5, 0.99, 1})
+				if c.Op == "room" {
+					c.Args[0] = pick([]float64{15, 16, 110, 4000, 4001})
+				}
+				units = append(units, c)
 			}
 			units = append(units, unit("out"))
 		}
@@ -347,8 +356,8 @@ func TestStackTraceAgreesWithBuildPatch(t *testing.T) {
 		units := make([]UnitSpec, 1+r.n(12))
 		for j := range units {
 			op := r.n(len(opNames))
-			if r.n(2) == 0 { // enough pushes that some chains overflow
-				op = []int{opEnv, opOsc, opPluck, opLfo}[r.n(4)]
+			if r.n(5) < 3 { // enough pushes that some chains overflow, even under -short
+				op = []int{opEnv, opOsc, opPluck, opLfo, opDust}[r.n(5)]
 			}
 			u := UnitSpec{Op: opNames[op], Shape: shapeNames[r.n(len(shapeNames))]}
 			for a := 0; a < opArgs[op]; a++ {

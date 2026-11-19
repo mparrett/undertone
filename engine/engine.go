@@ -41,6 +41,9 @@ const (
 	opVerb         // p: amount; peek top, add top*amount to the reverb bus
 	opScale        // p: gain, offset; top = top*gain + offset
 	opPitch        // p: depth semis; pop m, bend every later osc by m*depth
+	opDust         // p: rate Hz, bipolar 0|1, depth 0..1 -> push random impulses
+	opComb         // p: transpose semis, feedback, damp; pop x -> push x resonated at the note
+	opRoom         // p: freq Hz, feedback, damp; pop x -> push x resonated at freq
 )
 
 const (
@@ -64,18 +67,21 @@ const maxUnits = 32
 // per-voice, per-unit mutable state
 type ustate struct {
 	phase, env, lp, sweep float64
-	ic2                   float64 // svf: the second integrator (lp holds the first)
+	ic2                   float64 // svf: the second integrator (lp holds the first); comb, room: the damping lowpass
 	stage                 int     // env: 0 attack, 1 decay, 2 sustain, 3 release
 	rng                   uint64
-	ks                    []float64 // Karplus-Strong delay line, allocated on first sample
-	kpos                  int       // pluck: read position; swept svf and bent osc: control-rate counter
-	k                     float64   // cached per-note coefficient: osc phase increment or lpf c
+	ks                    []float64 // pluck, comb, room: delay line, allocated on first sample
+	kpos                  int       // pluck, comb, room: read position; swept svf and bent osc: control-rate counter
+	k                     float64   // cached per-note coefficient: osc phase increment, lpf c, or an allpass's
 	dk                    float64   // swept osc: k's step per sample
 	tick                  int       // swept osc: control-rate counter (kpos is the bend's)
 	g, g1, g2             float64   // svf, drive, crush: constants derived from grit g; osc: g1 is its bend ratio
 	gset                  bool      // g1 and g2 hold for grit g
 	ko                    float64   // svf: the open its coefficient k was computed at
 	kset                  bool
+	// comb, room: retriggered legato, so the ring carries into the new note
+	// rather than the line being emptied, which would cut it with a click
+	held bool
 }
 
 type Voice struct {
@@ -144,10 +150,14 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 		if v.line != nil && cap(ks) > 0 && &ks[:1][0] == &v.line[0] {
 			ks = nil
 		}
+		kpos := u.kpos
 		if legato {
 			*u = ustate{phase: u.phase, env: u.env, lp: u.lp, ic2: u.ic2, ks: ks}
 		} else {
 			*u = ustate{ks: ks}
+		}
+		if legato && (patch[i].op == opComb || patch[i].op == opRoom) {
+			u.held, u.kpos = true, kpos
 		}
 		u.sweep = 1
 		u.rng = seed*2862933555777941757 + uint64(i) + 3037000493
@@ -191,6 +201,12 @@ func sine(x float64) float64 {
 func (s *ustate) noise() float64 {
 	s.rng = s.rng*6364136223846793005 + 1442695040888963407
 	return float64(int64(s.rng>>11))/(1<<52) - 1
+}
+
+// u01 steps the unit's LCG and returns a value in 0..1.
+func (s *ustate) u01() float64 {
+	s.rng = s.rng*6364136223846793005 + 1442695040888963407
+	return float64(s.rng>>11) / (1 << 53)
 }
 
 // level is the voice's loudest envelope times its gain: how much it would
@@ -279,8 +295,31 @@ func pluckTuning(freq float64) (n int, c float64) {
 	period := max(4, min(SampleRate/freq, maxPluckLine))
 	n = int(period)
 	d := period - float64(n) + 0.5
+	return n, allpassCoef(d, 2*math.Pi/period)
+}
+
+// allpassCoef is the coefficient of a one-pole allpass that delays a sine of
+// w radians a sample by d samples.
+func allpassCoef(d, w float64) float64 {
+	return math.Sin(w*(1-d)/2) / math.Sin(w*(1+d)/2)
+}
+
+// resonatorTuning sizes a comb or room's loop for freq: a line of n whole samples,
+// then an allpass of coefficient c for the fraction, as a string's is
+// (pluckTuning). The loop's damping lowpass, coefficient damp, also delays
+// the fundamental, by up to a sample or two at the usual damps, so the line
+// is that much shorter and the ring stays in tune however damped. The
+// allpass's delay is kept in 1/2..3/2 for the reason a string's is. Past
+// what the line can give (a damp near 1 on a short period, whose lowpass
+// delays more than the period), the loop is as short as it goes and plays
+// flat; a note that high, that damped, has little left to hear.
+func resonatorTuning(freq, damp float64) (n int, c float64) {
+	period := max(4, min(SampleRate/freq, maxPluckLine))
 	w := 2 * math.Pi / period
-	return n, math.Sin(w*(1-d)/2) / math.Sin(w*(1+d)/2)
+	lag := math.Atan2(damp*math.Sin(w), 1-damp*math.Cos(w)) / w
+	line := max(1.5, period-lag)
+	n = int(line - 0.5)
+	return n, allpassCoef(line-float64(n), w)
 }
 
 // fadeFrames is how long a gain glide takes: about 5 ms, short enough to
@@ -607,6 +646,58 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			s.kpos = (s.kpos + 1) % len(s.ks)
 			stack[sp] = x
 			sp++
+		case opDust:
+			// Each sample fires with probability rate/SampleRate, so the
+			// impulses average rate a second with Poisson spacing: irregular,
+			// never a pulse. depth lets the music's grit make it up to three
+			// times as busy; one-shots play at grit 0, so it is a bed's knob.
+			x := 0.0
+			if s.u01() < u.p[0]*(1+2*u.p[2]*v.grit)/SampleRate {
+				x = s.u01()
+				if u.p[1] != 0 && s.u01() < 0.5 {
+					x = -x
+				}
+			}
+			stack[sp] = x
+			sp++
+		case opComb, opRoom:
+			// A feedback comb: the line a period long, fed back through a
+			// one-pole lowpass so high partials die first, as in a tube or
+			// a room, with an allpass for the period's fraction of a sample
+			// (resonatorTuning). The period is fixed for the note's life.
+			if len(s.ks) == 0 {
+				freq := u.p[0]
+				if u.op == opComb {
+					freq = 440 * math.Pow(2, (float64(v.note)+u.p[0]-69)/12)
+				}
+				var n int
+				n, s.k = resonatorTuning(freq, u.p[2])
+				// The voice's line if free, else the unit's own, as a
+				// string takes one. A new note starts silent; a legato one
+				// keeps what the line held, retuned, so the ring goes on.
+				switch {
+				case v.line != nil && !v.lineOut:
+					s.ks, v.lineOut = v.line[:n], true
+				case cap(s.ks) >= n:
+					s.ks = s.ks[:n]
+				default:
+					s.ks = make([]float64, n, maxPluckLine)
+					s.held = false // a fresh line has nothing to carry
+				}
+				if s.held {
+					s.kpos %= n
+				} else {
+					clear(s.ks)
+					s.lp, s.ic2, s.kpos = 0, 0, 0
+				}
+			}
+			r := s.ks[s.kpos]
+			y := s.k*r + s.lp // allpass, as pluck's
+			s.lp = flush(r - s.k*y)
+			s.ic2 = flush(s.ic2 + (1-u.p[2])*(y-s.ic2))
+			s.ks[s.kpos] = flush(stack[sp-1] + u.p[1]*s.ic2)
+			s.kpos = (s.kpos + 1) % len(s.ks)
+			stack[sp-1] = y
 		case opSend:
 			b.delay += stack[sp-1] * u.p[0] * v.gain
 		case opVerb:

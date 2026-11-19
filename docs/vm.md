@@ -16,12 +16,15 @@ floats, in the style of sointu and 4klang.
 | `env` | attack s, decay s, sustain, release s | push the envelope |
 | `osc` | transpose, shape (sine, saw, pulse, noise), sweep semis, sweep decay s | push a sample |
 | `pluck` | transpose, feedback | push a Karplus-Strong string |
+| `dust` | rate Hz, bipolar 0 or 1, depth | push random single-sample impulses, about rate a second; depth lets grit make them up to three times as busy |
 | `mul` | | pop two, push the product |
 | `lpf`, `hpf` | cutoff Hz | one-pole filter on the top |
 | `svf` | cutoff Hz, resonance, mode (0 low, 1 band, 2 high), depth octaves | filter the top; a nonzero depth first pops a modulation value |
 | `lfo` | rate Hz, shape (0 sine, 1 triangle, 2 sample-and-hold) | push -1..1 |
 | `drive` | drive, bias -1..1 | overdrive the top: `tanh(drive·x + bias) − tanh(bias)` |
 | `crush` | hold Hz, bits | sample-hold the top and round it to the bit depth |
+| `comb` | transpose, feedback −0.99..0.99, damp | resonate the top at the voice's note: a feedback comb with a lowpass in its loop; negative feedback rings hollow, an octave down |
+| `room` | freq Hz 16..4000, feedback, damp | `comb` at a fixed frequency, for a place rather than a key |
 | `send` | amount | add the top to the delay bus |
 | `verb` | amount | add the top to the reverb bus |
 | `scale` | gain, offset | top = top·gain + offset: an `lfo` made into a range; an offset only on an env or lfo, never on signal (it would be DC) |

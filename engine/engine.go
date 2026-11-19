@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -1370,6 +1371,10 @@ type Synth struct {
 	musicLevel, sfxLevel level
 
 	clock renderClock // times each Read (stats.go)
+
+	// the frame a Read ended inside: its last partN bytes are still unread
+	part  [4]byte
+	partN int
 }
 
 // level is a mixer bus's gain. The caller sets a target from any goroutine;
@@ -1738,6 +1743,7 @@ func (s *Synth) applyNow(c *paramCmd) {
 	old := s.samplesPerRow
 	s.apply(c)
 	s.rowLeft = max(1, s.rowLeft*s.samplesPerRow/old)
+	s.rescaleDrums(old)
 	pat, row := s.pat, s.row-1
 	if row < 0 {
 		pat, row = pat-1, rows-1
@@ -1921,33 +1927,61 @@ func (s *Synth) frame() (int16, int16) {
 	return int16(l * 32000), int16(r * 32000)
 }
 
+// Read fills p with 16-bit little-endian stereo frames, four bytes each. A p
+// that ends inside a frame gets that frame's first bytes, and the next Read
+// starts with the rest: io.Reader allows any length, and a reader returning
+// (0, nil) for a short tail leaves io.ReadFull looping forever.
 func (s *Synth) Read(p []byte) (int, error) {
-	n := len(p) / 4 * 4
-	if n == 0 {
-		return 0, nil
+	n := copy(p, s.part[len(s.part)-s.partN:])
+	s.partN -= n
+	whole := (len(p) - n) / 4 * 4
+	tail := len(p) - n - whole
+	frames := whole / 4
+	if tail > 0 {
+		frames++
+	}
+	if frames == 0 {
+		return n, nil
 	}
 	t0 := s.clock.now()
-	for i := 0; i < n; i += 4 {
-		l, r := s.frame()
-		binary.LittleEndian.PutUint16(p[i:], uint16(l))
-		binary.LittleEndian.PutUint16(p[i+2:], uint16(r))
+	for i := n; i < n+whole; i += 4 {
+		s.pcmFrame(p[i:])
+	}
+	if tail > 0 {
+		s.pcmFrame(s.part[:])
+		copy(p[n+whole:], s.part[:tail])
+		s.partN = len(s.part) - tail
 	}
 	s.frames.Store(s.nframe)
 	s.publishLevels()
 	s.layers.publish(int(s.nframe % layerFold))
-	s.clock.record(t0, n/4)
-	return n, nil
+	s.clock.record(t0, frames)
+	return len(p), nil
+}
+
+// pcmFrame renders one frame into b's first four bytes.
+func (s *Synth) pcmFrame(b []byte) {
+	l, r := s.frame()
+	binary.LittleEndian.PutUint16(b, uint16(l))
+	binary.LittleEndian.PutUint16(b[2:], uint16(r))
 }
 
 // ---- output ----
 
+// maxWAVData is the most PCM a WAV can hold: RIFF sizes are 32 bits, and the
+// RIFF chunk's counts the 36 header bytes after it too.
+const maxWAVData = math.MaxUint32 - 36
+
 // WriteWAV renders seconds of src, a Synth or something reading through one,
-// to a 16-bit stereo WAV at path.
+// to a 16-bit stereo WAV at path: whole frames, a fraction of one dropped.
+// It streams, so a long render needs no buffer its size. A duration that is
+// negative, NaN or too long for a WAV is an error, and src is not read; so
+// is src ending early, and then no file is left at path.
 func WriteWAV(path string, src io.Reader, seconds float64) error {
-	data := make([]byte, int(seconds*SampleRate)*4)
-	if _, err := io.ReadFull(src, data); err != nil {
-		return err
+	if !(seconds >= 0) || seconds*SampleRate*4 > maxWAVData {
+		return fmt.Errorf("undertone: WAV duration %v s: want 0 to %d s", seconds, maxWAVData/4/SampleRate)
 	}
+	size := int64(seconds*SampleRate) * 4
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -1965,7 +1999,7 @@ func WriteWAV(path string, src io.Reader, seconds float64) error {
 		}
 	}
 	ws("RIFF")
-	w(uint32(36 + len(data)))
+	w(uint32(36 + size))
 	ws("WAVEfmt ")
 	w(uint32(16))
 	w(uint16(1)) // PCM
@@ -1975,15 +2009,21 @@ func WriteWAV(path string, src io.Reader, seconds float64) error {
 	w(uint16(4))
 	w(uint16(16))
 	ws("data")
-	w(uint32(len(data)))
+	w(uint32(size))
 	if werr == nil {
-		_, werr = bw.Write(data)
+		if _, werr = io.CopyN(bw, src, size); werr == io.EOF {
+			werr = io.ErrUnexpectedEOF
+		}
 	}
 	if werr == nil {
 		werr = bw.Flush()
 	}
 	// Close's error matters too: it is where a full disk often shows up.
-	return errors.Join(werr, f.Close())
+	if err := errors.Join(werr, f.Close()); err != nil {
+		os.Remove(path) // a truncated WAV would claim frames it lacks
+		return err
+	}
+	return nil
 }
 
 // sanitized makes p safe to play. Parameters arrive from lg code and pages,

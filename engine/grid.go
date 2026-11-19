@@ -118,10 +118,9 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 			continue
 		}
 		s.pats[t][row] = trackRow{}
-		if row == 0 {
-			// a held drone or pad from before the bed went off
-			s.voices[t].gate = false
-		}
+		// a held drone or pad from before the bed went off, at whatever row
+		// it did: SetGrid promises the next row, not the next pattern
+		s.voices[t].gate = false
 	}
 	for d, lane := range g.Drums {
 		s.drums[d][row] = gridHit(lane, row, s.pat*rows+row-s.runFrom)

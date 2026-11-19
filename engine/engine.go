@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -1299,8 +1300,10 @@ func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 
 type Synth struct {
 	params        Params
-	next          atomic.Pointer[Params] // staged; applied at the next pattern boundary
-	cur           atomic.Pointer[Params] // params, published for other goroutines (resolveDegree)
+	next          atomic.Pointer[paramCmd] // staged; applied at the next pattern boundary
+	cur           atomic.Pointer[paramCmd] // params, published for other goroutines (resolveDegree)
+	paramSeq      atomic.Uint64            // the last seq handed to a parameter change
+	applied       uint64                   // seq of the change in params; the audio thread's own
 	samplesPerRow int
 	rowLeft       int
 	row, pat      int
@@ -1353,9 +1356,9 @@ type Synth struct {
 	themeOf             int64
 	themeFresh          bool // the theme's first grid has not stepped yet
 	silent              bool
-	now                 atomic.Pointer[Params] // staged for the next block (SetParametersNow)
-	nframe              int64                  // frames rendered, synthesis-side
-	frames              atomic.Int64           // nframe as of the end of the last Read
+	now                 atomic.Pointer[paramCmd] // staged for the next block (SetParametersNow)
+	nframe              int64                    // frames rendered, synthesis-side
+	frames              atomic.Int64             // nframe as of the end of the last Read
 	rowLog              rowLog
 	notes               noteRing // notes started, for a host to draw (notes.go)
 	// the row stepped last, which the drum countdowns fire within: not
@@ -1368,6 +1371,10 @@ type Synth struct {
 	musicLevel, sfxLevel level
 
 	clock renderClock // times each Read (stats.go)
+
+	// the frame a Read ended inside: its last partN bytes are still unread
+	part  [4]byte
+	partN int
 }
 
 // level is a mixer bus's gain. The caller sets a target from any goroutine;
@@ -1548,7 +1555,7 @@ func NewSynth(p Params) *Synth {
 	s.clock.now = time.Now
 	s.musicLevel.init()
 	s.sfxLevel.init()
-	s.apply(p)
+	s.apply(&paramCmd{p: p.owned()})
 	return s
 }
 
@@ -1578,7 +1585,7 @@ func (s *Synth) GlideSfxGain(g, seconds float64) { s.sfxLevel.glide(g, seconds) 
 
 // SetParameters stages a new parameter map; it takes effect at the next
 // pattern boundary (the undertone/set-parameters contract).
-func (s *Synth) SetParameters(p Params) { s.next.Store(&p) }
+func (s *Synth) SetParameters(p Params) { s.publish(&s.next, p) }
 
 // SetParametersNow applies p within nowBlock frames instead of at the next
 // pattern: for an editor, or a game switching scenes, where a mood change
@@ -1587,15 +1594,84 @@ func (s *Synth) SetParameters(p Params) { s.next.Store(&p) }
 // fadeFrames so the switch does not click. A change SetParameters staged
 // for the boundary is dropped, since p is newer and complete: otherwise it
 // would land at the boundary and undo p. Safe to call from any goroutine.
-func (s *Synth) SetParametersNow(p Params) {
-	s.next.Store(nil)
-	s.now.Store(&p)
+func (s *Synth) SetParametersNow(p Params) { s.publish(&s.now, p) }
+
+// paramCmd is one parameter change. The two mailboxes are separate, so seq
+// is what orders changes across them: the audio thread applies a change only
+// if it is newer than the one playing, and so an immediate change can never
+// undo a boundary change made after it, nor a late producer a newer one.
+type paramCmd struct {
+	p   Params // sanitized, and owning its scale
+	seq uint64
 }
 
-func (s *Synth) apply(p Params) {
-	p = p.sanitized()
+// publish stores p in slot unless a concurrent producer has already put a
+// newer change there. The copy and sanitizing happen here, on the caller's
+// goroutine, so the audio thread neither allocates for them nor shares a
+// slice the caller may go on editing.
+func (s *Synth) publish(slot *atomic.Pointer[paramCmd], p Params) {
+	c := &paramCmd{p: p.owned(), seq: s.paramSeq.Add(1)}
+	for {
+		old := slot.Load()
+		if old != nil && old.seq > c.seq {
+			return
+		}
+		if slot.CompareAndSwap(old, c) {
+			return
+		}
+	}
+}
+
+// effective returns the newest change that has applied or is still on its
+// way: what a one-shot fired now should be pitched against. A staged change
+// counts, though it waits for the pattern boundary: the player is about to
+// hear it, and the phrase that is ending is not worth pitching to. Safe to
+// call from any goroutine.
+func (s *Synth) effective() *paramCmd {
+	// The mailboxes before cur: the audio thread swaps a change out of its
+	// mailbox before publishing it as cur, so in this order one of the loads
+	// sees it.
+	pending := [...]*paramCmd{s.now.Load(), s.next.Load()}
+	c := s.cur.Load()
+	for _, m := range pending {
+		if m != nil && m.seq > c.seq {
+			c = m
+		}
+	}
+	return c
+}
+
+// staged returns the boundary change that will still take effect, if any:
+// one newer than both what is playing and any immediate change on its way,
+// which would otherwise supersede it. Safe to call from any goroutine.
+func (s *Synth) staged() *paramCmd {
+	n := s.next.Load()
+	if n == nil || n.seq <= s.cur.Load().seq {
+		return nil
+	}
+	if w := s.now.Load(); w != nil && w.seq > n.seq {
+		return nil
+	}
+	return n
+}
+
+// landsAtBoundary reports whether staged change c should apply at the
+// pattern boundary: it is newer than the change playing, and than any
+// immediate change waiting for its block, which would only replace it a few
+// frames in after its row-0 notes had started. Audio thread only.
+func (s *Synth) landsAtBoundary(c *paramCmd) bool {
+	if c.seq <= s.applied {
+		return false
+	}
+	w := s.now.Load()
+	return w == nil || w.seq < c.seq
+}
+
+func (s *Synth) apply(c *paramCmd) {
+	p := c.p
 	s.params = p
-	s.cur.Store(&p)
+	s.applied = c.seq
+	s.cur.Store(c)
 	s.samplesPerRow = int(SampleRate * 60 / (p.BPM * 2)) // 2 rows per beat: ambient rows are long
 	s.fitDelay(s.samplesPerRow * 3)
 	// The music's voices only: one-shots stay at grit 0, as SetMusicGain
@@ -1663,10 +1739,11 @@ const nowBlock = 128
 // for the pattern still playing (the previous one, if the last row has just
 // stepped); generation is deterministic per pattern, so unchanged params
 // redraw the same notes and nothing is retriggered.
-func (s *Synth) applyNow(p Params) {
+func (s *Synth) applyNow(c *paramCmd) {
 	old := s.samplesPerRow
-	s.apply(p)
+	s.apply(c)
 	s.rowLeft = max(1, s.rowLeft*s.samplesPerRow/old)
+	s.rescaleDrums(old)
 	pat, row := s.pat, s.row-1
 	if row < 0 {
 		pat, row = pat-1, rows-1
@@ -1714,8 +1791,8 @@ func (s *Synth) step() {
 	_, s.owner, s.runFrom = s.nextOwner()
 	if s.row == 0 {
 		s.advanceTheme()
-		if p := s.next.Swap(nil); p != nil {
-			s.apply(*p)
+		if c := s.next.Swap(nil); c != nil && s.landsAtBoundary(c) {
+			s.apply(c)
 		}
 		s.pats = buildPatterns(s.params, s.pat)
 		s.drums = buildDrums(s.params, s.pat)
@@ -1779,8 +1856,8 @@ func (s *Synth) frame() (int16, int16) {
 		s.rowLeft, s.graced = s.samplesPerRow, false
 	}
 	if s.nframe%nowBlock == 0 {
-		if p := s.now.Swap(nil); p != nil {
-			s.applyNow(*p)
+		if c := s.now.Swap(nil); c != nil && c.seq > s.applied {
+			s.applyNow(c)
 		}
 	}
 	// at or past the lead rather than on it: applyNow above can rescale
@@ -1850,33 +1927,66 @@ func (s *Synth) frame() (int16, int16) {
 	return int16(l * 32000), int16(r * 32000)
 }
 
+// Read fills p with 16-bit little-endian stereo frames, four bytes each. A p
+// that ends inside a frame gets that frame's first bytes, and the next Read
+// starts with the rest: io.Reader allows any length, and a reader returning
+// (0, nil) for a short tail leaves io.ReadFull looping forever.
 func (s *Synth) Read(p []byte) (int, error) {
-	n := len(p) / 4 * 4
-	if n == 0 {
-		return 0, nil
+	n := copy(p, s.part[len(s.part)-s.partN:])
+	s.partN -= n
+	if n > 0 && s.partN == 0 {
+		s.frames.Store(s.nframe) // the split frame is now delivered whole
+	}
+	whole := (len(p) - n) / 4 * 4
+	tail := len(p) - n - whole
+	frames := whole / 4
+	if tail > 0 {
+		frames++
+	}
+	if frames == 0 {
+		return n, nil
 	}
 	t0 := s.clock.now()
-	for i := 0; i < n; i += 4 {
-		l, r := s.frame()
-		binary.LittleEndian.PutUint16(p[i:], uint16(l))
-		binary.LittleEndian.PutUint16(p[i+2:], uint16(r))
+	for i := n; i < n+whole; i += 4 {
+		s.pcmFrame(p[i:])
 	}
-	s.frames.Store(s.nframe)
+	if tail > 0 {
+		s.pcmFrame(s.part[:])
+		copy(p[n+whole:], s.part[:tail])
+		s.partN = len(s.part) - tail
+	}
+	// Frames counts frames delivered, which a split one is not yet: a
+	// playhead set by it would run a frame ahead of the bytes.
+	s.frames.Store(s.nframe - int64(min(s.partN, 1)))
 	s.publishLevels()
 	s.layers.publish(int(s.nframe % layerFold))
-	s.clock.record(t0, n/4)
-	return n, nil
+	s.clock.record(t0, frames)
+	return len(p), nil
+}
+
+// pcmFrame renders one frame into b's first four bytes.
+func (s *Synth) pcmFrame(b []byte) {
+	l, r := s.frame()
+	binary.LittleEndian.PutUint16(b, uint16(l))
+	binary.LittleEndian.PutUint16(b[2:], uint16(r))
 }
 
 // ---- output ----
 
+// maxWAVData is the most PCM a WAV can hold: RIFF sizes are 32 bits, and the
+// RIFF chunk's counts the 36 header bytes after it too.
+const maxWAVData = math.MaxUint32 - 36
+
 // WriteWAV renders seconds of src, a Synth or something reading through one,
-// to a 16-bit stereo WAV at path.
+// to a 16-bit stereo WAV at path: whole frames, a fraction of one dropped.
+// It streams, so a long render needs no buffer its size. A duration that is
+// negative, NaN or too long for a WAV is an error, and src is not read; so
+// is src ending early, and then no file is left at path.
 func WriteWAV(path string, src io.Reader, seconds float64) error {
-	data := make([]byte, int(seconds*SampleRate)*4)
-	if _, err := io.ReadFull(src, data); err != nil {
-		return err
+	if !(seconds >= 0) || seconds*SampleRate*4 > maxWAVData {
+		return fmt.Errorf("undertone: WAV duration %v s: want 0 to %d s", seconds, maxWAVData/4/SampleRate)
 	}
+	size := int64(seconds*SampleRate) * 4
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -1894,7 +2004,7 @@ func WriteWAV(path string, src io.Reader, seconds float64) error {
 		}
 	}
 	ws("RIFF")
-	w(uint32(36 + len(data)))
+	w(uint32(36 + size))
 	ws("WAVEfmt ")
 	w(uint32(16))
 	w(uint16(1)) // PCM
@@ -1904,15 +2014,21 @@ func WriteWAV(path string, src io.Reader, seconds float64) error {
 	w(uint16(4))
 	w(uint16(16))
 	ws("data")
-	w(uint32(len(data)))
+	w(uint32(size))
 	if werr == nil {
-		_, werr = bw.Write(data)
+		if _, werr = io.CopyN(bw, src, size); werr == io.EOF {
+			werr = io.ErrUnexpectedEOF
+		}
 	}
 	if werr == nil {
 		werr = bw.Flush()
 	}
 	// Close's error matters too: it is where a full disk often shows up.
-	return errors.Join(werr, f.Close())
+	if err := errors.Join(werr, f.Close()); err != nil {
+		os.Remove(path) // a truncated WAV would claim frames it lacks
+		return err
+	}
+	return nil
 }
 
 // sanitized makes p safe to play. Parameters arrive from lg code and pages,
@@ -1964,6 +2080,15 @@ func (p Params) sanitized() Params {
 		}
 		*x = max(-1, min(*x, 1))
 	}
+	return p
+}
+
+// owned is p sanitized, with a copy of its scale: Params is passed by value,
+// but the scale slice is not, and a caller editing the one it passed must
+// not reach a synth already playing it.
+func (p Params) owned() Params {
+	p = p.sanitized()
+	p.Scale = slices.Clone(p.Scale)
 	return p
 }
 

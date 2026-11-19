@@ -98,9 +98,13 @@ func checkParams(t *testing.T, name string, got, want engine.Params) {
 func TestScoreMoodReachesTheEngineAsDerived(t *testing.T) {
 	c, m := lgRuntime(t)
 
-	for _, seed := range []uint64{1, 7, 42} {
-		for _, depth := range []int{-5, -2, 0, 1, 2, 3, 5, 8} {
-			for _, tension := range []float64{0, 0.3, 0.6, 1} {
+	seeds, depths, tensions := []uint64{1, 7, 42}, []int{-5, -2, 0, 1, 2, 3, 5, 8}, []float64{0, 0.3, 0.6, 1}
+	if testing.Short() { // the ends of each range: what just test-wasm can afford
+		seeds, depths, tensions = []uint64{7}, []int{-5, 0, 8}, []float64{0, 1}
+	}
+	for _, seed := range seeds {
+		for _, depth := range depths {
+			for _, tension := range tensions {
 				for _, mood := range engine.MoodNames() {
 					// Name the mood explicitly rather than going through the
 					// signed-depth sugar, which cannot express overworld at

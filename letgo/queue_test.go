@@ -4,6 +4,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -28,9 +29,15 @@ func (o *queueTestOutput) SetQueue(d time.Duration) time.Duration {
 	return d
 }
 
-// stderrOf returns what f writes to os.Stderr.
-func stderrOf(t *testing.T, f func()) string {
+// stderrOf returns what f writes to os.Stderr, and false where it cannot be
+// captured: js has no os.Pipe. f runs either way, so a test's other checks
+// still run under wasm; what is reported is the same natively.
+func stderrOf(t *testing.T, f func()) (string, bool) {
 	t.Helper()
+	if runtime.GOOS == "js" {
+		f()
+		return "", false
+	}
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +48,7 @@ func stderrOf(t *testing.T, f func()) string {
 	f()
 	w.Close()
 	b, _ := io.ReadAll(r)
-	return string(b)
+	return string(b), true
 }
 
 func TestSetQueueBeforeStartAppliesAtStart(t *testing.T) {
@@ -75,10 +82,10 @@ func TestSetQueueReportsAClampButNotFrameRounding(t *testing.T) {
 	m.start(func(io.Reader) (output, error) { return out, nil })
 	defer m.Stop()
 	// 15 ms is 661.5 frames at 44.1 kHz, floored to 661.
-	if s := stderrOf(t, func() { m.setQueue(15 * time.Millisecond) }); s != "" {
+	if s, ok := stderrOf(t, func() { m.setQueue(15 * time.Millisecond) }); ok && s != "" {
 		t.Errorf("frame rounding reported as a clamp: %q", s)
 	}
-	if s := stderrOf(t, func() { m.setQueue(5 * time.Second) }); !strings.Contains(s, "clamped to 1s") {
+	if s, ok := stderrOf(t, func() { m.setQueue(5 * time.Second) }); ok && !strings.Contains(s, "clamped to 1s") {
 		t.Errorf("a clamp to the ring was not reported: %q", s)
 	}
 }
@@ -87,7 +94,7 @@ func TestSetQueueOnAFixedOutputIsKeptAndIgnored(t *testing.T) {
 	m := NewMusic(engine.DeriveDungeon(7, 3, 0.5))
 	m.start(func(io.Reader) (output, error) { return gainTestOutput{}, nil })
 	defer m.Stop()
-	if s := stderrOf(t, func() { m.setQueue(90 * time.Millisecond) }); s != "" {
+	if s, ok := stderrOf(t, func() { m.setQueue(90 * time.Millisecond) }); ok && s != "" {
 		t.Errorf("a native output reported something: %q", s)
 	}
 	if m.queue != 90*time.Millisecond {

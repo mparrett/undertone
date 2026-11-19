@@ -417,14 +417,9 @@ func (s *Synth) TriggerShot(sh Shot) bool {
 // absolute note, wrapping octaves past the top of the scale.
 func (s *Synth) resolveDegree(degree, octave int) int {
 	// Read through the atomics: this runs on the caller's goroutine while
-	// the synth renders on another.
-	p := *s.cur.Load()
-	if n := s.next.Load(); n != nil {
-		// Staged parameters have not reached a pattern boundary yet, but a
-		// one-shot fires now — pitch it against what the player is about to
-		// hear rather than the phrase that is ending.
-		p = n.sanitized()
-	}
+	// the synth renders on another. The newest change wins, staged or
+	// immediate, applied or not (effective).
+	p := &s.effective().p
 	if degree < 0 {
 		degree = 0
 	}

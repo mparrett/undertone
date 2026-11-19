@@ -227,3 +227,30 @@ func TestCombRingsThroughLegato(t *testing.T) {
 		t.Errorf("the first period after a fresh strike played at rms %.2g, want silence", rms)
 	}
 }
+
+// The sounds dust, comb and room were made for (the proposal's examples)
+// register as shots and sound.
+func TestTextureShotsRegister(t *testing.T) {
+	u := func(op string, args ...float64) UnitSpec { return UnitSpec{Op: op, Args: args} }
+	noise := UnitSpec{Op: "osc", Shape: "noise", Args: []float64{0, 0, 0}}
+	shots := map[string][]UnitSpec{
+		"drips-in-key":  {u("env", 0.01, 1, 1, 2), u("dust", 3, 0, 0), u("comb", 12, 0.96, 0.4), u("mul"), u("verb", 0.5), u("out", 1, 0.5)},
+		"drips-in-cave": {u("env", 0.01, 1, 1, 2), u("dust", 3, 0, 0), u("room", 180, 0.95, 0.5), u("mul"), u("verb", 0.5), u("out", 1, 0.5)},
+		"embers":        {u("env", 0.05, 1, 1, 1), u("dust", 40, 1, 0), u("hpf", 1800), u("mul"), u("out", 1, 0.5)},
+		"gravel":        {u("env", 0.001, 0.12, 0, 0.05), u("dust", 600, 1, 0), u("lpf", 3500), u("mul"), u("out", 1, 0.5)},
+		"metal-hit":     {u("env", 0.001, 0.4, 0, 0.3), noise, u("mul"), u("room", 110, -0.9, 0.15), u("out", 1, 0.5)},
+		"rain":          {u("env", 0.5, 1, 1, 2), u("dust", 120, 1, 0), u("svf", 2500, 0.3, 1, 0), u("mul"), u("verb", 0.3), u("out", 1, 0.5)},
+		"geiger":        {u("env", 1, 1, 1, 2), u("dust", 2, 0, 1), u("comb", 0, 0.9, 0.6), u("mul"), u("out", 1, 0.5)},
+	}
+	for name, units := range shots {
+		if err := RegisterShot(ShotSpec{Name: "texture-" + name, GateMS: 1000, Units: units}); err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		s := NewSynth(silentParams)
+		s.Trigger("texture-"+name, 60, 1, 0.5, 0, 4)
+		if rms := playedRMS(s, 2); !(rms > 1e-4) {
+			t.Errorf("%s played at rms %.2g over 2 s", name, rms)
+		}
+	}
+}

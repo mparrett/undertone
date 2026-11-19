@@ -220,7 +220,7 @@
     <p>The usual voice is <code>env → osc → mul → out</code>: an envelope and an oscillator are pushed, <code>mul</code> multiplies them
     (the envelope shapes the tone), <code>out</code> mixes it. Two such chains in one patch are two layers. The coloured bars after a unit
     are the stack after it runs: <b style="color:var(--src)">signal</b> (from an osc or pluck) or <b style="color:var(--mod)">control</b>
-    (from an env or lfo). A <b>!</b> means the stack runs dry or overflows there.</p>
+    (from an env or lfo). A <b>!</b> marks the unit the engine refuses (the stack runs dry or overflows there, say); hover it for why.</p>
     <ul>
       <li><b>modulate</b>: push an <code>lfo</code> or <code>env</code>, then an <code>svf</code> with a nonzero <i>depth</i> pops it to sweep the cutoff;
         <code>pitch</code> pops it to bend the oscillators after it; <code>scale</code> turns it into a range for a tremolo with <code>mul</code>.</li>
@@ -461,21 +461,15 @@ function render() {
   buildNames();
 }
 
-// stack depth and which slots carry signal after each unit, as buildPatch counts them
-function stacks(units) {
-  const out = []; let st = [];
-  for (const u of units) {
-    const a = u.Args || [];
-    switch (u.Op) {
-      case "env": case "lfo": st.push(false); break;
-      case "osc": case "pluck": st.push(true); break;
-      case "mul": { const b = st.pop(), x = st.pop(); if (x === undefined) { out.push(null); continue; } st.push(x || b); break; }
-      case "out": case "pitch": st.pop(); break;
-      case "svf": if (a[3]) st.splice(st.length - 2, 1); break;
-    }
-    out.push(st.length > 8 || st.includes(undefined) ? null : [...st]);
-  }
-  return out;
+// The stack after each unit, from the engine's own walk (StackTrace), so the
+// bars cannot disagree with what registering the patch accepts. The trace
+// stops at the first unit that fails; the units after it get no bars.
+const stacks = (units) => JSON.parse(U().stack(JSON.stringify(units)));
+function drawStack(box, step) {
+  box.replaceChildren();
+  if (!step) return;
+  if (step.Error) { const x = el("span", "hint", "!"); x.title = step.Error; box.append(x); return; }
+  for (const s of step.Signal) box.append(el("b", s ? "sig" : ""));
 }
 
 function renderUnits() {
@@ -493,8 +487,7 @@ function renderUnits() {
     sel.onchange = () => { u.Op = sel.value; u.Args = [...DEFAULT_ARGS[u.Op]]; u.Shape = u.Op === "osc" ? "sine" : ""; edited(); };
     row.append(sel);
     const stk = el("span", "stack");
-    if (st[i]) for (const s of st[i]) stk.append(el("b", s ? "sig" : ""));
-    else stk.append(el("span", "hint", "!"));
+    drawStack(stk, st[i]);
     row.append(stk);
     const args = el("div", "args");
     if (op && op.shape) {
@@ -669,7 +662,7 @@ function edited(fromSlider) {
   if (kind === "palette" && patch().Name && !LANES.includes(track)) patch().Name = "";  // edited units are no longer the built-in's
   if (kind === "palette" && LANES.includes(track)) patch().Default = false;
   if (!fromSlider) renderUnits();
-  else { const st = stacks(patch().Units); $("units").querySelectorAll(".stack").forEach((s, i) => { s.replaceChildren(); (st[i] || []).forEach((x) => s.append(el("b", x ? "sig" : ""))); }); }
+  else { const st = stacks(patch().Units); $("units").querySelectorAll(".stack").forEach((s, i) => drawStack(s, st[i])); }
   clearTimeout(refireTimer);
   refireTimer = setTimeout(() => commit(true), fromSlider ? 90 : 0);
 }

@@ -38,4 +38,6 @@ the sfx board's numbers for it (hash, peak, envelopes, max LUFS, length; on the
 build one `engine.Take`, so they always describe the same render.
 
 `main.go` is the page's bridge to the engine (`window.undertoneStudio`); the
-unit table in `index.html` mirrors the ranges `engine.UnitSpec` validates.
+unit table in `index.html` mirrors the ranges `engine.UnitSpec` validates. The
+stack bars are not a copy: the page asks the engine for them (`stack(units)`,
+which is `engine.StackTrace`).

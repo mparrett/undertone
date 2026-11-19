@@ -214,3 +214,55 @@ func TestAcceptedShotsAreSafe(t *testing.T) {
 	}
 	t.Logf("%d random patches accepted and rendered, %d with a swept filter, %d with drive and crush, %d bent", accepted, swept, gritty, bent)
 }
+
+// StackTrace is what the studio draws its stack bars from, so it pins the
+// cases the studio's own copy of the rules once got wrong: a swept svf pops
+// its modulation value and keeps the signal under it.
+func TestStackTrace(t *testing.T) {
+	env := UnitSpec{Op: "env", Args: []float64{0.001, 0.1, 0, 0.05}}
+	osc := UnitSpec{Op: "osc", Shape: "saw", Args: []float64{0, 0, 1}}
+	mul := UnitSpec{Op: "mul"}
+	lfo := UnitSpec{Op: "lfo", Args: []float64{4, 0}}
+	svf := UnitSpec{Op: "svf", Args: []float64{800, 0.3, 0, 2}}
+	out := UnitSpec{Op: "out", Args: []float64{1, 0.5}}
+	ok := func(sig ...bool) StackStep { return StackStep{Signal: append([]bool{}, sig...)} }
+	const S, C = true, false
+	nine := []UnitSpec{env, env, env, env, env, env, env, env, env}
+	for _, c := range []struct {
+		name  string
+		units []UnitSpec
+		want  []StackStep
+	}{
+		{"a plain voice", []UnitSpec{env, osc, mul, out},
+			[]StackStep{ok(C), ok(C, S), ok(S), ok()}},
+		{"a swept svf", []UnitSpec{env, osc, mul, lfo, svf, out},
+			[]StackStep{ok(C), ok(C, S), ok(S), ok(S, C), ok(S), ok()}},
+		{"one that runs dry", []UnitSpec{env, mul, out},
+			[]StackStep{ok(C), {Signal: []bool{}, Error: "the stack would run dry"}}},
+		{"one that overflows", nine,
+			[]StackStep{ok(C), ok(C, C), ok(C, C, C), ok(C, C, C, C), ok(C, C, C, C, C),
+				ok(C, C, C, C, C, C), ok(C, C, C, C, C, C, C), ok(C, C, C, C, C, C, C, C),
+				{Signal: []bool{}, Error: "the stack would overflow"}}},
+	} {
+		if got := StackTrace(c.units); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s:\n got %v\nwant %v", c.name, got, c.want)
+		}
+	}
+}
+
+// Every built-in shot builds, so its trace runs the whole patch without an
+// error: the trace and buildPatch walk the stack the same way.
+func TestStackTraceAgreesWithBuiltins(t *testing.T) {
+	for name := range shotLib {
+		s, _ := ShotByName(name)
+		tr := StackTrace(s.Units)
+		if len(tr) != len(s.Units) {
+			t.Fatalf("%s: a trace of %d steps for %d units", name, len(tr), len(s.Units))
+		}
+		for i, st := range tr {
+			if st.Error != "" {
+				t.Errorf("%s: unit %d: %s", name, i, st.Error)
+			}
+		}
+	}
+}

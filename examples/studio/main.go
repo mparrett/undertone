@@ -359,6 +359,24 @@ func main() {
 			cur = p
 			return ""
 		}),
+		// padNotes is the note each audition pad 1-8 plays under the bed's
+		// mood: a shot's degree from the root, as TriggerShot resolves it, or
+		// (lead true) the theme lead lane's note, where a lead or palette's
+		// pads play. null before the bed has a scale.
+		"padNotes": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			if len(cur.Scale) == 0 {
+				return nil
+			}
+			base := cur.Root
+			if a[0].Bool() {
+				base, _ = engine.GridBases(cur)
+			}
+			out := make([]any, 8)
+			for d := range out {
+				out[d] = engine.DegreeNote(cur, base, d+1)
+			}
+			return js.ValueOf(out)
+		}),
 		"shot": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			return syn.TriggerShot(engine.Shot{Name: a[0].String(), Degree: a[1].Int(), HasDegree: true,
 				Gain: a[2].Float(), Pan: 0.5})

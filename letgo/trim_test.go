@@ -31,8 +31,16 @@ func TestTrimsAndMuteFromLg(t *testing.T) {
 	if m.params.Mute != 0 {
 		t.Fatalf(":mute [] left %b muted", m.params.Mute)
 	}
-	_, err := c.Run("(undertone/set-parameters {:mute [:leed]})")
+	if _, err := c.Run(`(undertone/set-parameters {:mute ["pad" :air]})`); err != nil || m.params.Mute != engine.LayerPad|engine.LayerAir {
+		t.Fatalf(`:mute ["pad" :air]: err %v, mute %b`, err, m.params.Mute)
+	}
+	// a rejected map changes nothing, not even the keys before the bad one
+	before := m.params
+	_, err := c.Run("(undertone/set-parameters {:bpm 140 :lead-db -12 :mute [:leed]})")
 	if err == nil || !strings.Contains(err.Error(), "unknown layer") {
 		t.Fatalf(":mute [:leed]: err %v, want unknown layer", err)
+	}
+	if m.params.BPM != before.BPM || m.params.LeadDB != before.LeadDB || m.params.Mute != before.Mute {
+		t.Fatalf("a rejected map left bpm %v lead-db %v mute %b behind", m.params.BPM, m.params.LeadDB, m.params.Mute)
 	}
 }

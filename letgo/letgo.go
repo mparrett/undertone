@@ -96,9 +96,10 @@ func (m *Music) Params() engine.Params {
 // setParameters merges a partial lg map over current state and stages it.
 // Unknown keys are ignored (forward compatibility) and absent keys keep their
 // current value, so live-coding is just calling it again with what changed.
-// An unknown :palette is the exception: it comes from an exported mood, which
+// An unknown :palette is an exception: it comes from an exported mood, which
 // MoodSpec.Derive rejects for the same name, so it is an error here too rather
-// than a mood playing on whatever patches were loaded before.
+// than a mood playing on whatever patches were loaded before. A :mute layer
+// name that isn't one is the other, so a typo can't leave a layer playing.
 //
 // With now, the change is heard within a block rather than at the next
 // pattern boundary (engine.Synth.SetParametersNow).
@@ -130,7 +131,8 @@ func (m *Music) setParameters(v vm.Value, now bool) (vm.Value, error) {
 
 // mergeParams merges a partial lg map over p. Unknown keys are ignored
 // (forward compatibility) and absent keys keep their current value. An unknown
-// :palette is an error, checked before p changes.
+// :palette or :mute layer is an error, checked before p changes, so a rejected
+// map leaves nothing behind for the next call to play.
 func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	if err := retiredKey(lgm, "bell-density", "bell-lift"); err != nil {
 		return err
@@ -142,6 +144,14 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 			return fmt.Errorf("unknown palette %q", s)
 		}
 		pal = &bank
+	}
+	mute, setMute := p.Mute, false
+	if v := at(lgm, "mute"); v != vm.NIL { // absent keeps the current mute, as every key does
+		m, err := muteLayers(v)
+		if err != nil {
+			return err
+		}
+		mute, setMute = m, true
 	}
 	// :mood selects the patch palette, which is the one thing not expressible
 	// as a scalar in the map. Deriving a throwaway params for the mood is how
@@ -190,12 +200,8 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	flt(lgm, "lead-db", &p.LeadDB)
 	flt(lgm, "pad-db", &p.PadDB)
 	flt(lgm, "bass-db", &p.BassDB)
-	if v := at(lgm, "mute"); v != vm.NIL { // absent keeps the current mute, as every key does
-		m, err := muteLayers(v)
-		if err != nil {
-			return err
-		}
-		p.Mute = m
+	if setMute {
+		p.Mute = mute
 	}
 	if s, ok := kwStr(lgm, "lead"); ok {
 		if s == "none" {
@@ -609,8 +615,14 @@ func muteLayers(v vm.Value) (engine.Layers, error) {
 	}
 	var m engine.Layers
 	for _, e := range vec {
-		name, _ := e.(vm.Keyword)
-		l, ok := muteNames[string(name)]
+		var name string // :lead or "lead", as kwStr reads every other name
+		switch n := e.(type) {
+		case vm.Keyword:
+			name = string(n)
+		case vm.String:
+			name = string(n)
+		}
+		l, ok := muteNames[name]
 		if !ok {
 			return 0, fmt.Errorf(":mute: unknown layer %v (drone fifth pad lead air pulse drums)", e)
 		}

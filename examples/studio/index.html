@@ -47,7 +47,6 @@
   /* the units' size toggle sits on their top edge instead */
   /* the units' tab row: the tab sits on the first unit's top edge */
   .edgebar.top { margin: 12px 0 -1px; flex-wrap: wrap; align-items: flex-end; row-gap: 8px; }
-  /* name and gate on their own line; under them UNITS and the tab, on the units' top edge, as SCOPE has */
   /* UNITS and its name and gate on the left, AUDITION in the space to their right, so the pads sit by the
      sound being edited instead of under the whole list; stacked until the editor column is wide enough */
   .unitstop { display: grid; gap: 0 40px; }
@@ -259,12 +258,12 @@
   <div class="bar" id="kinds"></div>
   </div>
   <div class="open">
-  <div class="lab">LOAD A <span id="openkind">SHOT</span> <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
+  <div class="lab">LOAD A <span id="openkind">SHOT</span> <span class="help" role="button" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
   <p class="hint" id="openhelp" hidden><i>Dashed italic</i> = registered this session. Click loads it into the editor below; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
   <div class="bar" id="names"></div>
   </div>
   <div id="trackbox" hidden>
-    <div class="lab">EDIT A TRACK OF <span id="trackof"></span> <span class="help" tabindex="0" title="what the tracks are" onclick="trackhelp.hidden = !trackhelp.hidden">[?]</span></div>
+    <div class="lab">EDIT A TRACK OF <span id="trackof"></span> <span class="help" role="button" tabindex="0" title="what the tracks are" onclick="trackhelp.hidden = !trackhelp.hidden">[?]</span></div>
     <p class="hint" id="trackhelp" hidden>A bed layer (drone to pulse) or a drum lane (kick, clap, shaker, dashed): each is its own patch.</p>
     <div class="bar" id="tracks"></div>
   </div>
@@ -384,7 +383,7 @@
   </div>
   </div>
   <div class="audcol">
-  <div class="lab" id="audlab">AUDITION <span class="help" tabindex="0" title="what the keys do" onclick="audhint.hidden = !audhint.hidden">[?]</span></div>
+  <div class="lab" id="audlab">AUDITION <span class="help" role="button" tabindex="0" title="what the keys do" onclick="audhint.hidden = !audhint.hidden">[?]</span></div>
   <div class="bar" id="pads"></div>
   <div id="takerows"></div>
   <div class="bar" id="takebox" hidden><button id="playtake"></button><span class="hint" id="takehint"></span></div>
@@ -948,7 +947,7 @@ function askName(k, from, to, near, onOk, onCancel) {
   if (canRename) btn(`rename ${from} → ${to}`, () => onOk("rename"));
   btn("cancel", () => onCancel && onCancel());
   if (!canRename && from && !mine) bar.append(el("span", "hint", `${from} is a built-in: it can be copied, not renamed`));
-  if (near.closest(".hl")) near.closest(".hl").after(bar); else (near.closest(".edgebar") || near.closest(".bar, .head")).before(bar);  // by the name field, or under the EDN box
+  if (near.closest(".hl")) near.closest(".hl").after(bar); else (near.closest(".unitstop, .edgebar") || near.closest(".bar, .head")).before(bar);  // by the name field, or under the EDN box
   bar.hidden = false; bar.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
@@ -1216,6 +1215,10 @@ $("save").onclick = () => { const a = el("a"); a.href = URL.createObjectURL(new 
 let ednTimer = 0;
 $("edn").addEventListener("input", () => { clearTimeout(ednTimer); ednTimer = setTimeout(() => importEDN(true), 400); });
 addEventListener("keydown", (e) => {
+  // a focused [?] opens on Enter or Space as a button would, before space reaches the bed
+  if ((e.key === "Enter" || e.key === " ") && document.activeElement.classList.contains("help")) {
+    e.preventDefault(); document.activeElement.click(); return;
+  }
   const typing = /textarea|select/i.test(document.activeElement.tagName) || (document.activeElement.tagName === "INPUT" && !/range|checkbox/.test(document.activeElement.type));
   // space plays or stops the bed (and ends a repeat) rather than scrolling the page
   if (e.key === "m" && !typing && !e.metaKey && !e.ctrlKey) { $("silent").click(); return; }  // m mutes or unmutes the bed

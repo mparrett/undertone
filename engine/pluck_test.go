@@ -116,3 +116,92 @@ func TestPluckC7IsInTune(t *testing.T) {
 		t.Errorf("C7: %+.2f cents, want within 1", c)
 	}
 }
+
+// v020String is pluck's loop as undertone v0.2.0 ran it, kept here as the
+// reference pluckraw answers to: a line int(SampleRate/freq) long, each pass
+// averaging a sample with the next, no allpass.
+func v020String(note int, transpose, feedback float64, rng uint64, samples int) []float64 {
+	s := ustate{rng: rng}
+	freq := 440 * math.Pow(2, (float64(note)+transpose-69)/12)
+	ks := make([]float64, int(max(2, min(SampleRate/freq, maxPluckLine))))
+	for i := range ks {
+		ks[i] = s.noise()
+	}
+	out := make([]float64, samples)
+	pos := 0
+	for i := range out {
+		x := ks[pos]
+		next := ks[(pos+1)%len(ks)]
+		ks[pos] = (x + next) * 0.5 * feedback
+		pos = (pos + 1) % len(ks)
+		out[i] = x
+	}
+	return out
+}
+
+// pluckraw plays v0.2.0's string sample for sample, so a sound made against
+// that string can be had on later releases. Checked across the range a lead,
+// a bass or a shot plays in, with a transpose, at the built-ins' feedbacks.
+func TestPluckRawIsV020(t *testing.T) {
+	for _, c := range []struct {
+		note          int
+		transpose, fb float64
+	}{{33, -12, 0.996}, {45, 0, 0.972}, {57, 0, 0.96}, {69, 7, 0.996}, {84, 0, 0.9995}, {96, 12, 0.972}, {108, 0, 0.99}} {
+		p, err := buildPatch([]UnitSpec{
+			{Op: "env", Args: []float64{0, 10, 1, 1}},
+			{Op: "pluckraw", Args: []float64{c.transpose, c.fb}},
+			{Op: "mul"},
+			{Op: "out", Args: []float64{1, 0.5}},
+		}, shotBounds)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v Voice
+		v.trigger(p, c.note, 1000, 1, 11)
+		// the rng trigger gives the string, unit 1
+		want := v020String(c.note, c.transpose, c.fb, v.units[1].rng, SampleRate/2)
+		var b sends
+		for i, w := range want {
+			var l, r float64
+			v.run(&l, &r, &b)
+			if l+r != w {
+				t.Fatalf("note %d %+g: sample %d is %v, v0.2.0's string gives %v", c.note, c.transpose, i, l+r, w)
+			}
+		}
+	}
+}
+
+// and so it is out of tune the way that string was: sharp, more so up high
+func TestPluckRawPlaysSharp(t *testing.T) {
+	cents := func(note int) float64 {
+		p, err := buildPatch([]UnitSpec{
+			{Op: "env", Args: []float64{0.001, 10, 1, 1}},
+			{Op: "pluckraw", Args: []float64{0, 0.9995}},
+			{Op: "mul"},
+			{Op: "out", Args: []float64{1, 0.5}},
+		}, shotBounds)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v Voice
+		v.trigger(p, note, 1000, 1, 7)
+		var b sends
+		x := make([]float64, SampleRate/4+SampleRate/100)
+		for i := range x {
+			var l, r float64
+			v.run(&l, &r, &b)
+			x[i] = l + r
+		}
+		want := noteHz(note)
+		return 1200 * math.Log2(peakHz(x[SampleRate/100:], want*0.9, want*1.1)/want)
+	}
+	// measured in the engine before the allpass (pluck-ab, 2026-11-19)
+	for _, c := range []struct {
+		note  int
+		cents float64
+	}{{60, 11}, {96, 47.5}} {
+		if got := cents(c.note); math.Abs(got-c.cents) > 1.5 {
+			t.Errorf("note %d: %+.1f cents, want about %+.1f as v0.2.0 played it", c.note, got, c.cents)
+		}
+	}
+}

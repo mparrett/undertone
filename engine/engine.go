@@ -26,24 +26,25 @@ const SampleRate = 44100
 // ---- unit VM ----
 
 const (
-	opEnv   = iota // p: attack s, decay s, sustain lvl, release s   -> push env
-	opOsc          // p: transpose semis, shape, sweep semis, sweep decay s -> push sample
-	opMul          // pop a, b -> push a*b
-	opLpf          // p: cutoff Hz; pop x -> push lowpassed x
-	opSend         // p: amount; peek top, add top*amount to delay bus
-	opOut          // p: gain, pan 0..1; pop x -> accumulate to L/R
-	opPluck        // p: transpose semis, feedback; Karplus-Strong string -> push sample
-	opHpf          // p: cutoff Hz; pop x -> push highpassed x
-	opSvf          // p: cutoff Hz, resonance 0..1, mode (0 low, 1 band, 2 high), depth octaves; [pop m;] pop x -> push filtered x
-	opLfo          // p: rate Hz, shape (0 sine, 1 triangle, 2 sample-and-hold) -> push -1..1
-	opDrive        // p: drive, bias -1..1; pop x -> push tanh(drive*x + bias) - tanh(bias)
-	opCrush        // p: hold Hz, bits; pop x -> push x held and quantized
-	opVerb         // p: amount; peek top, add top*amount to the reverb bus
-	opScale        // p: gain, offset; top = top*gain + offset
-	opPitch        // p: depth semis; pop m, bend every later osc by m*depth
-	opDust         // p: rate Hz, bipolar 0|1, depth 0..1 -> push random impulses
-	opComb         // p: transpose semis, feedback, damp; pop x -> push x resonated at the note
-	opRoom         // p: freq Hz, feedback, damp; pop x -> push x resonated at freq
+	opEnv      = iota // p: attack s, decay s, sustain lvl, release s   -> push env
+	opOsc             // p: transpose semis, shape, sweep semis, sweep decay s -> push sample
+	opMul             // pop a, b -> push a*b
+	opLpf             // p: cutoff Hz; pop x -> push lowpassed x
+	opSend            // p: amount; peek top, add top*amount to delay bus
+	opOut             // p: gain, pan 0..1; pop x -> accumulate to L/R
+	opPluck           // p: transpose semis, feedback; Karplus-Strong string -> push sample
+	opHpf             // p: cutoff Hz; pop x -> push highpassed x
+	opSvf             // p: cutoff Hz, resonance 0..1, mode (0 low, 1 band, 2 high), depth octaves; [pop m;] pop x -> push filtered x
+	opLfo             // p: rate Hz, shape (0 sine, 1 triangle, 2 sample-and-hold) -> push -1..1
+	opDrive           // p: drive, bias -1..1; pop x -> push tanh(drive*x + bias) - tanh(bias)
+	opCrush           // p: hold Hz, bits; pop x -> push x held and quantized
+	opVerb            // p: amount; peek top, add top*amount to the reverb bus
+	opScale           // p: gain, offset; top = top*gain + offset
+	opPitch           // p: depth semis; pop m, bend every later osc by m*depth
+	opDust            // p: rate Hz, bipolar 0|1, depth 0..1 -> push random impulses
+	opComb            // p: transpose semis, feedback, damp; pop x -> push x resonated at the note
+	opRoom            // p: freq Hz, feedback, damp; pop x -> push x resonated at freq
+	opPluckRaw        // p: transpose semis, feedback; pluck without its tuning -> push sample
 	// comb and room's p[3] is set by buildPatch, not given: 1 when the input
 	// dies with an env, so the ring may keep the voice alive
 )
@@ -609,15 +610,27 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			// validation sees, and exp2 of a huge bend would overflow
 			sp--
 			bend = max(-24, min(stack[sp]*u.p[0], 24))
-		case opPluck:
+		case opPluck, opPluckRaw:
 			// Karplus-Strong: a noise burst circulating in a delay line
 			// the length of the period, averaged (lowpassed) each pass,
 			// with an allpass making up the period's fraction of a sample
 			// (pluckTuning).
+			//
+			// pluckraw is the string as undertone played it to v0.2.0, the
+			// original Karplus-Strong: a line of whole samples and no
+			// allpass, so it plays sharp, by a few cents low down and most
+			// of a tone in the top octave. Kept so a sound made with it can
+			// still be had; TestPluckRawIsV020 holds it to that code.
 			if len(s.ks) == 0 { // a new note: strike the string
 				freq := 440 * math.Pow(2, (float64(v.note)+u.p[0]-69)/12)
 				var n int
-				n, s.k = pluckTuning(freq)
+				if u.op == opPluckRaw {
+					// bounded as a float: converting a period too long for
+					// an int gives a different answer on each architecture
+					n = int(max(2, min(SampleRate/freq, maxPluckLine)))
+				} else {
+					n, s.k = pluckTuning(freq)
+				}
 				// lp is the allpass's state: a legato retrigger keeps lp,
 				// and a new string starts from rest
 				s.lp = 0
@@ -639,12 +652,15 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			}
 			x := s.ks[s.kpos]
 			next := s.ks[(s.kpos+1)%len(s.ks)]
-			y := (x + next) * 0.5 * u.p[1]
-			// one-pole allpass, transposed direct form II: a delay of a
-			// fraction of a sample at the fundamental, and gain 1 at every
-			// frequency, so the string decays as it would without it
-			a := s.k*y + s.lp
-			s.lp = flush(y - s.k*a) // recursive, so kept out of subnormals as the svf's state is
+			a := (x + next) * 0.5 * u.p[1]
+			if u.op == opPluck {
+				// one-pole allpass, transposed direct form II: a delay of a
+				// fraction of a sample at the fundamental, and gain 1 at every
+				// frequency, so the string decays as it would without it
+				y := a
+				a = s.k*y + s.lp
+				s.lp = flush(y - s.k*a) // recursive, so kept out of subnormals as the svf's state is
+			}
 			s.ks[s.kpos] = a
 			s.kpos = (s.kpos + 1) % len(s.ks)
 			stack[sp] = x

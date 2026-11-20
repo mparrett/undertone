@@ -23,6 +23,7 @@ type ShotSpec struct {
 //	env   attack s, decay s, sustain 0..1, release s  -> push envelope
 //	osc   transpose semis, sweep semis, sweep decay s (Shape: sine saw pulse noise) -> push sample
 //	pluck transpose semis, feedback 0..1              -> push a Karplus-Strong string
+//	pluckraw transpose semis, feedback 0..1           -> push the untuned string of v0.2.0
 //	mul                                               pop two, push their product
 //	lpf   cutoff Hz                                   lowpass the top
 //	hpf   cutoff Hz                                   highpass the top
@@ -48,11 +49,11 @@ type UnitSpec struct {
 	Args  []float64
 }
 
-var opNames = []string{opEnv: "env", opOsc: "osc", opMul: "mul", opLpf: "lpf", opSend: "send", opOut: "out", opPluck: "pluck", opHpf: "hpf", opSvf: "svf", opLfo: "lfo", opDrive: "drive", opCrush: "crush", opVerb: "verb", opScale: "scale", opPitch: "pitch", opDust: "dust", opComb: "comb", opRoom: "room"}
+var opNames = []string{opEnv: "env", opOsc: "osc", opMul: "mul", opLpf: "lpf", opSend: "send", opOut: "out", opPluck: "pluck", opHpf: "hpf", opSvf: "svf", opLfo: "lfo", opDrive: "drive", opCrush: "crush", opVerb: "verb", opScale: "scale", opPitch: "pitch", opDust: "dust", opComb: "comb", opRoom: "room", opPluckRaw: "pluckraw"}
 
 // opArgs is how many Args a unit of each op takes: the parameters its op
 // reads, less an osc's shape, which travels in UnitSpec.Shape.
-var opArgs = []int{opEnv: 4, opOsc: 3, opMul: 0, opLpf: 1, opSend: 1, opOut: 2, opPluck: 2, opHpf: 1, opSvf: 4, opLfo: 2, opDrive: 2, opCrush: 2, opVerb: 1, opScale: 2, opPitch: 1, opDust: 3, opComb: 3, opRoom: 3}
+var opArgs = []int{opEnv: 4, opOsc: 3, opMul: 0, opLpf: 1, opSend: 1, opOut: 2, opPluck: 2, opHpf: 1, opSvf: 4, opLfo: 2, opDrive: 2, opCrush: 2, opVerb: 1, opScale: 2, opPitch: 1, opDust: 3, opComb: 3, opRoom: 3, opPluckRaw: 2}
 
 var shapeNames = []string{shpSine: "sine", shpSaw: "saw", shpPulse: "pulse", shpNoise: "noise"}
 
@@ -219,9 +220,9 @@ func (w *stackWalk) step(u Unit) error {
 		return fmt.Errorf("comb and room resonate a signal, not an env or lfo; mul the env in first or after")
 	}
 	switch u.op {
-	case opEnv, opOsc, opPluck, opLfo, opDust:
+	case opEnv, opOsc, opPluck, opLfo, opDust, opPluckRaw:
 		if w.depth < len(w.signal) {
-			w.signal[w.depth] = u.op == opOsc || u.op == opPluck || u.op == opDust
+			w.signal[w.depth] = u.op == opOsc || u.op == opPluck || u.op == opDust || u.op == opPluckRaw
 			w.gated[w.depth] = u.op == opEnv
 		}
 		w.depth++
@@ -350,7 +351,7 @@ func (us UnitSpec) unit(b bounds) (Unit, error) {
 		u.p = [4]float64{a[0], float64(sh), a[1], a[2]}
 		ok = math.Abs(a[0]) <= 48 && math.Abs(a[1]) <= 48 && a[2] >= 0
 		rule = "transpose and sweep within 48 semitones, sweep decay >= 0"
-	case opPluck:
+	case opPluck, opPluckRaw:
 		// the string's delay line is a period long, allocated on the audio
 		// thread at the first note, so how far down it may go is bounded
 		ok = math.Abs(a[0]) <= 24 && a[1] >= 0 && a[1] < 1

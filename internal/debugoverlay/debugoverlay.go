@@ -62,13 +62,13 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 		"top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));" +
 		"font:12px/1.4 ui-monospace,Menlo,monospace;border-radius:6px;" +
 		"background:rgba(0,0,0,.78);color:#e8e8e8;pointer-events:auto;"
-	box.Get("style").Set("cssText", corner+"white-space:pre;padding:8px 28px 8px 10px")
-	// × closes the panel to tab, which reopens it; counting goes on meanwhile
+	box.Get("style").Set("cssText", corner+"white-space:pre;padding:8px 40px 8px 10px")
 	closeBtn := doc.Call("createElement", "button")
 	closeBtn.Set("textContent", "×")
 	closeBtn.Set("title", "close; the debug tab reopens it")
-	closeBtn.Get("style").Set("cssText", "position:absolute;top:2px;right:4px;padding:0 6px;"+
-		"font:16px/1.2 sans-serif;color:inherit;background:none;border:0;cursor:pointer")
+	// 32 px square: a near miss on a phone would land on the text, which folds
+	closeBtn.Get("style").Set("cssText", "position:absolute;top:0;right:0;width:32px;height:32px;padding:0;"+
+		"font:18px/32px sans-serif;color:inherit;background:none;border:0;cursor:pointer")
 	tab := doc.Call("createElement", "button")
 	tab.Set("id", "undertone-debug-tab")
 	tab.Set("textContent", "debug")
@@ -277,7 +277,6 @@ func header() string {
 		g.Get("navigator").Get("userAgent").String())
 }
 
-// show displays el, or hides it.
 func show(el js.Value, on bool) {
 	display := "none"
 	if on {

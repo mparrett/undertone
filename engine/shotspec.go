@@ -35,6 +35,12 @@ type ShotSpec struct {
 //	verb  amount                                      add the top to the reverb bus
 //	scale gain, offset                                top = top*gain + offset
 //	pitch depth semis                                 pop m, bend every later osc by m*depth
+//	dust  rate Hz, bipolar 0|1, depth 0..1            push random impulses, ~rate a second;
+//	      depth lets the music's tension make them up to 3x as busy
+//	comb  transpose semis, feedback, damp 0..1        resonate the top at the note + transpose
+//	room  freq Hz, feedback, damp 0..1                resonate the top at a fixed frequency
+//	      (comb, room: feedback -0.99..0.99, negative rings hollow, an octave down;
+//	      a signal only, gaining up to 1/(1-|feedback|) at resonance)
 //	out   gain, pan 0..1                              pop and mix
 type UnitSpec struct {
 	Op    string
@@ -42,11 +48,11 @@ type UnitSpec struct {
 	Args  []float64
 }
 
-var opNames = []string{opEnv: "env", opOsc: "osc", opMul: "mul", opLpf: "lpf", opSend: "send", opOut: "out", opPluck: "pluck", opHpf: "hpf", opSvf: "svf", opLfo: "lfo", opDrive: "drive", opCrush: "crush", opVerb: "verb", opScale: "scale", opPitch: "pitch"}
+var opNames = []string{opEnv: "env", opOsc: "osc", opMul: "mul", opLpf: "lpf", opSend: "send", opOut: "out", opPluck: "pluck", opHpf: "hpf", opSvf: "svf", opLfo: "lfo", opDrive: "drive", opCrush: "crush", opVerb: "verb", opScale: "scale", opPitch: "pitch", opDust: "dust", opComb: "comb", opRoom: "room"}
 
 // opArgs is how many Args a unit of each op takes: the parameters its op
 // reads, less an osc's shape, which travels in UnitSpec.Shape.
-var opArgs = []int{opEnv: 4, opOsc: 3, opMul: 0, opLpf: 1, opSend: 1, opOut: 2, opPluck: 2, opHpf: 1, opSvf: 4, opLfo: 2, opDrive: 2, opCrush: 2, opVerb: 1, opScale: 2, opPitch: 1}
+var opArgs = []int{opEnv: 4, opOsc: 3, opMul: 0, opLpf: 1, opSend: 1, opOut: 2, opPluck: 2, opHpf: 1, opSvf: 4, opLfo: 2, opDrive: 2, opCrush: 2, opVerb: 1, opScale: 2, opPitch: 1, opDust: 3, opComb: 3, opRoom: 3}
 
 var shapeNames = []string{shpSine: "sine", shpSaw: "saw", shpPulse: "pulse", shpNoise: "noise"}
 
@@ -148,51 +154,21 @@ func buildPatch(units []UnitSpec, b bounds) (Patch, error) {
 		return nil, fmt.Errorf("%d units: want 1 to %d", len(units), maxUnits)
 	}
 	p := make(Patch, len(units))
-	depth, envs, outs := 0, 0, 0
-	// whether each stack slot carries signal (from an osc or pluck) or a
-	// control value (an env or lfo): an offset is DC on a signal, which the
-	// envelope does not shape and which clicks when the voice ends
-	var signal [9]bool
+	envs, outs := 0, 0
+	var w stackWalk
 	for i, us := range units {
 		u, err := us.unit(b)
 		if err != nil {
 			return nil, fmt.Errorf("unit %d (%s): %w", i, us.Op, err)
 		}
-		// The VM's stack holds eight and checks nothing, so the spec must.
-		need := 0 // values the unit reads off the stack
-		switch u.op {
-		case opMul:
-			need = 2
-		case opOut, opLpf, opHpf, opSend, opDrive, opCrush, opVerb, opScale, opPitch:
-			need = 1
-		case opSvf:
-			need = 1
-			if u.p[3] != 0 { // the modulation value, then the signal
-				need = 2
-			}
+		if err := w.step(u); err != nil {
+			return nil, fmt.Errorf("unit %d (%s): %w", i, us.Op, err)
 		}
-		if depth < need {
-			return nil, fmt.Errorf("unit %d (%s): the stack would run dry", i, us.Op)
-		}
-		if u.op == opScale && u.p[1] != 0 && signal[depth-1] {
-			return nil, fmt.Errorf("unit %d (scale): an offset on a signal is DC; scale an env or lfo, then mul it in", i)
-		}
-		switch u.op {
-		case opEnv, opOsc, opPluck, opLfo:
-			if depth < len(signal) {
-				signal[depth] = u.op == opOsc || u.op == opPluck
-			}
-			depth++
-		case opMul:
-			depth--
-			signal[depth-1] = signal[depth-1] || signal[depth]
-		case opOut, opPitch:
-			depth--
-		case opSvf:
-			depth -= need - 1
-		}
-		if depth > 8 {
-			return nil, fmt.Errorf("unit %d (%s): the stack would overflow", i, us.Op)
+		if (u.op == opComb || u.op == opRoom) && w.gated[w.depth-1] {
+			// its input dies with an env, so its ring is a tail worth
+			// keeping the voice for; one fed by an ungated dust rings on
+			// for as long as the voice does, and must not hold it
+			u.p[3] = 1
 		}
 		envs += b2i(u.op == opEnv)
 		outs += b2i(u.op == opOut)
@@ -202,6 +178,120 @@ func buildPatch(units []UnitSpec, b bounds) (Patch, error) {
 		return nil, fmt.Errorf("a patch needs an env, which ends the sound, and an out, which makes it heard")
 	}
 	return p, nil
+}
+
+// stackWalk is the patch's stack as buildPatch counts it, unit by unit. The
+// VM's stack holds eight and checks nothing, so the spec must.
+type stackWalk struct {
+	depth int
+	// whether each stack slot carries signal (from an osc or pluck) or a
+	// control value (an env or lfo): an offset is DC on a signal, which the
+	// envelope does not shape and which clicks when the voice ends
+	signal [9]bool
+	// whether each slot is an env or a product with one, which falls silent
+	// when the env does
+	gated [9]bool
+}
+
+// step runs one unit over the stack, or says why the unit cannot run there.
+func (w *stackWalk) step(u Unit) error {
+	need := 0 // values the unit reads off the stack
+	switch u.op {
+	case opMul:
+		need = 2
+	case opOut, opLpf, opHpf, opSend, opDrive, opCrush, opVerb, opScale, opPitch, opComb, opRoom:
+		need = 1
+	case opSvf:
+		need = 1
+		if u.p[3] != 0 { // the modulation value, then the signal
+			need = 2
+		}
+	}
+	if w.depth < need {
+		return fmt.Errorf("the stack would run dry")
+	}
+	if u.op == opScale && u.p[1] != 0 && w.signal[w.depth-1] {
+		return fmt.Errorf("an offset on a signal is DC; scale an env or lfo, then mul it in")
+	}
+	if (u.op == opComb || u.op == opRoom) && !w.signal[w.depth-1] {
+		// a resonator's gain is up to 1/(1-|feedback|), 100 at the edge:
+		// on a signal that is its resonance, on an env's level a volume
+		return fmt.Errorf("comb and room resonate a signal, not an env or lfo; mul the env in first or after")
+	}
+	switch u.op {
+	case opEnv, opOsc, opPluck, opLfo, opDust:
+		if w.depth < len(w.signal) {
+			w.signal[w.depth] = u.op == opOsc || u.op == opPluck || u.op == opDust
+			w.gated[w.depth] = u.op == opEnv
+		}
+		w.depth++
+	case opMul:
+		w.depth--
+		w.signal[w.depth-1] = w.signal[w.depth-1] || w.signal[w.depth]
+		w.gated[w.depth-1] = w.gated[w.depth-1] || w.gated[w.depth]
+	case opOut, opPitch:
+		w.depth--
+	case opSvf:
+		w.depth -= need - 1
+	}
+	if w.depth > 8 {
+		return fmt.Errorf("the stack would overflow")
+	}
+	return nil
+}
+
+// StackStep is the stack after one unit of a patch, as StackTrace walks it.
+type StackStep struct {
+	// Signal has a slot per value on the stack, bottom first: true where
+	// the value is signal (from an osc or pluck), false where it is control
+	// (from an env or lfo).
+	Signal []bool
+	// Error is why registering the patch would refuse this unit, without
+	// the "unit N (op): " that registering puts before it, since an editor
+	// shows it on the unit. When the stack itself fails here, Signal is
+	// empty and the walk stops; an argument out of range leaves Signal as the
+	// stack would be.
+	Error string
+}
+
+// StackTrace walks units as registering them as a patch does and returns the
+// stack after each, for an editor to draw the engine's answer rather than a
+// copy of its rules. A stack that runs dry or overflows, or an offset on a
+// signal, stops the walk as it stops registering, so the trace is shorter
+// than units then. An argument out of range does not: the stack's shape
+// depends only on the op and on whether a few args are zero, so the walk
+// goes on and later units keep their bars while one value is being fixed.
+// Args are held to a music patch's bounds, the wider ones: a shot's tighter
+// release and gain are for registering it to refuse. What a whole patch
+// needs (its count of units, an env and an out) is registering's to report.
+func StackTrace(units []UnitSpec) []StackStep {
+	var w stackWalk
+	out := make([]StackStep, 0, len(units))
+	for _, us := range units {
+		u, argErr := us.unit(musicBounds)
+		if argErr != nil {
+			op := indexOf(opNames, us.Op)
+			if op < 0 { // an unknown op has no shape to walk
+				return append(out, StackStep{Signal: []bool{}, Error: argErr.Error()})
+			}
+			// unchecked args: step reads only svf's depth and scale's
+			// offset, at the indexes UnitSpec gives them
+			u = Unit{op: op}
+			copy(u.p[:], us.Args)
+		}
+		if err := w.step(u); err != nil {
+			if argErr != nil { // registering checks args first, so names them
+				err = argErr
+			}
+			return append(out, StackStep{Signal: []bool{}, Error: err.Error()})
+		}
+		st := StackStep{Signal: append([]bool{}, w.signal[:w.depth]...)}
+		if argErr != nil {
+			st.Error = argErr.Error()
+		}
+		out = append(out, st)
+	}
+	return out
 }
 
 // validName keeps a name one EDN reads back as a keyword.
@@ -291,6 +381,24 @@ func (us UnitSpec) unit(b bounds) (Unit, error) {
 	case opSend, opVerb:
 		ok = a[0] >= 0 && a[0] <= 1
 		rule = "an amount 0..1"
+	case opDust:
+		// at full depth and tension three times the rate, still under one
+		// impulse a sample
+		ok = a[0] >= 0 && a[0] <= 10000 && whole(a[1], 1) && a[2] >= 0 && a[2] <= 1
+		rule = "rate 0..10000 Hz, bipolar 0 or 1, depth 0..1"
+	case opComb, opRoom:
+		// |feedback| under 1 so the ring always decays and the voice dies
+		// with its env. The line is allocated on the audio thread, a
+		// period long, so room's lowest frequency is the longest line's.
+		ok = math.Abs(a[1]) <= 0.99 && a[2] >= 0 && a[2] <= 1
+		rule = "feedback -0.99..0.99, damp 0..1"
+		if op == opComb {
+			ok = ok && math.Abs(a[0]) <= 24
+			rule = "transpose within 24 semitones, " + rule
+		} else {
+			ok = ok && a[0] >= 16 && a[0] <= 4000
+			rule = "freq 16..4000 Hz, " + rule
+		}
 	case opOut:
 		ok = a[0] >= 0 && a[0] <= b.gain && a[1] >= 0 && a[1] <= 1
 		rule = fmt.Sprintf("gain 0..%g, pan 0..1", b.gain)

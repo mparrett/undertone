@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"reflect"
 	"strings"
@@ -132,7 +133,7 @@ func TestAcceptedShotsAreSafe(t *testing.T) {
 				pt.Args[0] = pick([]float64{-13, -12, 0.3, 2, 12, 13})
 				units = append(units, l, pt)
 			}
-			units = append(units, unit("env"), unit([]string{"osc", "pluck"}[r.n(2)]), unit("mul"))
+			units = append(units, unit("env"), unit([]string{"osc", "pluck", "dust"}[r.n(3)]), unit("mul"))
 			for _, op := range []string{"lpf", "hpf", "send", "verb"} {
 				if r.n(2) == 0 {
 					units = append(units, unit(op))
@@ -165,6 +166,15 @@ func TestAcceptedShotsAreSafe(t *testing.T) {
 					units = append(units, m)
 				}
 				units = append(units, f)
+			}
+			if r.n(2) == 0 {
+				// a resonator at the edges of its feedback and range
+				c := unit([]string{"comb", "room"}[r.n(2)])
+				c.Args[1] = pick([]float64{-1, -0.99, 0, 0.5, 0.99, 1})
+				if c.Op == "room" {
+					c.Args[0] = pick([]float64{15, 16, 110, 4000, 4001})
+				}
+				units = append(units, c)
 			}
 			units = append(units, unit("out"))
 		}
@@ -213,4 +223,164 @@ func TestAcceptedShotsAreSafe(t *testing.T) {
 		t.Fatalf("only %d of 10000 random patches were accepted, %d with a swept filter, %d with drive and crush, %d bent; the test proves little", accepted, swept, gritty, bent)
 	}
 	t.Logf("%d random patches accepted and rendered, %d with a swept filter, %d with drive and crush, %d bent", accepted, swept, gritty, bent)
+}
+
+// StackTrace is what the studio draws its stack bars from, so it pins the
+// cases the studio's own copy of the rules once got wrong: a swept svf pops
+// its modulation value and keeps the signal under it.
+func TestStackTrace(t *testing.T) {
+	env := UnitSpec{Op: "env", Args: []float64{0.001, 0.1, 0, 0.05}}
+	osc := UnitSpec{Op: "osc", Shape: "saw", Args: []float64{0, 0, 1}}
+	mul := UnitSpec{Op: "mul"}
+	lfo := UnitSpec{Op: "lfo", Args: []float64{4, 0}}
+	svf := UnitSpec{Op: "svf", Args: []float64{800, 0.3, 0, 2}}
+	out := UnitSpec{Op: "out", Args: []float64{1, 0.5}}
+	ok := func(sig ...bool) StackStep { return StackStep{Signal: append([]bool{}, sig...)} }
+	const S, C = true, false
+	nine := []UnitSpec{env, env, env, env, env, env, env, env, env}
+	for _, c := range []struct {
+		name  string
+		units []UnitSpec
+		want  []StackStep
+	}{
+		{"a plain voice", []UnitSpec{env, osc, mul, out},
+			[]StackStep{ok(C), ok(C, S), ok(S), ok()}},
+		{"a swept svf", []UnitSpec{env, osc, mul, lfo, svf, out},
+			[]StackStep{ok(C), ok(C, S), ok(S), ok(S, C), ok(S), ok()}},
+		{"one that runs dry", []UnitSpec{env, mul, out},
+			[]StackStep{ok(C), {Signal: []bool{}, Error: "the stack would run dry"}}},
+		{"one that overflows", nine,
+			[]StackStep{ok(C), ok(C, C), ok(C, C, C), ok(C, C, C, C), ok(C, C, C, C, C),
+				ok(C, C, C, C, C, C), ok(C, C, C, C, C, C, C), ok(C, C, C, C, C, C, C, C),
+				{Signal: []bool{}, Error: "the stack would overflow"}}},
+	} {
+		if got := StackTrace(c.units); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s:\n got %v\nwant %v", c.name, got, c.want)
+		}
+	}
+}
+
+// An argument out of range marks its unit but does not stop the walk, so the
+// units after it keep their bars while the value is being fixed.
+func TestStackTraceWalksPastArgErrors(t *testing.T) {
+	units := []UnitSpec{
+		{Op: "env", Args: []float64{0.001, 0.1, 0, 0.05}},
+		{Op: "osc", Shape: "saw", Args: []float64{0, 0, 1}},
+		{Op: "lpf", Args: []float64{0}},
+		{Op: "mul"},
+		{Op: "out", Args: []float64{1, 0.5}},
+	}
+	tr := StackTrace(units)
+	if len(tr) != len(units) {
+		t.Fatalf("a trace of %d steps for %d units: %v", len(tr), len(units), tr)
+	}
+	if e := tr[2].Error; !strings.Contains(e, "cutoff") || !reflect.DeepEqual(tr[2].Signal, []bool{false, true}) {
+		t.Errorf("the bad lpf: %v, want its range error over the stack it filters", tr[2])
+	}
+	if !reflect.DeepEqual(tr[3], StackStep{Signal: []bool{true}}) {
+		t.Errorf("the mul after it: %v", tr[3])
+	}
+}
+
+// The trace and buildPatch agree on every patch: the first unit the trace
+// marks is the one buildPatch refuses, for the same reason, and a patch it
+// accepts traces clean to the end. The built-in shots, leads, palettes and
+// kits all trace clean, and random chains of any op hit every refusal.
+func TestStackTraceAgreesWithBuildPatch(t *testing.T) {
+	check := func(name string, units []UnitSpec) {
+		t.Helper()
+		tr := StackTrace(units)
+		first := -1
+		for i, st := range tr {
+			if st.Error != "" {
+				first = i
+				break
+			}
+		}
+		_, err := buildPatch(units, musicBounds)
+		var refused string
+		if err != nil && strings.HasPrefix(err.Error(), "unit ") {
+			refused = err.Error()
+		}
+		switch {
+		case refused == "" && (first >= 0 || len(tr) != len(units)):
+			t.Errorf("%s: buildPatch accepts the units (%v), the trace marks %v", name, err, tr)
+		case refused != "" && (first < 0 || refused != fmt.Sprintf("unit %d (%s): %s", first, units[first].Op, tr[first].Error)):
+			t.Errorf("%s: buildPatch says %q, the trace %v", name, refused, tr)
+		}
+	}
+	builtins := 0
+	for name := range shotLib {
+		s, ok := ShotByName(name)
+		if !ok || len(s.Units) == 0 {
+			t.Fatalf("%s: no spec", name)
+		}
+		check("shot "+name, s.Units)
+		builtins++
+	}
+	for _, n := range namedPatches {
+		check("patch "+n.name, patchSpec(n.p).Units)
+		builtins++
+	}
+	for _, name := range PaletteNames() {
+		s, ok := PaletteSpecByName(name)
+		if !ok {
+			t.Fatalf("%s: no spec", name)
+		}
+		for i, d := range s.Kit {
+			check(fmt.Sprintf("%s kit %d", name, i), d.Units)
+			builtins++
+		}
+	}
+	for _, name := range LeadNames() {
+		s, ok := LeadSpecByName(name)
+		if !ok {
+			t.Fatalf("%s: no spec", name)
+		}
+		check("lead "+name, s.Units)
+		builtins++
+	}
+	if builtins == 0 {
+		t.Fatal("no built-in patches to check")
+	}
+
+	r := rng{777}
+	vals := []float64{-60, -1, 0, 1e-9, 0.001, 0.3, 1, 2, 3, 900, 30000}
+	usual := []float64{0.001, 0.3, 0.5, 1}
+	refusals := map[string]int{}
+	n := 20000
+	if testing.Short() {
+		n = 4000
+	}
+	for i := 0; i < n; i++ {
+		units := make([]UnitSpec, 1+r.n(12))
+		for j := range units {
+			op := r.n(len(opNames))
+			if r.n(5) < 3 { // enough pushes that some chains overflow, even under -short
+				op = []int{opEnv, opOsc, opPluck, opLfo, opDust}[r.n(5)]
+			}
+			u := UnitSpec{Op: opNames[op], Shape: shapeNames[r.n(len(shapeNames))]}
+			for a := 0; a < opArgs[op]; a++ {
+				if r.n(8) == 0 {
+					u.Args = append(u.Args, vals[r.n(len(vals))])
+				} else {
+					u.Args = append(u.Args, usual[r.n(len(usual))])
+				}
+			}
+			units[j] = u
+		}
+		check(fmt.Sprint("random ", i), units)
+		if _, err := buildPatch(units, musicBounds); err != nil {
+			for _, k := range []string{"run dry", "overflow", "DC", "want"} {
+				if strings.Contains(err.Error(), k) {
+					refusals[k]++
+				}
+			}
+		}
+	}
+	for _, k := range []string{"run dry", "overflow", "DC", "want"} {
+		if refusals[k] == 0 {
+			t.Errorf("no random patch was refused for %q, so the check never compared one", k)
+		}
+	}
 }

@@ -68,8 +68,9 @@ that took longer than the audio they made), the slowest render, and how full
 the queue is. Underruns are the count to trust; the lowest queue can miss a
 dip that the page itself caused. **reset** zeroes the counts, so reset before
 each step and read the panel after it. On a phone the panel starts folded to
-one line; tap it to unfold it and reach **reset**. The counts are also published as
-`window.__undertoneDebug` for the console.
+one line; tap it to unfold it and reach **reset** and **copy**. **copy** puts
+the numbers on the clipboard with the time, the page and the browser. The
+counts are also published as `window.__undertoneDebug` for the console.
 
 Serve locally (see [Run](#run)) or use the live pages. A phone needs HTTPS:
 use the live pages or `tailscale serve`.
@@ -89,7 +90,8 @@ use the live pages or `tailscale serve`.
 Steps 1 to 7 should end with 0 underruns and 0 over budget on a desktop. A
 phone may count a few underruns at the moment it resumes (steps 8 and 9); a
 count that keeps climbing while audio plays is a failure. When a step fails,
-note the browser, the device and the panel's numbers in the PR.
+tap **copy** and paste the report into the PR with the step's number and the
+device.
 
 ## The descent demo's lg
 

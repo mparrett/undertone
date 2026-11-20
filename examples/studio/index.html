@@ -6,14 +6,31 @@
 <title>Undertone Studio</title>
 <style>
   :root { --bg: #0d0d10; --panel: #15151a; --line: #26262e; --fg: #d6d1c2; --mut: #8a8576; --err: #c96a5f;
-          --src: #e0b84f; --mod: #b48ad6; --fx: #5fa8c9; --out: #9cc46a; }
+          --src: #e0b84f; --mod: #b48ad6; --fx: #5fa8c9; --out: #9cc46a; --amber: #f0962e; }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 ui-monospace, Menlo, monospace; }
   main { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
   main > * { min-width: 0; }  /* a wide child scrolls inside its column instead of widening the page */
-  @media (min-width: 900px) { main { grid-template-columns: 300px 1fr; align-items: start; } body { padding: 28px; }
-                              aside { position: sticky; top: 28px; } }
+  @media (min-width: 900px) { body { padding: 28px; } }
+  /* the header strip: what the sidebar held, side by side; it wraps to a column on a phone */
+  header.top { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-start; position: relative; padding-right: 40px; }
+  /* the guide's [?] in the page's top right corner, out of the columns' way */
+  header.top > #guidechip { position: absolute; top: -4px; right: 0; width: 28px; height: 28px; padding: 0; border-radius: 50%;
+                           display: grid; place-items: center; font-weight: 600; }
+  header.top > .brand { flex: 0 1 250px; }
+  header.top > .kindcol { flex: 0 1 170px; }
+  header.top > .open { flex: 1 1 300px; min-width: 0; }
+  header.top > #trackbox { flex: 1 1 260px; min-width: 0; }
+  header.top > .stat { flex: 0 1 220px; }
+  /* full width: fixed columns, so a palette's track picker doesn't push status onto a second line;
+     without it, the names take its column too */
+  @media (min-width: 1180px) {
+    header.top { display: grid; grid-template-columns: 200px 140px minmax(0, 1fr) minmax(0, 1fr) 190px; gap: 0 24px; }
+    header.top > .brand { grid-column: 1; } header.top > .kindcol { grid-column: 2; } header.top > .open { grid-column: 3; }
+    header.top > #trackbox { grid-column: 4; } header.top > .stat { grid-column: 5; }
+    header.top:has(#trackbox[hidden]) > .open { grid-column: 3 / 5; } }
+  header.top .lab:first-child { margin-top: 0; }
   main.loading { opacity: .45; pointer-events: none; }
   h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
   .sub { color: var(--mut); font-size: 12px; margin: 0 0 16px; }
@@ -23,15 +40,27 @@
   .chip.guide { color: var(--fx); border-color: color-mix(in srgb, var(--fx) 55%, var(--line));
                 background: color-mix(in srgb, var(--fx) 10%, var(--panel)); cursor: pointer; }
   .chip.guide.on { color: var(--fg); background: color-mix(in srgb, var(--fx) 25%, var(--panel)); }
-  /* the scope's size toggle: a small tab hanging from its bottom edge */
+  /* the size toggles: small tabs on the scope's and the units' top edges */
   .edgebar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin: -1px 0 12px; }
   .edgebar .edge { font-size: 11px; color: var(--mut); padding: 1px 12px 2px; border-radius: 0 0 8px 8px; border-top: none; }
   .edgebar .edge:hover { color: var(--fg); }
   /* the units' size toggle sits on their top edge instead */
-  /* the units' tab row: scope fade, then the tab, which sits on the first unit's top edge */
+  /* the units' tab row: the tab sits on the first unit's top edge */
   .edgebar.top { margin: 12px 0 -1px; flex-wrap: wrap; align-items: flex-end; row-gap: 8px; }
-  .edgebar.top .head { margin-right: auto; padding-bottom: 9px; }  /* name and gate left; fade and the tab right, the tab on the units' edge */
-  .edgebar.top label.fade { padding-bottom: 15px; }  /* centred on the name and gate boxes beside it */
+  /* name and gate on their own line; under them UNITS and the tab, on the units' top edge, as SCOPE has */
+  .edgebar.top .head { flex-basis: 100%; margin-bottom: 8px; }
+  /* UNITS heads the editor: its own line, then name and gate, then the edge key left of the tab */
+  .unitsbar > .lab { flex-basis: 100%; margin: 0; }
+  .unitsbar { justify-content: flex-start; } .unitsbar #compact { margin-left: auto; }  /* keys wrap from the left; the tab stays right */
+  .ukey { margin: 0 18px 4px 0; font-size: 11px; color: var(--mut); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+  .ukey i { display: inline-block; width: 3px; height: 12px; border-radius: 1px; background: var(--k); margin-left: 6px; }
+  /* the stack key draws the bars as the units do, wider than the edge strips; the colours match on purpose:
+     a source pushes a signal, a modulator pushes control */
+  .ukey.skey { margin: 0 auto 4px 0; gap: 4px 2px; }
+  .ukey .to { margin: 0 1px; }
+  .ukey.skey b { display: inline-block; width: 6px; height: 12px; border-radius: 2px; background: var(--mod); margin-right: 4px; }
+  .ukey.skey b.sig { background: var(--src); }
+  .scoperow.thin label.fade { display: none; }  /* the thin strip draws no fading marks worth tuning */
   .edgebar.top + #units { margin-top: 0; }
   .edgebar.top .edge { border-radius: 8px 8px 0 0; border-top: 1px solid var(--line); border-bottom: none; white-space: nowrap; }
   .edgebar label.fade { display: flex; gap: 6px; align-items: center; color: var(--mut); font-size: 12px; }
@@ -55,8 +84,46 @@
   .chip.on { color: var(--fg); border-color: var(--src); background: color-mix(in srgb, var(--src) 18%, var(--panel)); }
   /* registered this session: dashed and in the control colour, so it can't be read as selected (solid gold) */
   .chip.reg { font-style: italic; border-style: dashed; border-color: color-mix(in srgb, var(--mod) 70%, var(--line)); }
-  #scope.thin { height: 34px; }
-  #scope { cursor: pointer; display: block; margin: 0; width: 100%; height: 118px; background: #07090a; border: 1px solid var(--line); border-radius: 8px; }
+  #scope.thin { height: 34px; }  /* full, it is the bed card's height */
+  /* the tab sits on the scope's top edge and fade under it; the bed card lines up with the scope itself */
+  .scoperow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 10px; align-items: start;
+              grid-template-areas: "tab" "scope" "fade" "bed"; }
+  .scoperow > .scopetab { grid-area: tab; margin: 0 0 -1px; }
+  .scopetab .lab { margin: 0 auto 4px 0; } .scoperow > #scope { grid-area: scope; }
+  .scoperow > .scopefade { grid-area: fade; margin: 4px 0 8px; } .scoperow > #bed { grid-area: bed; }
+  /* side by side only where the scope keeps most of the width; narrower, the same stacking point as audition and EDN */
+  @media (min-width: 900px) { .scoperow { grid-template-columns: minmax(0, 1fr) minmax(0, 560px); grid-template-areas: "tab ." "scope bed" "fade ."; } }
+  #bed { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; height: 122px;
+         display: grid; grid-template-columns: minmax(0, 300px) minmax(150px, 1fr); column-gap: 14px; align-content: start; }
+  #bed > .bar, #bed > label.sl { grid-column: 1; }
+  #bed .meterbox { grid-column: 2; grid-row: 1 / span 4; display: flex; flex-direction: column; height: 108px; }
+  /* a phone: the meters go under the controls */
+  @media (max-width: 640px) { #bed { height: auto; grid-template-columns: minmax(0, 1fr); }
+                              #bed .meterbox { grid-column: 1; grid-row: auto; height: 64px; margin-top: 6px; } }
+  #bed .num { display: none; }
+  #bed #meters { flex: 1; height: auto; gap: 3px; }
+  #bed #meterlbl { gap: 3px; }
+  /* thin: one row, the sliders as number boxes and the meters as a mini strip; the scope takes what is left */
+  @media (min-width: 900px) { .scoperow.thin { grid-template-columns: minmax(0, 1fr) auto; } }
+  .scoperow.thin #bed { height: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 6px; }
+  .scoperow.thin #bed .bar { margin: 0; }
+  .scoperow.thin #bed #mood { flex: 0 1 auto; width: 7em; }
+  .scoperow.thin #bed label.sl { display: flex; gap: 4px; margin: 0; white-space: nowrap; }
+  .scoperow.thin #bed label.sl input[type=range], .scoperow.thin #bed label.sl output { display: none; }
+  /* no spinner: arrow keys and typing still step it, and it saves a third of the box */
+  .scoperow.thin #bed .num { display: inline-block; padding: 1px 3px; height: 22px; font-size: 12px; text-align: right; appearance: textfield; -moz-appearance: textfield; }
+  .scoperow.thin #bed .num::-webkit-inner-spin-button, .scoperow.thin #bed .num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .scoperow.thin #bed .num[data-for=level] { width: 3.5ch; }
+  .scoperow.thin #bed .num[data-for=tension] { width: 6ch; }
+  .scoperow.thin #bed .num[data-for=seed] { width: 5ch; }
+  .scoperow.thin #bed .meterbox { width: 48px; height: auto; }
+  .scoperow.thin #bed #meters { flex: none; height: 20px; margin: 0; gap: 2px; }
+  .scoperow.thin #bed #meterlbl { display: none; }
+  #bed .bar { flex-wrap: nowrap; gap: 6px; margin: 0 0 4px; }
+  #bed #play { min-width: 5em; }
+  #bed #mood { flex: 1; min-width: 0; }
+  #bed label.sl { grid-template-columns: 4.5em 1fr 3ch; margin: 1px 0; font-size: 12px; }
+  #scope { cursor: pointer; display: block; margin: 0; width: 100%; height: 122px; background: #07090a; border: 1px solid var(--line); border-radius: 8px; }
   #play { min-width: 6.5em; border-color: #3d5a47; background: #18241d; }
   #play.on { border-color: var(--src); background: #2a2414; }
   #names { max-height: 220px; overflow: auto; }
@@ -64,6 +131,7 @@
   label.sl output { color: var(--fg); text-align: right; }
   input[type=range] { width: 100%; accent-color: var(--src); }
   #meters { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; height: 54px; align-items: end; }
+  #meters div[title] { cursor: default; }
   #meters div { background: var(--line); border-radius: 3px; position: relative; height: 100%; }
   #meters div i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--out); border-radius: 3px; }
   #meterlbl { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; font-size: 10px; color: var(--mut); text-align: center; }
@@ -74,7 +142,7 @@
   .head label { color: var(--mut); font-size: 13px; display: flex; gap: 6px; align-items: center; }
   .head input[type=number] { width: 6.5em; }
   #units { display: grid; gap: 6px; margin-top: 10px; }
-  .unit { display: grid; grid-template-columns: 3.5ch 5.5em 4.5em 1fr auto; gap: 8px; align-items: center;
+  .unit { display: grid; grid-template-columns: 3.5ch 5.5em 96px 1fr auto; gap: 8px; align-items: center;
           background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--k, var(--line)); border-radius: 8px; padding: 6px 8px; }
   .unit.bad { border-color: var(--err); }
   .unit .ix { color: var(--mut); font-size: 12px; }
@@ -84,7 +152,11 @@
   .unit.dragging .grip { cursor: grabbing; }
   .unit.drop-before { box-shadow: 0 -3px 0 var(--src); }
   .unit.drop-after { box-shadow: 0 3px 0 var(--src); }
-  .unit .stack { display: flex; gap: 2px; align-items: center; }
+  /* a pill sized for the engine's 8-value stack, bottom on the left, so a
+     glance shows how full it is and the outline doesn't jump as it grows */
+  .unit .stack { display: flex; gap: 2px; align-items: center; box-sizing: content-box;
+    min-width: calc(8 * 6px + 7 * 2px); min-height: 12px; padding: 3px 7px;
+    border: 1px solid color-mix(in srgb, var(--mut, #999) 55%, transparent); border-radius: 99px; }
   .unit .stack b { width: 6px; height: 12px; border-radius: 2px; background: var(--mod); }
   .unit .stack b.sig { background: var(--src); }
   .unit .args { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 14px; }
@@ -95,13 +167,13 @@
   .unit .doc { grid-column: 2 / -1; color: var(--mut); font-size: 11px; margin-top: -2px; }
   /* phone: a unit's arguments take a full row under its name and buttons */
   @media (max-width: 560px) {
-    .unit, #units.compact .unit { grid-template-columns: 3.5ch 5.5em 4.5em minmax(0, 1fr) auto; }
+    .unit, #units.compact .unit { grid-template-columns: 3.5ch 5.5em 96px minmax(0, 1fr) auto; }
     .unit .args { grid-column: 1 / -1; grid-row: 2; grid-template-columns: 1fr; }  /* one argument a line, so each slider has room */
     .unit .doc { grid-column: 1 / -1; grid-row: 3; }
   }
   /* compact: a unit to a line, for long patches and palettes */
   #units.compact { gap: 3px; }
-  #units.compact .unit { padding: 2px 6px; gap: 6px; grid-template-columns: 3.5ch 5em 3.5em 1fr auto; border-radius: 6px; }
+  #units.compact .unit { padding: 2px 6px; gap: 6px; grid-template-columns: 3.5ch 5em 82px 1fr auto; border-radius: 6px; }
   #units.compact .unit .doc { display: none; }
   #units.compact .unit select { padding: 1px 4px; font-size: 12px; height: 20px; }
   #units.compact .unit .args { display: flex; flex-wrap: wrap; gap: 0 12px; }
@@ -114,11 +186,22 @@
   #units.compact .unit .args input[type=range] { height: 12px; }
   #units.compact .unit .ops button { padding: 0 5px; font-size: 11px; height: 20px; }
   #units.compact .unit .stack b { height: 9px; width: 5px; }
+  #units.compact .unit .stack { min-width: calc(8 * 5px + 7 * 2px); min-height: 9px; padding: 2px 6px; }
   #pads button { min-width: 2.6em; transition: background .25s, color .25s; }
   /* the bed is running but silent (mute): the mood select breathes, so it's clear the music is there to bring in */
   #mood.quiet { animation: breathe 2.4s ease-in-out infinite; }
   @keyframes breathe { 50% { border-color: var(--src); box-shadow: 0 0 6px -1px var(--src); } }
   #pads button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
+  /* a muted bed is easy to forget, so its chip pulses in amber (a warning, not an error's red) */
+  @keyframes mutedpulse { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 35%, transparent); } }
+  #silent.on { color: var(--amber); border-color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, var(--panel));
+               animation: mutedpulse 1.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { #silent.on { animation: none; } }
+  @keyframes loaded { from { box-shadow: 0 0 0 2px var(--src); background-color: color-mix(in srgb, var(--src) 16%, var(--panel)); } }
+  .loaded { animation: loaded .9s ease-out; }
+  /* looping for good: filled, and marked ↻ */
+  #pads button.forever, .takerow button.forever { background: color-mix(in srgb, var(--src) 28%, var(--panel)); }
+  #pads button.forever::after, .takerow button.forever::after { content: " ↻"; }
   #pads button.hit, #meterlbl span.hit { background: var(--src); color: var(--bg); transition: none; }
   #meterlbl span { transition: background .3s, color .3s; border-radius: 3px; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
@@ -163,36 +246,49 @@
 </head>
 <body>
 <main class="loading">
-<aside>
+<header class="top">
+  <span class="chip guide" id="guidechip" title="the guide: how to use the studio">?</span>
+  <div class="brand">
   <h1>UNDERTONE STUDIO</h1>
   <p class="sub">shape a one-shot, a lead or a palette; hear it; take it away as EDN</p>
+  </div>
+  <div class="kindcol">
+  <div class="lab">KIND</div>
   <div class="bar" id="kinds"></div>
-  <div class="bar"><span class="chip guide" id="guidechip" title="show or hide the how-to">? guide</span></div>
-  <div class="lab">OPEN A <span id="openkind">SHOT</span> <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
-  <p class="hint" id="openhelp" hidden><i>Dashed italic</i> = registered this session. Click opens; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
+  </div>
+  <div class="open">
+  <div class="lab">LOAD A <span id="openkind">SHOT</span> <span class="help" tabindex="0" title="what the names do" onclick="openhelp.hidden = !openhelp.hidden">[?]</span></div>
+  <p class="hint" id="openhelp" hidden><i>Dashed italic</i> = registered this session. Click loads it into the editor below; a built-in becomes your copy on your first edit. Shift-click copies at once.</p>
   <div class="bar" id="names"></div>
+  </div>
   <div id="trackbox" hidden>
     <div class="lab">EDIT A TRACK OF <span id="trackof"></span> <span class="help" tabindex="0" title="what the tracks are" onclick="trackhelp.hidden = !trackhelp.hidden">[?]</span></div>
     <p class="hint" id="trackhelp" hidden>A bed layer (drone to pulse) or a drum lane (kick, clap, shaker, dashed): each is its own patch.</p>
     <div class="bar" id="tracks"></div>
   </div>
+  <div class="stat">
+  <div class="lab">STATUS</div>
+  <div id="status">loading the engine…</div>
+  </div>
+</header>
 
-  <div class="lab">BED</div>
+<section>
+  <!-- the bed's controls sit beside the scope that draws it, its meters at the end -->
+  <div class="scoperow" id="scoperow">
+  <div class="edgebar top scopetab"><span class="lab">SCOPE</span><button id="thinscope" class="edge"></button></div>
+  <canvas id="scope" title="each layer's notes and level, swept left to right; marks fade over a few seconds. Click for the thin strip."></canvas>
+  <div class="edgebar scopefade"><label class="fade" title="how long the scope's marks take to fade">decay <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label></div>
+  <div id="bed">
   <div class="bar"><button id="play" disabled>loading…</button>
     <select id="mood"></select>
     <span class="chip" id="solo" title="hear only the layer being edited">solo</span>
     <span class="chip on" id="silent" title="(m) mute the whole bed: a shot alone, still pitched in the mood's scale">mute</span></div>
-  <label class="sl">level <input type="range" id="level" min="0" max="10" step="1" value="1"><output></output></label>
-  <label class="sl">tension <input type="range" id="tension" min="0" max="1" step="0.0625" value="0"><output></output></label>
-  <label class="sl">seed <input type="range" id="seed" min="1" max="64" step="1" value="1"><output></output></label>
-  <div id="meters"></div><div id="meterlbl"></div>
-  <div class="lab">STATUS</div>
-  <div id="status">loading the engine…</div>
-</aside>
-
-<section>
-  <canvas id="scope" title="each layer's notes and level, swept left to right; marks fade over a few seconds. Click for the thin strip."></canvas>
-  <div class="edgebar"><button id="thinscope" class="edge"></button></div>
+  <label class="sl">level <input type="range" id="level" min="0" max="10" step="1" value="1"><output></output><input type="number" class="num" data-for="level" aria-label="level"></label>
+  <label class="sl">tension <input type="range" id="tension" min="0" max="1" step="0.0625" value="0"><output></output><input type="number" class="num" data-for="tension" aria-label="tension"></label>
+  <label class="sl">seed <input type="range" id="seed" min="1" max="64" step="1" value="1"><output></output><input type="number" class="num" data-for="seed" aria-label="seed"></label>
+  <div class="meterbox"><div id="meters"></div><div id="meterlbl"></div></div>
+  </div>
+  </div>
   <details id="guide">
     <summary>HOW TO USE THE STUDIO</summary>
     <p>Every sound undertone plays is a <b>patch</b>: a short list of units run once per sample, left to right, on a
@@ -200,12 +296,20 @@
     into the mix. The studio edits that list and plays the result as you go.</p>
 
     <h3>WHAT YOU CAN EDIT</h3>
+    <p>All three are patches, which is why they edit alike. What differs is who plays them, and when:</p>
     <ul>
-      <li><b>shot</b>: a one-shot (a hit, a pickup, a footstep). Its gate is in milliseconds. Fire it on a degree of the music's scale.</li>
-      <li><b>lead</b>: the melody voice the generator picks. Its gate is in rows (a row is an eighth note).</li>
-      <li><b>bed palette</b>: the band a mood's bed is made of, everything but the lead: drone, fifth, pad, air, pulse, and a drum kit (kick, clap, shaker).
-        A palette has no melody track; a melody sound is a lead.</li>
+      <li><b>shot</b>: a sound effect (a hit, a pickup, a footstep). The <i>game</i> fires it once, on an event, on a degree of the
+        music's scale so it stays in key. It isn't part of the music: mute, solo and the meters leave it alone. Its gate is in
+        milliseconds, since nothing musical times it.</li>
+      <li><b>lead</b>: the soloist. The <i>music</i> plays it on every melody note. Its gate is in rows, the music's steps
+        (a row is an eighth note).</li>
+      <li><b>bed palette</b>: the backing band, everything but the melody: a patch each for drone, fifth, pad, air and pulse,
+        and for the drum lanes (kick, clap, shaker). The music plays them all at once, so you edit one track at a time.</li>
     </ul>
+    <p>A <b>mood</b> ties them together. It is the arrangement: scales and key, tempo, how loud each layer is and how busy the
+    drums are at each level, the room, and which palette and leads to play. The game moves the mood's
+    <b>level</b> (how deep it is) and <b>tension</b> (how dangerous); the <b>seed</b> picks among the mood's choices. So the music
+    is a mood playing its palette and a lead, and the game's shots sound over it.</p>
 
     <h3>A FIRST SOUND IN A MINUTE</h3>
     <ol>
@@ -219,8 +323,15 @@
     <h3>READING A PATCH</h3>
     <p>The usual voice is <code>env → osc → mul → out</code>: an envelope and an oscillator are pushed, <code>mul</code> multiplies them
     (the envelope shapes the tone), <code>out</code> mixes it. Two such chains in one patch are two layers. The coloured bars after a unit
-    are the stack after it runs: <b style="color:var(--src)">signal</b> (from an osc or pluck) or <b style="color:var(--mod)">control</b>
-    (from an env or lfo). A <b>!</b> means the stack runs dry or overflows there.</p>
+    are the stack after it runs: <b style="color:var(--src)">signal</b> (from an osc, pluck or dust) or <b style="color:var(--mod)">control</b>
+    (from an env or lfo). A <b>!</b> marks a unit the engine refuses (the stack runs dry or overflows there, or a value is out of range); hover it for why.</p>
+    <p>The strip on a unit's left edge says what kind of unit it is:</p>
+    <ul>
+      <li><b style="color:var(--src)">source</b>, which makes a sound: <code>osc</code>, <code>pluck</code>, <code>dust</code>.</li>
+      <li><b style="color:var(--mod)">modulator</b>, which shapes something over time: <code>env</code>, <code>lfo</code>, <code>scale</code>, <code>pitch</code>.</li>
+      <li><b style="color:var(--fx)">effect</b>, which changes the signal: <code>mul</code>, <code>lpf</code>, <code>hpf</code>, <code>svf</code>, <code>drive</code>, <code>crush</code>, <code>comb</code>, <code>room</code>.</li>
+      <li><b style="color:var(--out)">output</b>, which sends it on: <code>out</code>, <code>send</code>, <code>verb</code>.</li>
+    </ul>
     <ul>
       <li><b>modulate</b>: push an <code>lfo</code> or <code>env</code>, then an <code>svf</code> with a nonzero <i>depth</i> pops it to sweep the cutoff;
         <code>pitch</code> pops it to bend the oscillators after it; <code>scale</code> turns it into a range for a tremolo with <code>mul</code>.</li>
@@ -234,7 +345,7 @@
       <li>A lead or palette you edit replaces the bed's own, so you hear it in the music. <b>solo</b> mutes the rest.</li>
       <li><b>mute</b> (on at first) silences the bed (music gain 0) for a shot on its own: the room and delay still ring, and the mood still sets the key its degrees land in. Click it off to hear the music; leads and palettes need it off.</li>
       <li>Change <b>mood, level, tension, seed</b> to hear it in other keys, tempos and densities. The meters show each layer (not shots).</li>
-      <li>Clicking a name opens it. A built-in plays as it is; your first edit makes it your own copy (<code>name-2</code>), since built-in names can't be replaced. <b>Shift-click</b> makes a copy straight away. Sounds you registered are in <i>italic</i>.</li>
+      <li>Clicking a name loads it into the editor. A built-in plays as it is; your first edit makes it your own copy (<code>name-2</code>), since built-in names can't be replaced. <b>Shift-click</b> makes a copy straight away. Sounds you registered are in <i>italic</i>.</li>
     </ul>
 
     <h3>TAKING IT TO A GAME</h3>
@@ -261,18 +372,19 @@
     <span class="chip" id="kitdef" title="leave this lane to the default kit">default kit</span>
   </div>
 
-  <div class="edgebar top">
+  <div class="edgebar top unitsbar">
+  <span class="lab">UNITS</span>
   <div class="head">
-    <label title="the name a game triggers it by; a new name asks before it makes a new sound">name <input type="text" id="name" spellcheck="false"></label>
+    <label title="the name a game triggers it by; a new name asks before it makes a new sound"><span id="namelbl">name</span> <input type="text" id="name" spellcheck="false"></label>
     <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
       <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
   </div>
-    <label class="fade" title="how long the scope's marks take to fade">scope fade <input type="range" id="fade" min="0" max="1" step="0.01"><output id="fadeout"></output></label>
+    <span class="ukey" title="a unit's left edge: what kind of unit it is">edge: <i style="--k:var(--src)"></i>source <i style="--k:var(--mod)"></i>modulator <i style="--k:var(--fx)"></i>effect <i style="--k:var(--out)"></i>output</span>
+    <span class="ukey skey" title="the bars after each unit: the stack after it runs; a source pushes a signal, a modulator pushes control">stack: <i style="--k:var(--src)"></i><span class="to">→</span><b class="sig"></b>signal <i style="--k:var(--mod)"></i><span class="to">→</span><b></b>control</span>
     <button id="compact" class="edge"></button></div>
   <div id="units"></div>
 
-  <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select>
-    <span class="hint">the bars after each unit are its stack: <b style="color:var(--src)">signal</b>, <b style="color:var(--mod)">control</b></span></div>
+  <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select></div>
 
   <div class="audrow"><div class="audcol">
   <div class="lab" id="audlab">AUDITION</div>
@@ -315,6 +427,7 @@ const OPS = {
   env:   { k: "mod", doc: "push an envelope", args: [["attack", 0, 10, "log", "s"], ["decay", .001, 10, "log", "s"], ["sustain", 0, 1], ["release", .001, "rel", "log", "s"]] },
   osc:   { k: "src", doc: "push an oscillator; shape below", shape: true, args: [["transpose", -48, 48, 0, "st"], ["sweep", -48, 48, 0, "st"], ["sweep dec", 0, 5, 0, "s"]] },
   pluck: { k: "src", doc: "push a plucked string", args: [["transpose", -24, 24, 0, "st"], ["feedback", 0, .999]] },
+  dust:  { k: "src", doc: "push sparse random clicks; depth lets tension add more", args: [["rate", 0, 10000, "log", "Hz"], ["bipolar", 0, 1, "int", ["off", "on"]], ["depth", 0, 1]] },
   lfo:   { k: "mod", doc: "push a slow wave, -1..1", args: [["rate", .01, 100, "log", "Hz"], ["shape", 0, 2, "int", ["sine", "tri", "s&h"]]] },
   mul:   { k: "fx", doc: "pop two, push their product", args: [] },
   lpf:   { k: "fx", doc: "one-pole lowpass", args: [["cutoff", 20, 22050, "log", "Hz"]] },
@@ -322,13 +435,15 @@ const OPS = {
   svf:   { k: "fx", doc: "resonant filter; depth ≠ 0 pops a modulator first", args: [["cutoff", 20, 22050, "log", "Hz"], ["res", 0, 1], ["mode", 0, 2, "int", ["low", "band", "high"]], ["depth", -8, 8, 0, "oct"]] },
   drive: { k: "fx", doc: "tanh overdrive", args: [["drive", .1, 20, "log"], ["bias", -1, 1]] },
   crush: { k: "fx", doc: "sample-hold and bit depth", args: [["hold", 50, 44100, "log", "Hz"], ["bits", 1, 16, "int"]] },
+  comb:  { k: "fx", doc: "resonate at the note; negative feedback rings hollow", args: [["transpose", -24, 24, 0, "st"], ["feedback", -.99, .99], ["damp", 0, 1]] },
+  room:  { k: "fx", doc: "resonate at a fixed pitch, whatever the note", args: [["freq", 16, 4000, "log", "Hz"], ["feedback", -.99, .99], ["damp", 0, 1]] },
   scale: { k: "mod", doc: "top·gain + offset (offset only on a control)", args: [["gain", -2, 2], ["offset", -2, 2]] },
   pitch: { k: "mod", doc: "pop m; bend later oscs by m·depth", args: [["depth", -12, 12, 0, "st"]] },
   send:  { k: "out", doc: "add to the delay bus", args: [["amount", 0, 1]] },
   verb:  { k: "out", doc: "add to the reverb bus", args: [["amount", 0, 1]] },
   out:   { k: "out", doc: "pop and mix", args: [["gain", 0, "gain"], ["pan", 0, 1]] },
 };
-const DEFAULT_ARGS = { env: [.005, .3, 0, .2], osc: [0, 0, 0], pluck: [0, .99], lfo: [2, 0], mul: [], lpf: [2000], hpf: [80],
+const DEFAULT_ARGS = { env: [.005, .3, 0, .2], osc: [0, 0, 0], pluck: [0, .99], dust: [8, 0, 0], comb: [12, .95, .4], room: [180, .95, .5], lfo: [2, 0], mul: [], lpf: [2000], hpf: [80],
   svf: [1200, .3, 0, 0], drive: [2, 0], crush: [8000, 8], scale: [.5, .5], pitch: [.3], send: [.2], verb: [.2], out: [.5, .5] };
 // compact units label arguments short; the full name is in the help line
 const SHORT = { attack: "atk", decay: "dec", sustain: "sus", release: "rel", transpose: "tr", sweep: "sw", "sweep dec": "sw.d",
@@ -365,7 +480,7 @@ function buildKinds() {
     const c = el("span", "chip", k === "palette" ? "bed palette" : k); c.dataset.k = k;  // a palette is the bed's band, all but the lead
     // each kind keeps what was being edited, so switching back resumes it
     // rather than opening another copy
-    c.onclick = () => { if (spec) last[kind] = { spec, track, builtin }; kind = k; last[k] ? resume(last[k]) : openFirst(); };
+    c.onclick = () => { if (spec) last[kind] = { spec, track, builtin }; kind = k; last[k] ? resume(last[k]) : openFirst(); flashLoaded(); };
     $("kinds").append(c);
   }
 }
@@ -391,11 +506,16 @@ function buildNames() {
     if (retired[kind].has(n)) continue;
     const c = el("span", "chip" + (registered[kind].has(n) ? " reg" : ""), n);
     c.classList.toggle("on", spec && spec.Name === n);
-    c.onclick = (e) => open(n, e.shiftKey);
+    c.onclick = (e) => { open(n, e.shiftKey); flashLoaded(); };
     $("names").append(c);
   }
   for (const c of $("kinds").children) c.classList.toggle("on", c.dataset.k === kind);
   $("openkind").textContent = kind === "palette" ? "BED PALETTE" : kind.toUpperCase();
+}
+// A click above loads a sound into the editor below, often out of view or
+// looking much like the last one, so the name and the units flash once.
+function flashLoaded() {
+  for (const e of [$("name"), ...$("units").children]) { e.classList.remove("loaded"); void e.offsetWidth; e.classList.add("loaded"); }
 }
 function openFirst() {
   const first = { shot: "chime", lead: "chime", palette: "village" }[kind];
@@ -432,6 +552,7 @@ function render() {
   $("name").value = spec.Name;
   $("regkind").textContent = kind;
   $("gatebox").hidden = kind === "palette";
+  $("namelbl").textContent = `${kind} name`;
   if (kind === "shot") { $("gatelbl").textContent = "gate ms"; $("gate").value = spec.GateMS; $("gate").min = 1; $("gate").max = 10000; }
   if (kind === "lead") { $("gatelbl").textContent = "gate rows"; $("gate").value = spec.Gate; $("gate").min = 1; $("gate").max = 16; }
   gateToRange();
@@ -448,7 +569,7 @@ function render() {
   if (kind === "palette") {
     for (const t of [...TRACKS, ...LANES]) {
       const c = el("span", "chip" + (t === track ? " on" : "") + (LANES.includes(t) ? " lane" : ""), t);
-      c.onclick = () => { track = t; render(); };
+      c.onclick = () => { track = t; render(); flashLoaded(); };
       $("tracks").append(c);
     }
     if (LANES.includes(track)) {
@@ -461,21 +582,21 @@ function render() {
   buildNames();
 }
 
-// stack depth and which slots carry signal after each unit, as buildPatch counts them
+// The stack after each unit, from the engine's own walk (StackTrace), so the
+// bars cannot disagree with what registering the patch accepts. The trace
+// stops where the stack fails, and the units after that get no bars; an
+// argument out of range marks its unit and the walk goes on.
 function stacks(units) {
-  const out = []; let st = [];
-  for (const u of units) {
-    const a = u.Args || [];
-    switch (u.Op) {
-      case "env": case "lfo": st.push(false); break;
-      case "osc": case "pluck": st.push(true); break;
-      case "mul": { const b = st.pop(), x = st.pop(); if (x === undefined) { out.push(null); continue; } st.push(x || b); break; }
-      case "out": case "pitch": st.pop(); break;
-      case "svf": if (a[3]) st.splice(st.length - 2, 1); break;
-    }
-    out.push(st.length > 8 || st.includes(undefined) ? null : [...st]);
-  }
-  return out;
+  const r = JSON.parse(U().stack(JSON.stringify(units)));
+  if (Array.isArray(r)) return r;
+  say("stack: " + r.error, true);
+  return [];
+}
+function drawStack(box, step) {
+  box.replaceChildren();
+  if (!step) return;
+  for (const s of step.Signal) box.append(el("b", s ? "sig" : ""));
+  if (step.Error) { const x = el("span", "hint", "!"); x.title = step.Error; box.append(x); }
 }
 
 function renderUnits() {
@@ -493,8 +614,7 @@ function renderUnits() {
     sel.onchange = () => { u.Op = sel.value; u.Args = [...DEFAULT_ARGS[u.Op]]; u.Shape = u.Op === "osc" ? "sine" : ""; edited(); };
     row.append(sel);
     const stk = el("span", "stack");
-    if (st[i]) for (const s of st[i]) stk.append(el("b", s ? "sig" : ""));
-    else stk.append(el("span", "hint", "!"));
+    drawStack(stk, st[i]);
     row.append(stk);
     const args = el("div", "args");
     if (op && op.shape) {
@@ -566,9 +686,9 @@ function renderAudition() {
   }
   if (shot) { const t = el("button", null, "t"); t.disabled = true; t.title = "the take as pasted: paste takes in TAKE EDN to use it"; $("pads").append(t); }
   const mel = el("button", null, ""); mel.innerHTML = "&#9835;"; mel.id = "melody";
-  mel.title = shot ? "play the xsofy title theme's melody on this shot (again to stop)"
-    : `play the xsofy title theme through the bed's voices, with this ${kind} (again to stop)`;
-  mel.onclick = () => mel.classList.contains("loop") ? stopLoop() : melody(); $("pads").append(mel);
+  mel.title = (shot ? "play the xsofy title theme's melody on this shot"
+    : `play the xsofy title theme through the bed's voices, with this ${kind}`) + ": once; click again while it plays to loop it, again to stop";
+  mel.onclick = () => melodyClick(fire, mel); $("pads").append(mel);
   const x = el("button", null, ""); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat and all sound";
   x.onclick = () => { stopLoop(); setPlaying(false); }; $("pads").append(x);
   $("solo").hidden = shot;
@@ -600,20 +720,31 @@ let melodyTimers = [];
 // A lead or palette plays the theme itself through the engine, voiced by the
 // bed (so by the lead or palette being edited), at the mood's tempo; a shot
 // has no voice in a theme, so its melody is fired note by note at 67 bpm.
-function melody(fireFn = fire, btn = $("melody")) {
-  stopLoop(); btn.classList.add("loop");
+// ♫ cycles: a click plays the theme once; a click while it plays makes it loop
+// (the button turns "forever"); a click then stops it.
+const melodyClick = (fireFn, btn) => btn.classList.contains("forever") ? stopLoop()
+  : btn.classList.contains("loop") ? btn.classList.add("forever") : melody(fireFn, btn);
+// A colour token from :root, so the canvas follows the same palette as the CSS.
+const tokens = {};
+const tok = (n) => tokens[n] ??= getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function melody(fireFn = fire, btn = $("melody"), again = false) {
+  if (again) { clearInterval(themeWatch); themeWatch = 0; melodyTimers = []; } else { stopLoop(); btn.classList.add("loop"); }
+  const end = () => btn.classList.contains("forever") ? melody(fireFn, btn, true) : stopLoop();
   if (kind !== "shot") {
-    audible(); const err = U().theme(JSON.stringify(TITLE)); if (err) return say(err, true);
-    themeWatch = setInterval(() => { if (!U().themePlaying()) stopLoop(); }, 250);
+    // only the first play turns the bed on: a loop's restart keeps whatever
+    // mute or solo the user set meanwhile
+    if (!again) audible();
+    const err = U().theme(JSON.stringify(TITLE)); if (err) return say(err, true);
+    themeWatch = setInterval(() => { if (!U().themePlaying()) end(); }, 250);
     return;
   }
   [...TITLE.map((g) => g.lead).join("")].forEach((c, i) => { if (c !== "0") melodyTimers.push(setTimeout(() => fireFn(+c - 1), i * TITLE_ROW_MS)); });
-  melodyTimers.push(setTimeout(stopLoop, TITLE.length * 16 * TITLE_ROW_MS));
+  melodyTimers.push(setTimeout(end, TITLE.length * 16 * TITLE_ROW_MS));
 }
 function stopLoop() {
   if (themeWatch || themeNote) { clearInterval(themeWatch); themeWatch = 0; themeNote = false; U()?.theme(""); }
   melodyTimers.forEach(clearTimeout); melodyTimers = []; clearInterval(loopTimer); loopDeg = -1;
-  for (const b of document.querySelectorAll("#pads .loop, #takerows .loop")) b.classList.remove("loop"); }
+  for (const b of document.querySelectorAll("#pads .loop, #takerows .loop")) b.classList.remove("loop", "forever"); }
 function loop(d, fireFn = fire, btn = $("pads").children[d]) {
   const again = loopDeg === d && btn.classList.contains("loop"); stopLoop(); if (again) return;
   loopDeg = d; btn.classList.add("loop"); fireFn(d);
@@ -625,6 +756,7 @@ function flash(e) { if (!e) return; e.classList.add("hit"); clearTimeout(e._t); 
 // theme player's lead lane: the bed's lead, the one being edited, the way a
 // game's theme would sound it. The rest of that pattern rests the generated lead.
 let themeNote = false;
+document.addEventListener("focusin", (e) => { if (e.target.type === "number") e.target.dataset.was = e.target.value; });
 function audible() {
   if (!playing) setPlaying(true);
   if (!bedOn || (kind === "palette" && solo)) { bedOn = true; solo = kind === "lead"; bedChips(); }
@@ -669,7 +801,7 @@ function edited(fromSlider) {
   if (kind === "palette" && patch().Name && !LANES.includes(track)) patch().Name = "";  // edited units are no longer the built-in's
   if (kind === "palette" && LANES.includes(track)) patch().Default = false;
   if (!fromSlider) renderUnits();
-  else { const st = stacks(patch().Units); $("units").querySelectorAll(".stack").forEach((s, i) => { s.replaceChildren(); (st[i] || []).forEach((x) => s.append(el("b", x ? "sig" : ""))); }); }
+  else { const st = stacks(patch().Units); $("units").querySelectorAll(".stack").forEach((s, i) => drawStack(s, st[i])); }
   clearTimeout(refireTimer);
   refireTimer = setTimeout(() => commit(true), fromSlider ? 90 : 0);
 }
@@ -926,8 +1058,8 @@ function renderTakeRows() {
           (e, b) => e.shiftKey ? loop(d, fireFn, b) : (stopLoop(), fireFn(d)));
     btn("t", "the take exactly as pasted, key t; shift-click repeats",
         (e, b) => e.shiftKey ? loop(TAKE, fireFn, b) : (stopLoop(), fireFn(TAKE))).classList.add("tk");
-    const mel = btn("♫", "play the xsofy title theme's melody on this take (again to stop)",
-        (e, b) => b.classList.contains("loop") ? stopLoop() : melody(fireFn, b));
+    const mel = btn("♫", "play the xsofy title theme's melody on this take: once; click again while it plays to loop it, again to stop",
+        (e, b) => melodyClick(fireFn, b));
     btn("■ stop", "stop the repeat and all sound", () => { stopLoop(); setPlaying(false); });
     box.append(row);
   });
@@ -1059,8 +1191,12 @@ $("solo").onclick = () => { solo = !solo; if (solo) bedOn = true; bedChips(); };
 // still read in the mood's scale; shots sit above the mute.
 $("silent").onclick = () => { bedOn = !bedOn; if (!bedOn) solo = false; bedChips(); };
 for (const id of ["level", "tension", "seed", "sgain"]) {
-  const r = $(id), o = r.nextElementSibling; o.value = r.value;
-  r.oninput = () => { o.value = r.value; if (id !== "sgain") applyBed(); else showKeyTake(); };
+  const r = $(id), o = r.nextElementSibling, n = document.querySelector(`.num[data-for=${id}]`); o.value = r.value;
+  if (n) { n.min = r.min; n.max = r.max; n.step = r.step; n.value = r.value;
+    // the thin card's number box drives the same slider
+    n.oninput = () => { if (n.value === "" || isNaN(+n.value)) return; r.value = n.value; r.oninput(); };
+    n.onchange = () => { n.value = r.value; r.onchange?.(); }; }
+  r.oninput = () => { o.value = r.value; if (n && document.activeElement !== n) n.value = r.value; if (id !== "sgain") applyBed(); else showKeyTake(); };
   if (id === "seed") r.onchange = () => bedMark("seed", `seed ${r.value}`);  // level and tension are traced instead
 }
 $("mood").onchange = () => { applyBed(); bedMark("mood", $("mood").value); lastDrone = -1; };
@@ -1074,7 +1210,17 @@ addEventListener("keydown", (e) => {
   // space plays or stops the bed (and ends a repeat) rather than scrolling the page
   if (e.key === "m" && !typing && !e.metaKey && !e.ctrlKey) { $("silent").click(); return; }  // m mutes or unmutes the bed
   if (e.key === " " && !typing) { e.preventDefault(); if (playing) { stopLoop(); setPlaying(false); } else setPlaying(true); return; }
-  if (/input|textarea|select/i.test(document.activeElement.tagName)) return;
+  // Enter or Escape leaves a number box, so the next 1-8 auditions instead of
+  // typing into it. Escape backs out first: boxes apply as you type, so the
+  // value from focus is restored and re-applied before the blur commits it.
+  const nb = document.activeElement;
+  if ((e.key === "Enter" || e.key === "Escape") && nb.type === "number") {
+    if (e.key === "Escape" && nb.dataset.was !== undefined && nb.value !== nb.dataset.was) {
+      nb.value = nb.dataset.was; nb.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    nb.blur(); return;
+  }
+  if (typing || e.metaKey || e.ctrlKey || e.altKey) return;  // a focused slider still lets 1-8 fire; a text box keeps its digits
   const d = +e.key;
   if (kind === "shot" && takes[selRow]) {
     if (e.key === "t") return fireTakeRow(selRow, TAKE);
@@ -1083,7 +1229,7 @@ addEventListener("keydown", (e) => {
   if (d >= 1 && d <= 8) fire(d - 1);
 });
 // meters
-for (const l of LAYERS) { $("meters").append(el("div")); $("meters").lastChild.append(el("i")); $("meterlbl").append(el("span", null, l)); }
+for (const l of LAYERS) { $("meters").append(el("div")); $("meters").lastChild.title = l; $("meters").lastChild.append(el("i")); $("meterlbl").append(el("span", null, l)); }
 function meters() {
   // The engine meters a layer before the mix mutes it, so the page drops muted ones itself.
   if (U() && playing) {
@@ -1171,7 +1317,7 @@ function scope() {
   g.font = "10px system-ui"; g.textBaseline = "middle";
   ROWS.forEach((r, i) => {
     const y = top(i), hi = i ? rh : bh;
-    if (!thin) { g.fillStyle = "#8a857680"; g.fillText(r, 6, y + hi / 2); }
+    if (!thin) { g.fillStyle = tok("--mut") + "80"; g.fillText(r, 6, y + hi / 2); }
     if (!thin) { g.fillStyle = i ? "#ffffff08" : "#ffffff14"; g.fillRect(L, y + hi - 1, rw, 1); }
   });
   const inset = thin ? 0.5 : 2;
@@ -1211,11 +1357,18 @@ function scope() {
   const cx = X(t);
   g.fillStyle = "rgba(170,255,150,0.18)"; g.fillRect(cx - 6, 2, 6, h - 4);
   g.fillStyle = "rgba(190,255,170,0.8)"; g.fillRect(cx, 2, 1, h - 4);
+  // The cursor sweeps whether or not anything sounds, so it says which: stopped,
+  // playing, or playing with the bed muted (shots still sound).
+  const [word, col] = !playing ? ["stopped", tok("--mut")] : bedOn ? ["playing", tok("--out")] : ["muted", tok("--amber")];
+  g.font = `${thin ? 9 : 10}px ui-monospace, Menlo, monospace`; g.textBaseline = "bottom";
+  const tw = g.measureText(word).width, tx = cx + 4 + tw > w - 2 ? cx - 4 - tw : cx + 4;
+  g.fillStyle = "#07090acc"; g.fillRect(tx - 2, h - (thin ? 12 : 15), tw + 4, thin ? 11 : 13);
+  g.fillStyle = col; g.fillText(word, tx, h - (thin ? 2 : 3));
 }
 
 // The thin scope is a viewer's preference, kept across visits like compact units.
-const setThin = (on) => { $("scope").classList.toggle("thin", on);
-  $("thinscope").textContent = on ? "▾ expand scope" : "▴ thin scope";
+const setThin = (on) => { $("scope").classList.toggle("thin", on); $("scoperow").classList.toggle("thin", on);
+  $("thinscope").textContent = on ? "▾ expand" : "▴ thin";
   $("thinscope").title = on ? "the full scope, with lane labels" : "the scope as a thin strip without labels (or click the scope)";
   try { localStorage.setItem("studio-thin-scope", on ? "1" : ""); } catch {} };
 $("thinscope").onclick = $("scope").onclick = () => setThin(!$("scope").classList.contains("thin"));
@@ -1228,7 +1381,7 @@ $("fade").oninput = () => setFade(0.3 * 100 ** +$("fade").value);
 window.undertoneStudioFailed = (msg) => say("audio failed: " + msg, true);
 // Compact rows are a viewer's preference, kept across visits.
 const setCompact = (on) => { $("units").classList.toggle("compact", on); if (spec) renderUnits();
-  $("compact").textContent = on ? "▾ expand units" : "▴ compact units";
+  $("compact").textContent = on ? "▾ expand" : "▴ shrink";
   $("compact").title = on ? "full units: each argument with its name and slider" : "compact units: one line each";
   try { localStorage.setItem("studio-compact", on ? "1" : ""); } catch {} };
 try { setCompact(localStorage.getItem("studio-compact") === "1"); } catch { setCompact(false); }

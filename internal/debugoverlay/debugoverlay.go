@@ -12,6 +12,9 @@
 // stall that empties the queue also stops the sampling until the pump has
 // refilled it.
 //
+// × closes the panel to a small debug tab in the same corner, which reopens
+// it; the counts go on meanwhile, and the tab turns red as the panel would.
+//
 // copy puts the panel's numbers on the clipboard with the time, the page and
 // the browser, as plain text to paste into a PR or an issue.
 //
@@ -55,10 +58,34 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 	box.Set("id", "undertone-debug")
 	// Top right, clear of a notch: the demos dock their own controls at the
 	// bottom on a phone.
-	box.Get("style").Set("cssText", "position:fixed;z-index:9999;"+
-		"top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));"+
-		"font:12px/1.4 ui-monospace,Menlo,monospace;white-space:pre;padding:8px 10px;"+
-		"border-radius:6px;background:rgba(0,0,0,.78);color:#e8e8e8;pointer-events:auto")
+	const corner = "position:fixed;z-index:9999;" +
+		"top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));" +
+		"font:12px/1.4 ui-monospace,Menlo,monospace;border-radius:6px;" +
+		"background:rgba(0,0,0,.78);color:#e8e8e8;pointer-events:auto;"
+	box.Get("style").Set("cssText", corner+"white-space:pre;padding:8px 28px 8px 10px")
+	// × closes the panel to tab, which reopens it; counting goes on meanwhile
+	closeBtn := doc.Call("createElement", "button")
+	closeBtn.Set("textContent", "×")
+	closeBtn.Set("title", "close; the debug tab reopens it")
+	closeBtn.Get("style").Set("cssText", "position:absolute;top:2px;right:4px;padding:0 6px;"+
+		"font:16px/1.2 sans-serif;color:inherit;background:none;border:0;cursor:pointer")
+	tab := doc.Call("createElement", "button")
+	tab.Set("id", "undertone-debug-tab")
+	tab.Set("textContent", "debug")
+	tab.Set("title", "reopen the debug panel")
+	tab.Get("style").Set("cssText", corner+"display:none;padding:4px 8px;border:0;cursor:pointer")
+	open := func(o bool) {
+		show(box, o)
+		show(tab, !o)
+	}
+	closeBtn.Call("addEventListener", "click", js.FuncOf(func(js.Value, []js.Value) any {
+		open(false)
+		return nil
+	}))
+	tab.Call("addEventListener", "click", js.FuncOf(func(js.Value, []js.Value) any {
+		open(true)
+		return nil
+	}))
 	text := doc.Call("createElement", "div")
 	text.Set("title", "tap to fold or unfold")
 	text.Get("style").Set("cursor", "pointer")
@@ -75,8 +102,8 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 	manual := doc.Call("createElement", "textarea")
 	manual.Set("readOnly", true)
 	manual.Get("style").Set("cssText", "display:none;margin-top:6px;width:30em;max-width:80vw;height:10em;font:inherit")
-	box.Call("append", text, buttons, manual)
-	doc.Get("body").Call("append", box)
+	box.Call("append", closeBtn, text, buttons, manual)
+	doc.Get("body").Call("append", box, tab)
 
 	var (
 		base    counts    // counters at the last reset
@@ -133,13 +160,9 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 	}))
 	fold := func(f bool) {
 		folded.Store(f)
-		display := ""
+		show(buttons, !f)
 		if f {
-			display = "none"
-		}
-		buttons.Get("style").Set("display", display)
-		if f {
-			manual.Get("style").Set("display", "none")
+			show(manual, false)
 		}
 	}
 	text.Call("addEventListener", "click", js.FuncOf(func(js.Value, []js.Value) any {
@@ -181,6 +204,7 @@ func Show(syn *engine.Synth, player func() *webaudio.Player) {
 				color = "#ff8a80"
 			}
 			text.Get("style").Set("color", color)
+			tab.Get("style").Set("color", color) // a closed panel still shows trouble
 			js.Global().Set("__undertoneDebug", js.ValueOf(map[string]any{
 				"underruns": d.underruns, "over": d.over, "reads": d.reads,
 				"slowestMs": ms(now.slowest), "queuedMs": ms(now.queued), "lowestQueuedMs": ms(lowest),
@@ -251,6 +275,15 @@ func header() string {
 		time.Now().Format("2006-01-02 15:04:05"),
 		loc.Get("pathname").String(), loc.Get("search").String(),
 		g.Get("navigator").Get("userAgent").String())
+}
+
+// show displays el, or hides it.
+func show(el js.Value, on bool) {
+	display := "none"
+	if on {
+		display = ""
+	}
+	el.Get("style").Set("display", display)
 }
 
 func ms(d time.Duration) float64 {

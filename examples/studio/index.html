@@ -698,8 +698,9 @@ function renderAudition() {
   mel.title = (shot ? "play the xsofy title theme's melody on this shot"
     : `play the xsofy title theme through the bed's voices, with this ${kind}`) + ": once; click again while it plays to loop it, again to stop";
   mel.onclick = () => melodyClick(fire, mel); $("pads").append(mel);
-  const x = el("button", null, ""); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat and all sound";
-  x.onclick = () => { stopLoop(); setPlaying(false); }; $("pads").append(x);
+  const x = el("button", null, ""); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat or the theme; the bed plays on (space stops it)";
+  // only what audition started: the bed is play's, and stopping it here lost the mix being auditioned against
+  x.onclick = () => stopLoop(); $("pads").append(x);
   $("solo").hidden = shot;
   $("takeednbox").hidden = !shot;
   renderTakeRows();
@@ -1069,7 +1070,7 @@ function renderTakeRows() {
         (e, b) => e.shiftKey ? loop(TAKE, fireFn, b) : (stopLoop(), fireFn(TAKE))).classList.add("tk");
     const mel = btn("♫", "play the xsofy title theme's melody on this take: once; click again while it plays to loop it, again to stop",
         (e, b) => melodyClick(fireFn, b));
-    btn("■ stop", "stop the repeat and all sound", () => { stopLoop(); setPlaying(false); });
+    btn("■ stop", "stop the repeat or the theme; the bed plays on (space stops it)", () => stopLoop());
     box.append(row);
   });
   selectRow(Math.min(Math.max(selRow, 0), takes.length - 1));

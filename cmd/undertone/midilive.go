@@ -26,8 +26,6 @@ type midiSink interface {
 // due.
 const liveAhead = 60 * time.Millisecond
 
-// playMIDILive renders s in real time, without audio, and sends its notes
-// to a virtual MIDI source until interrupted.
 // liveChannels are the channels -midi-live sends, all of them unless -layer
 // names some: a receiver that plays every channel on one instrument, as Slab
 // does, gets one clean part rather than the whole mix piled on it.
@@ -61,6 +59,8 @@ func setLayers(list string) error {
 	return nil
 }
 
+// playMIDILive renders s in real time, without audio, and sends its notes
+// to a virtual MIDI source until interrupted.
 func playMIDILive(s *engine.Synth, p engine.Params, desc string) error {
 	out, err := openVirtualSource("undertone")
 	if err != nil {
@@ -86,6 +86,7 @@ func playMIDILive(s *engine.Synth, p engine.Params, desc string) error {
 		case <-tick.C:
 		}
 		now := int64(time.Since(start).Seconds() * engine.SampleRate)
+		start, now = resync(start, now, s.Frames())
 		for s.Frames() < now+ahead {
 			t.Read(buf)
 		}
@@ -109,6 +110,22 @@ func playMIDILive(s *engine.Synth, p engine.Params, desc string) error {
 		}
 		t.m.out = append(t.m.out[:0], t.m.out[n:]...)
 	}
+}
+
+// maxLag is how far the clock may run ahead of the synth before playback
+// counts as stalled rather than late.
+const maxLag = engine.SampleRate / 4
+
+// resync handles a stall (ctrl-Z, a debugger, a long pause): the clock has
+// run on while nothing rendered. Rendering the gap would send every note
+// missed in one burst, and block ctrl-C until it was done, so the clock moves
+// up to where the music stopped instead, and it resumes as if paused.
+func resync(start time.Time, now, rendered int64) (time.Time, int64) {
+	lag := now - rendered
+	if lag <= maxLag {
+		return start, now
+	}
+	return start.Add(time.Duration(float64(lag) / engine.SampleRate * float64(time.Second))), rendered
 }
 
 // allOff ends the notes still sounding and sends all-notes-off on each

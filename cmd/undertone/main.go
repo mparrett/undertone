@@ -52,6 +52,10 @@ func main() {
 	vu := flag.String("vu", "bars", "meter style: bars | compact (one cell per band) | tall (two cells, 2x range)")
 	flag.Parse()
 
+	if *layer != "" && !*midiLive {
+		fmt.Fprintln(os.Stderr, "-layer filters -midi-live only; a -midi-file has a track per layer to mute")
+		os.Exit(2)
+	}
 	if _, ok := engine.DeriveMood(*mood, 0, 0, 0); !ok {
 		fmt.Fprintf(os.Stderr, "unknown mood %q; want one of: %s\n", *mood, strings.Join(engine.MoodNames(), ", "))
 		os.Exit(2)

@@ -1204,6 +1204,23 @@ type Params struct {
 	// draws are those of the full mix; zeroing a density or gain instead would
 	// change what every other layer plays.
 	Mute Layers
+
+	// LeadDB, PadDB and BassDB trim the lead, the pad and a theme's grid bass,
+	// in dB, to balance a mix without re-authoring a patch. They are offsets,
+	// not gains, so that 0, the value of every caller that never sets one,
+	// plays exactly as before. They scale each note as it is struck rather
+	// than a voice at the mix, because the grid bass plays on the fifth's
+	// voice; SetParametersNow fades notes already sounding to the new level.
+	LeadDB, PadDB, BassDB float64
+}
+
+// dbGain is a trim in dB as a gain factor; 0 dB returns exactly 1, so an
+// untrimmed note's gain is the same float it always was.
+func dbGain(db float64) float64 {
+	if db == 0 {
+		return 1
+	}
+	return math.Pow(10, db/20)
 }
 
 // Layers is a set of the music's layers, one bit each.
@@ -1409,7 +1426,7 @@ func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 			// open voicing pentatonic music uses: root, third and sixth in
 			// major pentatonic, a stack of fourths in minor.
 			deg := []int{0, 2, 4}[r.n(3)]
-			out[2][row] = trackRow{chord + p.Scale[deg], 0.7, 6, p.Palette.Pad}
+			out[2][row] = trackRow{chord + p.Scale[deg], 0.7 * dbGain(p.PadDB), 6, p.Palette.Pad}
 		}
 	}
 	// The lead starts an octave above the chord and walks between the
@@ -1421,7 +1438,7 @@ func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 		if r.f() < p.LeadDensity {
 			deg += r.n(5) - 2
 			deg = max(3, min(deg, 2*n+3))
-			out[3][i] = trackRow{chord + scaleTone(p.Scale, deg) + p.LeadLift, 0.55 * leadGain(p.LeadName), p.LeadGate, p.Palette.Lead}
+			out[3][i] = trackRow{chord + scaleTone(p.Scale, deg) + p.LeadLift, 0.55 * leadGain(p.LeadName) * dbGain(p.LeadDB), p.LeadGate, p.Palette.Lead}
 		}
 	}
 	// Without a lead the walk is still drawn, so the pulse below draws the
@@ -2212,6 +2229,13 @@ func (p Params) sanitized() Params {
 	}
 	if p.LeadGate < 1 {
 		p.LeadGate = 1
+	}
+	// a trim past +12 dB would clip the mix; under -60 dB it is silence anyway
+	for _, d := range []*float64{&p.LeadDB, &p.PadDB, &p.BassDB} {
+		if *d != *d {
+			*d = 0
+		}
+		*d = max(-60, min(*d, 12))
 	}
 	if !(p.DrumGain >= 0) {
 		p.DrumGain = 0

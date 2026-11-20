@@ -187,6 +187,16 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	flt(lgm, "drum-gain", &p.DrumGain)
 	flt(lgm, "drum-busy", &p.DrumBusy)
 	flt(lgm, "swing", &p.Swing)
+	flt(lgm, "lead-db", &p.LeadDB)
+	flt(lgm, "pad-db", &p.PadDB)
+	flt(lgm, "bass-db", &p.BassDB)
+	if v := at(lgm, "mute"); v != vm.NIL { // absent keeps the current mute, as every key does
+		m, err := muteLayers(v)
+		if err != nil {
+			return err
+		}
+		p.Mute = m
+	}
 	if s, ok := kwStr(lgm, "lead"); ok {
 		if s == "none" {
 			// As a lead-less mood derives: no name, so the generator plays
@@ -587,6 +597,31 @@ func unitSpecs(v vm.Value) ([]engine.UnitSpec, error) {
 
 func at(m *vm.PersistentMap, k string) vm.Value {
 	return m.ValueAtOr(vm.Keyword(k), vm.NIL)
+}
+
+// muteLayers reads :mute, a vector of layer names; [] mutes none. An
+// unknown name is an error rather than ignored, since a typo would leave
+// the layer playing that the caller meant to silence.
+func muteLayers(v vm.Value) (engine.Layers, error) {
+	vec, ok := asVec(v)
+	if !ok {
+		return 0, fmt.Errorf(":mute wants a vector of layer names, got %v", v)
+	}
+	var m engine.Layers
+	for _, e := range vec {
+		name, _ := e.(vm.Keyword)
+		l, ok := muteNames[string(name)]
+		if !ok {
+			return 0, fmt.Errorf(":mute: unknown layer %v (drone fifth pad lead air pulse drums)", e)
+		}
+		m |= l
+	}
+	return m, nil
+}
+
+var muteNames = map[string]engine.Layers{
+	"drone": engine.LayerDrone, "fifth": engine.LayerFifth, "pad": engine.LayerPad, "lead": engine.LayerLead,
+	"air": engine.LayerAir, "pulse": engine.LayerPulse, "drums": engine.LayerDrums,
 }
 
 // flt accepts both lg ints and floats, so a derivation may write :bpm 60.

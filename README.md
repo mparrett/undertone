@@ -289,6 +289,16 @@ lg:
 (undertone/trigger {:shot :footstep :gain 0.3 :pan 0.4})
 ```
 
+A map sets only the keys it names; the rest keep their values. To balance
+the mix, `:lead-db`, `:pad-db` and `:bass-db` (a theme's grid bass) trim
+those layers in dB, 0 being as authored, and `:mute` silences layers by
+name (`[:lead :drums]`; `[]` unmutes). With `set-parameters-now`, notes
+already sounding fade to the new level.
+
+```clojure
+(undertone/set-parameters-now {:lead-db -3 :bass-db 2})
+```
+
 The `undertone.ambience` namespace that derives full parameter maps from
 `(seed, depth, tension)` comes with the import, as above; its source is
 `letgo/lg/ambience.lg`.

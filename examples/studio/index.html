@@ -48,9 +48,12 @@
   /* the units' tab row: the tab sits on the first unit's top edge */
   .edgebar.top { margin: 12px 0 -1px; flex-wrap: wrap; align-items: flex-end; row-gap: 8px; }
   /* name and gate on their own line; under them UNITS and the tab, on the units' top edge, as SCOPE has */
-  .edgebar.top .head { flex-basis: 100%; margin-bottom: 8px; }
-  /* UNITS heads the editor: its own line, then name and gate, then the edge key left of the tab */
-  .unitsbar > .lab { flex-basis: 100%; margin: 0; }
+  /* UNITS and its name and gate on the left, AUDITION in the space to their right, so the pads sit by the
+     sound being edited instead of under the whole list; stacked until the editor column is wide enough */
+  .unitstop { display: grid; gap: 0 40px; }
+  @media (min-width: 1180px) { .unitstop { grid-template-columns: auto minmax(0, 1fr); align-items: start; } }
+  .unitstop > * { min-width: 0; }
+  .unitshead .head { margin-bottom: 8px; }
   .unitsbar { justify-content: flex-start; } .unitsbar #compact { margin-left: auto; }  /* keys wrap from the left; the tab stays right */
   .ukey { margin: 0 18px 4px 0; font-size: 11px; color: var(--mut); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
   .ukey i { display: inline-block; width: 3px; height: 12px; border-radius: 1px; background: var(--k); margin-left: 6px; }
@@ -206,10 +209,9 @@
   #meterlbl span { transition: background .3s, color .3s; border-radius: 3px; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
   #takeedn { min-height: 6em; height: 9em; resize: vertical; }
-  /* audition left, the EDN boxes right; stacked until the editor column is wide enough */
-  .audrow { display: grid; gap: 4px 20px; }
-  @media (min-width: 1180px) { .audrow { grid-template-columns: 3fr 2fr; align-items: start; } }
-  .audrow > * { min-width: 0; }
+  /* TAKE EDN and EDN side by side when both show and there's room; EDN alone (a lead, a palette) takes the row */
+  .ednrow { display: grid; gap: 4px 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
+  .ednrow > * { min-width: 0; }
   .takerow button { min-width: 2.6em; transition: background .25s, color .25s; }
   .takerow button.hit { background: var(--src); color: var(--bg); transition: none; }
   .takerow .tlabel { color: var(--mut); font-size: 12px; cursor: pointer; flex-basis: 100%; margin-top: 4px; }
@@ -372,13 +374,25 @@
     <span class="chip" id="kitdef" title="leave this lane to the default kit">default kit</span>
   </div>
 
-  <div class="edgebar top unitsbar">
-  <span class="lab">UNITS</span>
+  <div class="unitstop">
+  <div class="unitshead">
+  <div class="lab">UNITS</div>
   <div class="head">
     <label title="the name a game triggers it by; a new name asks before it makes a new sound"><span id="namelbl">name</span> <input type="text" id="name" spellcheck="false"></label>
     <label id="gatebox" title="how long the note is held before the envelopes release"><span id="gatelbl">gate</span>
       <input type="range" id="gaterange" min="0" max="1000"> <input type="number" id="gate"></label>
   </div>
+  </div>
+  <div class="audcol">
+  <div class="lab" id="audlab">AUDITION <span class="help" tabindex="0" title="what the keys do" onclick="audhint.hidden = !audhint.hidden">[?]</span></div>
+  <div class="bar" id="pads"></div>
+  <div id="takerows"></div>
+  <div class="bar" id="takebox" hidden><button id="playtake"></button><span class="hint" id="takehint"></span></div>
+  <label class="sl" id="gainbox">gain <input type="range" id="sgain" min="0" max="2" step="0.05" value="1"><output></output></label>
+  <p class="hint" id="audhint" hidden></p>
+  </div>
+  </div>
+  <div class="edgebar top unitsbar">
     <span class="ukey" title="a unit's left edge: what kind of unit it is">edge: <i style="--k:var(--src)"></i>source <i style="--k:var(--mod)"></i>modulator <i style="--k:var(--fx)"></i>effect <i style="--k:var(--out)"></i>output</span>
     <span class="ukey skey" title="the bars after each unit: the stack after it runs; a source pushes a signal, a modulator pushes control">stack: <i style="--k:var(--src)"></i><span class="to">→</span><b class="sig"></b>signal <i style="--k:var(--mod)"></i><span class="to">→</span><b></b>control</span>
     <button id="compact" class="edge"></button></div>
@@ -386,14 +400,7 @@
 
   <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select></div>
 
-  <div class="audrow"><div class="audcol">
-  <div class="lab" id="audlab">AUDITION</div>
-  <div class="bar" id="pads"></div>
-  <div id="takerows"></div>
-  <div class="bar" id="takebox" hidden><button id="playtake"></button><span class="hint" id="takehint"></span></div>
-  <label class="sl" id="gainbox">gain <input type="range" id="sgain" min="0" max="2" step="0.05" value="1"><output></output></label>
-  <p class="hint" id="audhint"></p>
-  </div><div class="edncol">
+  <div class="ednrow">
   <div id="takeednbox">
     <div class="lab">TAKE EDN</div>
     <div class="bar"><span class="hint">key <kbd>1</kbd>'s take; paste takes or sfx-board blocks for a row each</span>
@@ -403,12 +410,14 @@
     <p class="hint" id="takeednhint"></p>
   </div>
 
+  <div id="ednbox">
   <div class="lab">EDN</div>
   <div class="bar"><button id="copy">copy</button><button id="save">download</button>
     <span class="hint">the map undertone/register-<span id="regkind">shot</span> takes</span></div>
   <textarea id="edn" spellcheck="false"></textarea>
   <p class="hint" id="ednhint">edit or paste here: it applies after a pause, and asks before it makes a new name</p>
-  </div></div>
+  </div>
+  </div>
 </section>
 </main>
 

@@ -11,9 +11,13 @@
   * { box-sizing: border-box; }
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
          font: 14px/1.45 ui-monospace, Menlo, monospace; }
-  main { max-width: 1100px; margin: 0 auto; display: grid; gap: 24px; }
-  @media (min-width: 900px) { main { grid-template-columns: 290px 1fr; align-items: start; } body { padding: 32px; }
-                              aside { position: sticky; top: 32px; } }
+  main { max-width: 1400px; margin: 0 auto; display: grid; gap: 24px; }
+  /* wide: playing | start from | audition across the top, then tempo | layers |
+     drums, then export; a phone takes the same order in one column */
+  @media (min-width: 900px) { body { padding: 32px; }
+    .top, #sections { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
+    .top > * > :first-child { margin-top: 0; } }
+  #exportbox .bar { max-width: 32em; }
   h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 10px; font-weight: 600; }
   .lab { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 16px 0 6px; font-weight: 600; }
   #status { color: var(--mut); min-height: 1.45em; font-size: 13px; }
@@ -103,17 +107,21 @@
 </head>
 <body>
 <main class="loading">
- <aside>
-  <h1>UNDERTONE · DESIGNER</h1>
-  <div id="status">loading the engine…</div>
-  <div id="dock"><div class="row"><button id="play" disabled>loading…</button><div id="now">–</div></div>
-   <div id="mix" title="tap a layer to mute or unmute it; none, then one layer, solos it"></div></div>
+ <div class="top">
+  <div class="playing">
+   <h1>UNDERTONE · DESIGNER</h1>
+   <div id="status">loading the engine…</div>
+   <div id="dock"><div class="row"><button id="play" disabled>loading…</button><div id="now">–</div></div>
+    <div id="mix" title="tap a layer to mute or unmute it; none, then one layer, solos it"></div></div>
+  </div>
   <div class="ctl">
    <div class="lab">START FROM</div>
    <div class="bar" id="moods"></div>
    <label class="switch" id="buildup" style="margin-left:0;display:inline-flex" title="a mood starts with only its lowest layer; bring the rest in from the mix">
     <input type="checkbox"> build up: start with one layer</label>
-   <details class="aud">
+  </div>
+  <div class="ctl">
+   <details class="aud" id="audition">
     <summary><b>AUDITION</b><span id="audsum"></span></summary>
     <div class="lab">PRESETS <small style="font-weight:400;letter-spacing:0">· each sets level and tension</small></div>
     <div class="bar" id="presets"></div>
@@ -121,15 +129,15 @@
     <label class="sl">tension <input id="tension" type="range" min="0" max="1" step="0.05" value="0"><output id="tensionv">0</output></label>
     <label class="sl">seed <input id="seed" type="range" min="1" max="40" step="1" value="1"><output id="seedv">1</output></label>
    </details>
-   <div id="exportbox">
-    <div class="lab">EXPORT</div>
-    <div class="bar"><input id="name" type="text" aria-label="mood name"></div>
-    <div class="bar"><button id="export">show EDN</button><button id="copy">copy</button></div>
-    <textarea id="edn" readonly hidden></textarea>
-   </div>
   </div>
- </aside>
+ </div>
  <section id="sections"></section>
+ <div class="ctl" id="exportbox">
+  <div class="lab">EXPORT</div>
+  <div class="bar"><input id="name" type="text" aria-label="mood name"></div>
+  <div class="bar"><button id="export">show EDN</button><button id="copy">copy</button></div>
+  <textarea id="edn" readonly hidden></textarea>
+ </div>
 </main>
 
 <script src="wasm_exec.js"></script>
@@ -465,11 +473,10 @@
   }
   $("play").onclick = () => setPlaying(!playing);
 
-  // Export sits in the sidebar on a wide screen; on a phone it follows the
-  // sections, since it is the last thing done.
-  const wide = matchMedia("(min-width: 900px)"), ctl = document.querySelector(".ctl");
-  const placeExport = () => (wide.matches ? ctl : document.querySelector("main")).append($("exportbox"));
-  wide.addEventListener("change", placeExport); placeExport();
+  const wide = matchMedia("(min-width: 900px)");
+  // Audition has a third of the top row to itself on a wide screen, so it
+  // starts open there; on a phone it stays a one-line summary.
+  $("audition").open = wide.matches;
   // On a phone the dock is fixed and the mix may wrap, so the page pads by its height.
   new ResizeObserver(() => { document.body.style.paddingBottom = wide.matches ? "" : `${$("dock").offsetHeight + 16}px`; }).observe($("dock"));
 

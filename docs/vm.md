@@ -16,6 +16,7 @@ floats, in the style of sointu and 4klang.
 | `env` | attack s, decay s, sustain, release s | push the envelope |
 | `osc` | transpose, shape (sine, saw, pulse, noise), sweep semis, sweep decay s | push a sample |
 | `pluck` | transpose, feedback | push a Karplus-Strong string |
+| `pluckraw` | transpose, feedback | `pluck` without its tuning allpass: the original Karplus–Strong on a line of whole samples, sharp by up to most of a tone in the top octave; the string of v0.2.0 and before |
 | `dust` | rate Hz, bipolar 0 or 1, depth | push random single-sample impulses, about rate a second; depth lets grit make them up to three times as busy |
 | `mul` | | pop two, push the product |
 | `lpf`, `hpf` | cutoff Hz | one-pole filter on the top |

@@ -44,6 +44,7 @@ const (
 	opDust         // p: rate Hz, bipolar 0|1, depth 0..1 -> push random impulses
 	opComb         // p: transpose semis, feedback, damp; pop x -> push x resonated at the note
 	opRoom         // p: freq Hz, feedback, damp; pop x -> push x resonated at freq
+	opPluckRaw     // p: transpose semis, feedback; pluck without its tuning -> push sample
 	// comb and room's p[3] is set by buildPatch, not given: 1 when the input
 	// dies with an env, so the ring may keep the voice alive
 )
@@ -609,15 +610,27 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			// validation sees, and exp2 of a huge bend would overflow
 			sp--
 			bend = max(-24, min(stack[sp]*u.p[0], 24))
-		case opPluck:
+		case opPluck, opPluckRaw:
 			// Karplus-Strong: a noise burst circulating in a delay line
 			// the length of the period, averaged (lowpassed) each pass,
 			// with an allpass making up the period's fraction of a sample
 			// (pluckTuning).
+			//
+			// pluckraw is the string as undertone played it to v0.2.0, the
+			// original Karplus-Strong: a line of whole samples and no
+			// allpass, so it plays sharp, by a few cents low down and most
+			// of a tone in the top octave. Kept so a sound made with it can
+			// still be had; TestPluckRawIsV020 holds it to that code.
 			if len(s.ks) == 0 { // a new note: strike the string
 				freq := 440 * math.Pow(2, (float64(v.note)+u.p[0]-69)/12)
 				var n int
-				n, s.k = pluckTuning(freq)
+				if u.op == opPluckRaw {
+					// bounded as a float: converting a period too long for
+					// an int gives a different answer on each architecture
+					n = int(max(2, min(SampleRate/freq, maxPluckLine)))
+				} else {
+					n, s.k = pluckTuning(freq)
+				}
 				// lp is the allpass's state: a legato retrigger keeps lp,
 				// and a new string starts from rest
 				s.lp = 0
@@ -640,6 +653,13 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			x := s.ks[s.kpos]
 			next := s.ks[(s.kpos+1)%len(s.ks)]
 			y := (x + next) * 0.5 * u.p[1]
+			if u.op == opPluckRaw {
+				s.ks[s.kpos] = y
+				s.kpos = (s.kpos + 1) % len(s.ks)
+				stack[sp] = x
+				sp++
+				break
+			}
 			// one-pole allpass, transposed direct form II: a delay of a
 			// fraction of a sample at the fundamental, and gain 1 at every
 			// frequency, so the string decays as it would without it

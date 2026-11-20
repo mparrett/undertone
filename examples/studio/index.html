@@ -327,7 +327,7 @@
     (from an env or lfo). A <b>!</b> marks a unit the engine refuses (the stack runs dry or overflows there, or a value is out of range); hover it for why.</p>
     <p>The strip on a unit's left edge says what kind of unit it is:</p>
     <ul>
-      <li><b style="color:var(--src)">source</b>, which makes a sound: <code>osc</code>, <code>pluck</code>, <code>dust</code>.</li>
+      <li><b style="color:var(--src)">source</b>, which makes a sound: <code>osc</code>, <code>pluck</code>, <code>pluckraw</code>, <code>dust</code>.</li>
       <li><b style="color:var(--mod)">modulator</b>, which shapes something over time: <code>env</code>, <code>lfo</code>, <code>scale</code>, <code>pitch</code>.</li>
       <li><b style="color:var(--fx)">effect</b>, which changes the signal: <code>mul</code>, <code>lpf</code>, <code>hpf</code>, <code>svf</code>, <code>drive</code>, <code>crush</code>, <code>comb</code>, <code>room</code>.</li>
       <li><b style="color:var(--out)">output</b>, which sends it on: <code>out</code>, <code>send</code>, <code>verb</code>.</li>
@@ -427,6 +427,7 @@ const OPS = {
   env:   { k: "mod", doc: "push an envelope", args: [["attack", 0, 10, "log", "s"], ["decay", .001, 10, "log", "s"], ["sustain", 0, 1], ["release", .001, "rel", "log", "s"]] },
   osc:   { k: "src", doc: "push an oscillator; shape below", shape: true, args: [["transpose", -48, 48, 0, "st"], ["sweep", -48, 48, 0, "st"], ["sweep dec", 0, 5, 0, "s"]] },
   pluck: { k: "src", doc: "push a plucked string", args: [["transpose", -24, 24, 0, "st"], ["feedback", 0, .999]] },
+  pluckraw: { k: "src", doc: "pluck untuned: the sharp string of v0.2.0", args: [["transpose", -24, 24, 0, "st"], ["feedback", 0, .999]] },
   dust:  { k: "src", doc: "push sparse random clicks; depth lets tension add more", args: [["rate", 0, 10000, "log", "Hz"], ["bipolar", 0, 1, "int", ["off", "on"]], ["depth", 0, 1]] },
   lfo:   { k: "mod", doc: "push a slow wave, -1..1", args: [["rate", .01, 100, "log", "Hz"], ["shape", 0, 2, "int", ["sine", "tri", "s&h"]]] },
   mul:   { k: "fx", doc: "pop two, push their product", args: [] },
@@ -443,7 +444,7 @@ const OPS = {
   verb:  { k: "out", doc: "add to the reverb bus", args: [["amount", 0, 1]] },
   out:   { k: "out", doc: "pop and mix", args: [["gain", 0, "gain"], ["pan", 0, 1]] },
 };
-const DEFAULT_ARGS = { env: [.005, .3, 0, .2], osc: [0, 0, 0], pluck: [0, .99], dust: [8, 0, 0], comb: [12, .95, .4], room: [180, .95, .5], lfo: [2, 0], mul: [], lpf: [2000], hpf: [80],
+const DEFAULT_ARGS = { env: [.005, .3, 0, .2], osc: [0, 0, 0], pluck: [0, .99], pluckraw: [0, .99], dust: [8, 0, 0], comb: [12, .95, .4], room: [180, .95, .5], lfo: [2, 0], mul: [], lpf: [2000], hpf: [80],
   svf: [1200, .3, 0, 0], drive: [2, 0], crush: [8000, 8], scale: [.5, .5], pitch: [.3], send: [.2], verb: [.2], out: [.5, .5] };
 // compact units label arguments short; the full name is in the help line
 const SHORT = { attack: "atk", decay: "dec", sustain: "sus", release: "rel", transpose: "tr", sweep: "sw", "sweep dec": "sw.d",

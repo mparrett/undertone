@@ -121,7 +121,7 @@
   .scoperow.thin #bed .num::-webkit-inner-spin-button, .scoperow.thin #bed .num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   .scoperow.thin #bed .num[data-for=level] { width: 3.5ch; }
   .scoperow.thin #bed .num[data-for=tension] { width: 6ch; }
-  .scoperow.thin #bed .num[data-for=seed] { width: 5ch; }
+  .scoperow.thin #bed .num[data-for=seed] { width: 9ch; }
   .scoperow.thin #bed .meterbox { width: 48px; height: auto; }
   .scoperow.thin #bed #meters { flex: none; height: 20px; margin: 0; gap: 2px; }
   .scoperow.thin #bed #meterlbl { display: none; }
@@ -472,8 +472,9 @@ const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums"];
 
 let mutedNow = [];
 const last = {};
-function resume(st) { spec = st.spec; track = st.track; builtin = st.builtin; render(); builtin ? preview() : commit(); }
+function resume(st) { spec = st.spec; specKind = kind; track = st.track; builtin = st.builtin; render(); builtin ? preview() : commit(); }
 let builtin = false;  // spec is a built-in, unedited: shown and played, not registered
+let specKind = "";  // the kind spec was opened as: a read-back carries ↺ snapshots only within a sound
 let kind = "shot", spec = null, track = "drone", playing = false, solo = false, bedOn = false;  // the bed starts silent: shots are most of the work
 const registered = { shot: new Set(), lead: new Set(), palette: new Set() };
 // Names renamed away. The engine can't unregister a name, so a renamed sound
@@ -550,7 +551,8 @@ function open(name, copy) {
     for (const t of TRACKS) s[cap(t)] = s[cap(t)] || { Name: "", Units: [] };
     if (!LANES.includes(track) && !TRACKS.includes(track)) track = "drone";
   }
-  spec = s;
+  if (spec && specKind === kind && spec.Name === s.Name) carryShown(spec, s, kind);
+  spec = s; specKind = kind;
   render(); builtin ? preview() : commit();
 }
 function preview() {
@@ -619,6 +621,17 @@ function drawStack(box, step) {
 // nothing extra reaches the engine or the EDN. Taken at first render, which
 // covers opening a sound, an EDN paste and a kind switched back to.
 const shownAs = new WeakMap();
+// A read-back of the sound being edited (an EDN edit applied, the kit
+// default toggled, the same name clicked again) brings new unit objects;
+// they inherit the old ones' snapshots by position, so ↺ still goes back
+// to the sound as opened, not as it was when the edit was read back.
+const patchesOf = (s, k) => k === "palette" ? [...TRACKS.map((t) => s[cap(t)]), ...(s.Kit || [])] : [s];
+function carryShown(from, to, k) {
+  const a = patchesOf(from, k);
+  patchesOf(to, k).forEach((p, i) => (p?.Units || []).forEach((u, j) => {
+    const w = a[i]?.Units?.[j]; if (w && shownAs.has(w)) shownAs.set(u, shownAs.get(w));
+  }));
+}
 function renderUnits() {
   const p = patch(), units = p.Units || (p.Units = []);
   for (const u of units) if (!shownAs.has(u)) shownAs.set(u, { Op: u.Op, Shape: u.Shape, Args: u.Args && [...u.Args] });  // mul and out carry null
@@ -716,8 +729,7 @@ function renderAudition() {
     : `play the xsofy title theme through the bed's voices, with this ${kind}`) + ": once; click again while it plays to loop it, again to stop";
   mel.onclick = () => melodyClick(fire, mel); $("pads").append(mel);
   const x = el("button", null, ""); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat or the theme; the bed plays on (space stops it)";
-  // only what audition started: the bed is play's, and stopping it here lost the mix being auditioned against
-  x.onclick = () => stopLoop(); $("pads").append(x);
+  x.onclick = () => stopAudition(); $("pads").append(x);
   $("solo").hidden = shot;
   $("takeednbox").hidden = !shot;
   renderTakeRows();
@@ -785,9 +797,18 @@ function flash(e) { if (!e) return; e.classList.add("hit"); clearTimeout(e._t); 
 // game's theme would sound it. The rest of that pattern rests the generated lead.
 let themeNote = false;
 document.addEventListener("focusin", (e) => { if (e.target.type === "number") e.target.dataset.was = e.target.value; });
+// What audition switched on by itself, so its stop can switch it back off:
+// the bed the user started, or unmuted, is theirs and plays on. play, space
+// and the bed chips clear these, since then the user has chosen.
+let auditionPlaying = false, auditionBed = false;
 function audible() {
-  if (!playing) setPlaying(true);
-  if (!bedOn || (kind === "palette" && solo)) { bedOn = true; solo = kind === "lead"; bedChips(); }
+  if (!playing) { setPlaying(true); auditionPlaying = true; }
+  if (!bedOn || (kind === "palette" && solo)) { const was = !bedOn; bedOn = true; solo = kind === "lead"; bedChips(); auditionBed = was; }
+}
+function stopAudition() {
+  stopLoop();
+  if (auditionBed) { bedOn = false; solo = false; bedChips(); }
+  if (auditionPlaying) setPlaying(false);
 }
 function fire(d) {
   lastDeg = d;
@@ -796,7 +817,7 @@ function fire(d) {
     const err = U().theme(JSON.stringify([{ lead: String(d + 1), bed: true }])); if (err) return say(err, true);
     flash($("pads").children[d]); return;
   }
-  if (!playing) setPlaying(true);
+  if (!playing) { setPlaying(true); auditionPlaying = true; }
   U().shot(spec.Name, d, +$("sgain").value);
   flash($("pads").children[d]); scopeNote(SHOTS, 60 + d * 2, 1); shotShape(spec.Name, d, +$("sgain").value);
 }
@@ -849,7 +870,7 @@ function applyBed() {
 
 const quietCue = () => $("mood").classList.toggle("quiet", playing && !bedOn);
 function setPlaying(on) {
-  playing = on; quietCue();
+  playing = on; quietCue(); auditionPlaying = false;
   playing ? U().play() : U().stop();
   $("play").classList.toggle("on", playing);
   $("play").innerHTML = playing ? "&#10074;&#10074; stop" : "&#9654; play";
@@ -1089,27 +1110,31 @@ function renderTakeRows() {
         (e, b) => e.shiftKey ? loop(TAKE, fireFn, b) : (stopLoop(), fireFn(TAKE))).classList.add("tk");
     const mel = btn("♫", "play the xsofy title theme's melody on this take: once; click again while it plays to loop it, again to stop",
         (e, b) => melodyClick(fireFn, b));
-    btn("■ stop", "stop the repeat or the theme; the bed plays on (space stops it)", () => stopLoop());
+    btn("■ stop", "stop the repeat or the theme; the bed plays on (space stops it)", () => stopAudition());
     box.append(row);
   });
   selectRow(Math.min(Math.max(selRow, 0), takes.length - 1));
   padNotes();
 }
-// Write each pad's note under its number. A take row's pads move the take's
-// first degree there, so they name the same notes.
+// Write each pad's note under its number. A take row's pad d moves the
+// take's first :degree trigger onto degree d, at that trigger's octave; a
+// take with no :degree doesn't move, so its pads are left unnamed.
 function padNotes() {
   const ns = U()?.padNotes(kind !== "shot");
   const name = (n) => NOTE[n % 12] + (Math.floor(n / 12) - 1);
-  for (const row of [$("pads"), ...$("takerows").children]) {
-    [...row.querySelectorAll("button")].slice(0, 8).forEach((b, d) => {
-      let s = b.querySelector(".pn"); if (!s) b.append(s = el("span", "pn"));
-      s.textContent = ns ? name(ns[d]) : "";
-    });
-  }
+  const label = (row, up) => [...row.querySelectorAll("button")].slice(0, 8).forEach((b, d) => {
+    let s = b.querySelector(".pn"); if (!s) b.append(s = el("span", "pn"));
+    s.textContent = ns && up != null ? name(ns[d] + up) : "";
+  });
+  label($("pads"), 0);
+  [...$("takerows").children].forEach((row, i) => {
+    const first = takes[i]?.trs.find((t) => t.degree != null);
+    label(row, first ? 12 * (first.octave || 0) : null);
+  });
 }
 function fireTakeRow(i, d) {
   const tk = takes[i]; if (!tk) return;
-  if (!playing) setPlaying(true);
+  if (!playing) { setPlaying(true); auditionPlaying = true; }
   const g = +$("sgain").value, first = tk.trs.find((t) => t.degree != null);
   const shift = d === TAKE || !first ? 0 : d - first.degree;
   const trs = tk.trs.map((t) => {
@@ -1218,7 +1243,7 @@ $("gaterange").oninput = () => {
 };
 $("kitnote").onchange = () => { patch().Note = +$("kitnote").value; patch().Default = false; render(); commit(); };
 $("kitdef").onclick = () => { const d = patch(); d.Default = !d.Default; if (d.Default) { d.Name = ""; d.Units = []; d.Note = 0; } open2(); };
-function open2() { commit(); if (kind === "palette" && registered.palette.has(spec.Name)) { const t = track; spec = JSON.parse(U().get("palette", spec.Name)); for (const x of TRACKS) spec[cap(x)] ||= { Name: "", Units: [] }; track = t; render(); } }
+function open2() { commit(); if (kind === "palette" && registered.palette.has(spec.Name)) { const t = track, s = JSON.parse(U().get("palette", spec.Name)); for (const x of TRACKS) s[cap(x)] ||= { Name: "", Units: [] }; carryShown(spec, s, "palette"); spec = s; track = t; render(); } }
 $("addop").onchange = () => {
   const op = $("addop").value; $("addop").value = ""; if (!op) return;
   const p = patch(); p.Units.push({ Op: op, Shape: op === "osc" ? "sine" : "", Args: [...DEFAULT_ARGS[op]] }); edited();
@@ -1227,7 +1252,7 @@ for (const o of Object.keys(OPS)) $("addop").append(el("option", null, o));
 $("play").onclick = () => { setPlaying(!playing); if (playing) applyBed(); };
 // solo and none contradict each other (only this layer vs no bed at all), so
 // at most one is on: turning one on turns the other off.
-const bedChips = () => { $("solo").classList.toggle("on", solo); $("silent").classList.toggle("on", !bedOn); quietCue(); applyBed(); };
+const bedChips = () => { auditionBed = false; $("solo").classList.toggle("on", solo); $("silent").classList.toggle("on", !bedOn); quietCue(); applyBed(); };
 $("solo").onclick = () => { solo = !solo; if (solo) bedOn = true; bedChips(); };
 // No bed: every layer muted. The engine keeps running, so a shot's degree is
 // still read in the mood's scale; shots sit above the mute.
@@ -1246,20 +1271,18 @@ for (const id of ["level", "tension", "seed", "sgain"]) {
 // a JS number rounds past 2^53. The slider follows when the seed is in reach.
 let seedText = $("seed").value;
 {
-  const r = $("seed"), o = r.nextElementSibling, n = document.querySelector(".num[data-for=seed]");
+  const r = $("seed"), n = document.querySelector(".num[data-for=seed]");
   n.type = "text"; n.inputMode = "numeric"; n.title = "any 64-bit seed, a game's too; the slider covers 1-64";
-  const show = () => { o.value = seedText.length > 6 ? seedText.slice(0, 5) + "…" : seedText; o.title = seedText; };
   const slid = r.oninput;
-  r.oninput = () => { seedText = r.value; slid(); n.value = seedText; show(); };
+  r.oninput = () => { seedText = r.value; slid(); n.value = seedText; };
   n.oninput = () => {
     const t = n.value.trim();
     if (!/^-?\d{1,20}$/.test(t) || BigInt(t) < -(2n ** 63n) || BigInt(t) >= 2n ** 64n) return;
     seedText = t; if (+t >= 1 && +t <= 64) r.value = t;
-    show(); applyBed();
+    applyBed();
   };
   n.onchange = () => { n.value = seedText; bedMark("seed", `seed ${seedText}`); };
   r.onchange = () => bedMark("seed", `seed ${seedText}`);
-  show();
 }
 $("mood").onchange = () => { applyBed(); bedMark("mood", $("mood").value); lastDrone = -1; };
 const NOTE = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];

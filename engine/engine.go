@@ -652,19 +652,15 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			}
 			x := s.ks[s.kpos]
 			next := s.ks[(s.kpos+1)%len(s.ks)]
-			y := (x + next) * 0.5 * u.p[1]
-			if u.op == opPluckRaw {
-				s.ks[s.kpos] = y
-				s.kpos = (s.kpos + 1) % len(s.ks)
-				stack[sp] = x
-				sp++
-				break
+			a := (x + next) * 0.5 * u.p[1]
+			if u.op == opPluck {
+				// one-pole allpass, transposed direct form II: a delay of a
+				// fraction of a sample at the fundamental, and gain 1 at every
+				// frequency, so the string decays as it would without it
+				y := a
+				a = s.k*y + s.lp
+				s.lp = flush(y - s.k*a) // recursive, so kept out of subnormals as the svf's state is
 			}
-			// one-pole allpass, transposed direct form II: a delay of a
-			// fraction of a sample at the fundamental, and gain 1 at every
-			// frequency, so the string decays as it would without it
-			a := s.k*y + s.lp
-			s.lp = flush(y - s.k*a) // recursive, so kept out of subnormals as the svf's state is
 			s.ks[s.kpos] = a
 			s.kpos = (s.kpos + 1) % len(s.ks)
 			stack[sp] = x

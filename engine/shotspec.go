@@ -23,7 +23,7 @@ type ShotSpec struct {
 //	env   attack s, decay s, sustain 0..1, release s  -> push envelope
 //	osc   transpose semis, sweep semis, sweep decay s (Shape: sine saw pulse noise) -> push sample
 //	pluck transpose semis, feedback 0..1              -> push a Karplus-Strong string
-//	pluckraw  as pluck, without its tuning: the sharp string of v0.2.0 and before
+//	pluckraw transpose semis, feedback 0..1           -> push the untuned string of v0.2.0
 //	mul                                               pop two, push their product
 //	lpf   cutoff Hz                                   lowpass the top
 //	hpf   cutoff Hz                                   highpass the top

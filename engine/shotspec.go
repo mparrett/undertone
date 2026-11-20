@@ -39,7 +39,8 @@ type ShotSpec struct {
 //	      depth lets the music's tension make them up to 3x as busy
 //	comb  transpose semis, feedback, damp 0..1        resonate the top at the note + transpose
 //	room  freq Hz, feedback, damp 0..1                resonate the top at a fixed frequency
-//	      (comb, room: feedback -0.99..0.99, negative rings hollow, an octave down)
+//	      (comb, room: feedback -0.99..0.99, negative rings hollow, an octave down;
+//	      a signal only, gaining up to 1/(1-|feedback|) at resonance)
 //	out   gain, pan 0..1                              pop and mix
 type UnitSpec struct {
 	Op    string
@@ -163,6 +164,12 @@ func buildPatch(units []UnitSpec, b bounds) (Patch, error) {
 		if err := w.step(u); err != nil {
 			return nil, fmt.Errorf("unit %d (%s): %w", i, us.Op, err)
 		}
+		if (u.op == opComb || u.op == opRoom) && w.gated[w.depth-1] {
+			// its input dies with an env, so its ring is a tail worth
+			// keeping the voice for; one fed by an ungated dust rings on
+			// for as long as the voice does, and must not hold it
+			u.p[3] = 1
+		}
 		envs += b2i(u.op == opEnv)
 		outs += b2i(u.op == opOut)
 		p[i] = u
@@ -181,6 +188,9 @@ type stackWalk struct {
 	// control value (an env or lfo): an offset is DC on a signal, which the
 	// envelope does not shape and which clicks when the voice ends
 	signal [9]bool
+	// whether each slot is an env or a product with one, which falls silent
+	// when the env does
+	gated [9]bool
 }
 
 // step runs one unit over the stack, or says why the unit cannot run there.
@@ -203,15 +213,22 @@ func (w *stackWalk) step(u Unit) error {
 	if u.op == opScale && u.p[1] != 0 && w.signal[w.depth-1] {
 		return fmt.Errorf("an offset on a signal is DC; scale an env or lfo, then mul it in")
 	}
+	if (u.op == opComb || u.op == opRoom) && !w.signal[w.depth-1] {
+		// a resonator's gain is up to 1/(1-|feedback|), 100 at the edge:
+		// on a signal that is its resonance, on an env's level a volume
+		return fmt.Errorf("comb and room resonate a signal, not an env or lfo; mul the env in first or after")
+	}
 	switch u.op {
 	case opEnv, opOsc, opPluck, opLfo, opDust:
 		if w.depth < len(w.signal) {
 			w.signal[w.depth] = u.op == opOsc || u.op == opPluck || u.op == opDust
+			w.gated[w.depth] = u.op == opEnv
 		}
 		w.depth++
 	case opMul:
 		w.depth--
 		w.signal[w.depth-1] = w.signal[w.depth-1] || w.signal[w.depth]
+		w.gated[w.depth-1] = w.gated[w.depth-1] || w.gated[w.depth]
 	case opOut, opPitch:
 		w.depth--
 	case opSvf:

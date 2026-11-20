@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -251,6 +252,125 @@ func TestTextureShotsRegister(t *testing.T) {
 		s.Trigger("texture-"+name, 60, 1, 0.5, 0, 4)
 		if rms := playedRMS(s, 2); !(rms > 1e-4) {
 			t.Errorf("%s played at rms %.2g over 2 s", name, rms)
+		}
+	}
+}
+
+// untilSilent runs v until it goes inactive or secs pass, the gate closing
+// after gate samples, and returns what it played.
+func untilSilent(v *Voice, gate int, secs float64) []float64 {
+	var b sends
+	var out []float64
+	for i := 0; v.active && i < int(secs*SampleRate); i++ {
+		v.gate = i < gate
+		var l, r float64
+		v.run(&l, &r, &b)
+		out = append(out, l+r)
+	}
+	return out
+}
+
+// A ring struck through an env outlives it, and the voice lives until the
+// ring has died away rather than cutting it off loud; a comb fed by dust
+// that no env gates rings as long as it is fed, so it holds the voice no
+// longer than the env after it does.
+func TestRingKeepsItsVoice(t *testing.T) {
+	struck, err := buildPatch([]UnitSpec{
+		{Op: "env", Args: []float64{0.001, 0.4, 0, 0.3}},
+		{Op: "osc", Shape: "noise", Args: []float64{0, 0, 0}},
+		{Op: "mul"},
+		{Op: "room", Args: []float64{110, 0.99, 0}},
+		{Op: "out", Args: []float64{1, 0.5}},
+	}, shotBounds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v Voice
+	v.trigger(struck, 60, 1000, 1, 1)
+	x := untilSilent(&v, burst, 30)
+	if v.active {
+		t.Fatalf("the voice still sounded after 30 s")
+	}
+	peak, last := 0.0, 0.0
+	for i, s := range x {
+		peak = max(peak, math.Abs(s))
+		if i >= len(x)-SampleRate/110 { // the last period
+			last = max(last, math.Abs(s))
+		}
+	}
+	if last > peak*1e-3 {
+		t.Errorf("the voice ended %.2f s in with the ring at %.2g of its peak %.2g, want under -60 dB",
+			float64(len(x))/SampleRate, last/peak, peak)
+	}
+
+	fed, err := buildPatch([]UnitSpec{
+		{Op: "env", Args: []float64{0, 0.01, 0, 0.01}},
+		{Op: "dust", Args: []float64{50, 0, 0}},
+		{Op: "comb", Args: []float64{0, 0.99, 0}},
+		{Op: "mul"},
+		{Op: "out", Args: []float64{1, 0.5}},
+	}, shotBounds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v = Voice{}
+	v.trigger(fed, 60, 1000, 1, 1)
+	if x := untilSilent(&v, burst, 30); len(x) > SampleRate {
+		t.Errorf("a comb fed by ungated dust held its voice %.1f s past an env of 10 ms", float64(len(x))/SampleRate)
+	}
+}
+
+// A legato step down lengthens the line into what an earlier, longer note,
+// or a string in another patch, left there; the ring must not play it.
+func TestCombLegatoDownIgnoresStaleLine(t *testing.T) {
+	p, err := buildPatch(burstInto(UnitSpec{Op: "comb", Args: []float64{0, 0.98, 0.2}}), musicBounds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	play := func(stale float64) []float64 {
+		v := Voice{line: make([]float64, maxPluckLine)}
+		for i := range v.line {
+			v.line[i] = stale
+		}
+		var b sends
+		var out []float64
+		run := func(n int) {
+			for range n {
+				var l, r float64
+				v.run(&l, &r, &b)
+				out = append(out, l+r)
+			}
+		}
+		v.trigger(p, 72, 1000, 1, 1)
+		run(SampleRate / 20)
+		v.trigger(p, 48, 1000, 1, 1) // legato, two octaves down
+		run(SampleRate / 20)
+		return out
+	}
+	clean, dirty := play(0), play(0.9)
+	for i := range clean {
+		if clean[i] != dirty[i] {
+			t.Fatalf("sample %d played %.3g on a line left dirty, %.3g on a clean one", i, dirty[i], clean[i])
+		}
+	}
+}
+
+// A resonator on an env multiplies its level by up to 100; it takes a signal.
+func TestResonatorRefusesControl(t *testing.T) {
+	for _, op := range []string{"comb", "room"} {
+		args := []float64{0, 0.99, 0}
+		if op == "room" {
+			args[0] = 110
+		}
+		_, err := buildPatch([]UnitSpec{
+			{Op: "env", Args: []float64{0, 1, 1, 1}},
+			{Op: op, Args: args},
+			{Op: "osc", Shape: "sine", Args: []float64{0, 0, 0}},
+			{Op: "mul"},
+			{Op: "out", Args: []float64{1, 0.5}},
+		}, shotBounds)
+		if err == nil || !strings.Contains(err.Error(), "resonate a signal") {
+			t.Errorf("%s on an env: %v, want it refused", op, err)
 		}
 	}
 }

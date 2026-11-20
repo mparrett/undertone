@@ -44,6 +44,8 @@ const (
 	opDust         // p: rate Hz, bipolar 0|1, depth 0..1 -> push random impulses
 	opComb         // p: transpose semis, feedback, damp; pop x -> push x resonated at the note
 	opRoom         // p: freq Hz, feedback, damp; pop x -> push x resonated at freq
+	// comb and room's p[3] is set by buildPatch, not given: 1 when the input
+	// dies with an env, so the ring may keep the voice alive
 )
 
 const (
@@ -66,7 +68,7 @@ const maxUnits = 32
 
 // per-voice, per-unit mutable state
 type ustate struct {
-	phase, env, lp, sweep float64
+	phase, env, lp, sweep float64 // comb, room: env follows the ring's level
 	ic2                   float64 // svf: the second integrator (lp holds the first); comb, room: the damping lowpass
 	stage                 int     // env: 0 attack, 1 decay, 2 sustain, 3 release
 	rng                   uint64
@@ -74,7 +76,7 @@ type ustate struct {
 	kpos                  int       // pluck, comb, room: read position; swept svf and bent osc: control-rate counter
 	k                     float64   // cached per-note coefficient: osc phase increment, lpf c, or an allpass's
 	dk                    float64   // swept osc: k's step per sample
-	tick                  int       // swept osc: control-rate counter (kpos is the bend's)
+	tick                  int       // swept osc: control-rate counter (kpos is the bend's); comb, room: the line's length
 	g, g1, g2             float64   // svf, drive, crush: constants derived from grit g; osc: g1 is its bend ratio
 	gset                  bool      // g1 and g2 hold for grit g
 	ko                    float64   // svf: the open its coefficient k was computed at
@@ -150,14 +152,14 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 		if v.line != nil && cap(ks) > 0 && &ks[:1][0] == &v.line[0] {
 			ks = nil
 		}
-		kpos := u.kpos
+		kpos, tick := u.kpos, u.tick
 		if legato {
 			*u = ustate{phase: u.phase, env: u.env, lp: u.lp, ic2: u.ic2, ks: ks}
 		} else {
 			*u = ustate{ks: ks}
 		}
 		if legato && (patch[i].op == opComb || patch[i].op == opRoom) {
-			u.held, u.kpos = true, kpos
+			u.held, u.kpos, u.tick = true, kpos, tick
 		}
 		u.sweep = 1
 		u.rng = seed*2862933555777941757 + uint64(i) + 3037000493
@@ -209,12 +211,13 @@ func (s *ustate) u01() float64 {
 	return float64(s.rng>>11) / (1 << 53)
 }
 
-// level is the voice's loudest envelope times its gain: how much it would
-// be missed if cut.
+// level is the voice's loudest envelope, or ring that keeps it alive,
+// times its gain: how much it would be missed if cut.
 func (v *Voice) level() float64 {
 	l := 0.0
 	for i := range v.units {
-		if v.patch[i].op == opEnv {
+		switch u := v.patch[i]; {
+		case u.op == opEnv, (u.op == opComb || u.op == opRoom) && u.p[3] != 0:
 			l = max(l, v.units[i].env)
 		}
 	}
@@ -685,11 +688,17 @@ func (v *Voice) run(l, r *float64, b *sends) {
 					s.held = false // a fresh line has nothing to carry
 				}
 				if s.held {
+					// a lower note lengthens the line: what lies past the
+					// old length is an earlier note's, or another unit's
+					if n > s.tick {
+						clear(s.ks[s.tick:])
+					}
 					s.kpos %= n
 				} else {
 					clear(s.ks)
-					s.lp, s.ic2, s.kpos = 0, 0, 0
+					s.lp, s.ic2, s.kpos, s.env = 0, 0, 0, 0
 				}
+				s.tick = n
 			}
 			r := s.ks[s.kpos]
 			y := s.k*r + s.lp // allpass, as pluck's
@@ -698,6 +707,15 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			s.ks[s.kpos] = flush(stack[sp-1] + u.p[1]*s.ic2)
 			s.kpos = (s.kpos + 1) % len(s.ks)
 			stack[sp-1] = y
+			// The ring outlives the env that struck it: at feedback 0.99 a
+			// low one takes seconds to fall 60 dB. Cutting it when the env
+			// is spent clicked, so a ring whose input has died with an env
+			// keeps the voice while it is heard. Its level falls by e a
+			// period between peaks, so it doesn't drop out between them.
+			s.env = max(math.Abs(y), s.env*(1-1/float64(len(s.ks))))
+			if u.p[3] != 0 && s.env > 1e-4 {
+				alive = true
+			}
 		case opSend:
 			b.delay += stack[sp-1] * u.p[0] * v.gain
 		case opVerb:

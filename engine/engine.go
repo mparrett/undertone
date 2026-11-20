@@ -26,25 +26,25 @@ const SampleRate = 44100
 // ---- unit VM ----
 
 const (
-	opEnv   = iota // p: attack s, decay s, sustain lvl, release s   -> push env
-	opOsc          // p: transpose semis, shape, sweep semis, sweep decay s -> push sample
-	opMul          // pop a, b -> push a*b
-	opLpf          // p: cutoff Hz; pop x -> push lowpassed x
-	opSend         // p: amount; peek top, add top*amount to delay bus
-	opOut          // p: gain, pan 0..1; pop x -> accumulate to L/R
-	opPluck        // p: transpose semis, feedback; Karplus-Strong string -> push sample
-	opHpf          // p: cutoff Hz; pop x -> push highpassed x
-	opSvf          // p: cutoff Hz, resonance 0..1, mode (0 low, 1 band, 2 high), depth octaves; [pop m;] pop x -> push filtered x
-	opLfo          // p: rate Hz, shape (0 sine, 1 triangle, 2 sample-and-hold) -> push -1..1
-	opDrive        // p: drive, bias -1..1; pop x -> push tanh(drive*x + bias) - tanh(bias)
-	opCrush        // p: hold Hz, bits; pop x -> push x held and quantized
-	opVerb         // p: amount; peek top, add top*amount to the reverb bus
-	opScale        // p: gain, offset; top = top*gain + offset
-	opPitch        // p: depth semis; pop m, bend every later osc by m*depth
-	opDust         // p: rate Hz, bipolar 0|1, depth 0..1 -> push random impulses
-	opComb         // p: transpose semis, feedback, damp; pop x -> push x resonated at the note
-	opRoom         // p: freq Hz, feedback, damp; pop x -> push x resonated at freq
-	opPluckRaw     // p: transpose semis, feedback; pluck without its tuning -> push sample
+	opEnv      = iota // p: attack s, decay s, sustain lvl, release s   -> push env
+	opOsc             // p: transpose semis, shape, sweep semis, sweep decay s -> push sample
+	opMul             // pop a, b -> push a*b
+	opLpf             // p: cutoff Hz; pop x -> push lowpassed x
+	opSend            // p: amount; peek top, add top*amount to delay bus
+	opOut             // p: gain, pan 0..1; pop x -> accumulate to L/R
+	opPluck           // p: transpose semis, feedback; Karplus-Strong string -> push sample
+	opHpf             // p: cutoff Hz; pop x -> push highpassed x
+	opSvf             // p: cutoff Hz, resonance 0..1, mode (0 low, 1 band, 2 high), depth octaves; [pop m;] pop x -> push filtered x
+	opLfo             // p: rate Hz, shape (0 sine, 1 triangle, 2 sample-and-hold) -> push -1..1
+	opDrive           // p: drive, bias -1..1; pop x -> push tanh(drive*x + bias) - tanh(bias)
+	opCrush           // p: hold Hz, bits; pop x -> push x held and quantized
+	opVerb            // p: amount; peek top, add top*amount to the reverb bus
+	opScale           // p: gain, offset; top = top*gain + offset
+	opPitch           // p: depth semis; pop m, bend every later osc by m*depth
+	opDust            // p: rate Hz, bipolar 0|1, depth 0..1 -> push random impulses
+	opComb            // p: transpose semis, feedback, damp; pop x -> push x resonated at the note
+	opRoom            // p: freq Hz, feedback, damp; pop x -> push x resonated at freq
+	opPluckRaw        // p: transpose semis, feedback; pluck without its tuning -> push sample
 	// comb and room's p[3] is set by buildPatch, not given: 1 when the input
 	// dies with an env, so the ring may keep the voice alive
 )

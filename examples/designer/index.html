@@ -501,20 +501,25 @@
     $("play").classList.toggle("on", playing);
     $("play").innerHTML = playing ? "&#10074;&#10074; stop" : "&#9654; play";
     status.textContent = playing ? "playing" : "stopped";
+    if (playing) startMeters();
   }
   $("play").onclick = () => setPlaying(!playing);
 
   // The mix chips' meters, from the engine's per-layer peaks (dry, before
   // muting): a muted layer reads 0 here since you do not hear it. The square
   // root spreads the quiet layers out, as the studio's meters do.
+  // The loop runs only while playing: stopped, it clears the bars and ends.
   const chips = [...document.querySelectorAll("#mix .chip")];
-  (function meters() {
+  let metering = false;
+  function meters() {
     const v = ready && playing ? JSON.parse(undertoneDesigner.levels()) : null;
     chips.forEach((c, i) => {
       c.firstElementChild.style.width = `${!v || muted.has(LAYERS[i]) ? 0 : Math.min(100, Math.sqrt(v[i]) * 140)}%`;
     });
-    requestAnimationFrame(meters);
-  })();
+    metering = !!v;
+    if (metering) requestAnimationFrame(meters);
+  }
+  const startMeters = () => { if (!metering) meters(); };
 
   const wide = matchMedia("(min-width: 900px)"), main = document.querySelector("main");
   // Docked: always on a phone; on a wide screen once the dock's slot has

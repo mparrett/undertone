@@ -145,6 +145,29 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 		}
 		pal = &bank
 	}
+	// The mood's temperament, as derive-spec hands it on: present and nil is
+	// a mood with none, absent keeps the current one. Read before p changes,
+	// like :palette, so a bad entry leaves nothing behind.
+	phr, setPhr := p.MoodPhrasing, lgm.Contains(vm.Keyword("mood-phrasing")) == vm.TRUE
+	if setPhr {
+		var err error
+		if phr, err = phrasingOf(at(lgm, "mood-phrasing")); err != nil {
+			return err
+		}
+	}
+	mem, setMem := p.MoodMemory, lgm.Contains(vm.Keyword("mood-memory")) == vm.TRUE
+	if setMem {
+		var err error
+		if mem, err = memoryOf(at(lgm, "mood-memory")); err != nil {
+			return err
+		}
+	}
+	use := map[string]*bool{"phrasing": &p.UsePhrasing, "memory": &p.UseMemory}
+	for k := range use {
+		if v := at(lgm, k); v != vm.NIL && v != vm.TRUE && v != vm.FALSE {
+			return fmt.Errorf(":%s must be true or false", k)
+		}
+	}
 	mute, setMute := p.Mute, false
 	if v := at(lgm, "mute"); v != vm.NIL { // absent keeps the current mute, as every key does
 		m, err := muteLayers(v)
@@ -204,6 +227,13 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	flt(lgm, "mood-pad-db", &p.MoodPadDB)
 	if setMute {
 		p.Mute = mute
+	}
+	p.MoodPhrasing, p.MoodMemory = phr, mem
+	// the game's switches for the mood's temperament; absent keeps them
+	for k, dst := range use {
+		if v := at(lgm, k); v != vm.NIL {
+			*dst = v == vm.TRUE
+		}
 	}
 	if s, ok := kwStr(lgm, "lead"); ok {
 		if s == "none" {

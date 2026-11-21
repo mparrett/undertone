@@ -65,12 +65,19 @@ type mood struct {
 	// leadDB and padDB trim the lead and the pad, in dB, to balance the
 	// mood; a game's trims add to them (Params.MoodLeadDB).
 	leadDB, padDB float64
+
+	// phrasing and memory are the mood's temperament (motif.go), which a
+	// derive hands on and a host opts into; nil is none. The built-in
+	// moods' come from the temperaments table.
+	phrasing *Phrasing
+	memory   *Memory
 }
 
 var moods = []mood{
 	// Depth darkens: dorian -> aeolian -> phrygian, slower, lower, thicker.
 	{
 		name:     "dungeon",
+		phrasing: builtinPhrasing("dungeon"), memory: builtinMemory("dungeon"),
 		scales:   scalesByDarkness,
 		bpm:      lin(66, -3).atLeast(46),
 		rootBase: 57, rootStep: -1,
@@ -90,6 +97,7 @@ var moods = []mood{
 	// dark room. Level sinks it further and thins what little moves.
 	{
 		name:     "void",
+		phrasing: builtinPhrasing("void"), memory: builtinMemory("void"),
 		scales:   scalesForVoid,
 		bpm:      lin(42, -1).atLeast(34),
 		rootBase: 48, rootStep: -1,
@@ -107,6 +115,7 @@ var moods = []mood{
 	// lydian, higher root, denser lifted bells, breeze instead of rumble).
 	{
 		name:     "overworld",
+		phrasing: builtinPhrasing("overworld"), memory: builtinMemory("overworld"),
 		scales:   scalesByBrightness,
 		bpm:      lin(74, 3),
 		rootBase: 62, rootStep: 1,
@@ -127,6 +136,7 @@ var moods = []mood{
 	// little faster and busier, turning lydian at the top.
 	{
 		name:     "meadow",
+		phrasing: builtinPhrasing("meadow"), memory: builtinMemory("meadow"),
 		scales:   scalesForMeadow,
 		bpm:      lin(88, 2).atMost(100),
 		rootBase: 67, rootStep: 0,
@@ -146,6 +156,7 @@ var moods = []mood{
 	// and the wash thickens.
 	{
 		name:     "aurora",
+		phrasing: builtinPhrasing("aurora"), memory: builtinMemory("aurora"),
 		scales:   scalesForAurora,
 		bpm:      lin(52, 1).atMost(58),
 		rootBase: 69, rootStep: 1,
@@ -164,6 +175,7 @@ var moods = []mood{
 	// the haze fills in a little.
 	{
 		name:     "stratosphere",
+		phrasing: builtinPhrasing("stratosphere"), memory: builtinMemory("stratosphere"),
 		scales:   scalesForAurora,
 		bpm:      lin(46, 1).atMost(52),
 		rootBase: 74, rootStep: 1,
@@ -181,6 +193,7 @@ var moods = []mood{
 	// building to a festival: the shaker fills in, the drums come up.
 	{
 		name:     "village",
+		phrasing: builtinPhrasing("village"), memory: builtinMemory("village"),
 		scales:   scalesForVillage,
 		bpm:      lin(100, 2).atMost(112),
 		rootBase: 62, rootStep: 0,
@@ -206,6 +219,7 @@ var moods = []mood{
 	// envelope with teeth rather than a heartbeat.
 	{
 		name:     "rust",
+		phrasing: builtinPhrasing("rust"), memory: builtinMemory("rust"),
 		scales:   scalesForRust,
 		bpm:      lin(58, -2).atLeast(44),
 		rootBase: 45, rootStep: -1,
@@ -232,6 +246,7 @@ var moods = []mood{
 	// filters opening where rust's close, dorian darkening to phrygian.
 	{
 		name:     "forge",
+		phrasing: builtinPhrasing("forge"), memory: builtinMemory("forge"),
 		scales:   scalesByDarkness,
 		bpm:      lin(88, 2).atMost(98),
 		rootBase: 45, rootStep: 0,
@@ -303,6 +318,9 @@ func (m *mood) derive(seed uint64, level int, tension float64) Params {
 		Swing:       m.swing,
 		MoodLeadDB:  m.leadDB,
 		MoodPadDB:   m.padDB,
+		// shared with the mood row, which nothing edits once built
+		MoodPhrasing: m.phrasing,
+		MoodMemory:   m.memory,
 	}
 	pickLead(&p, m.leads)
 	if len(m.grooves) > 0 {

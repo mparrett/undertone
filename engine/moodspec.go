@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"math"
+	"math/bits"
 	"reflect"
 	"slices"
 	"sort"
@@ -33,6 +34,27 @@ type MoodSpec struct {
 	Open                  Line    // how far level opens (+) or closes (-) the svf filters, clamped to -1..1
 	Room                  Room    // the reverb room; it does not move with level
 	LeadDB, PadDB         float64 // trims in dB that balance the mood; a game's add to them
+	// Phrasing and Memory are the mood's temperament, played when a host
+	// opts in (Params.UsePhrasing, UseMemory); nil is none.
+	Phrasing *Phrasing
+	Memory   *Memory
+}
+
+func clonePhrasing(p *Phrasing) *Phrasing {
+	if p == nil {
+		return nil
+	}
+	c := *p
+	c.Drop = slices.Clone(p.Drop)
+	return &c
+}
+
+func cloneMemory(m *Memory) *Memory {
+	if m == nil {
+		return nil
+	}
+	c := *m
+	return &c
 }
 
 var palettes = map[string]Palette{
@@ -114,6 +136,7 @@ func MoodByName(name string) (MoodSpec, bool) {
 			Drums: m.drums.export(), Busy: m.busy.export(), Swing: m.swing,
 			TenseDrums: m.tenseDrums, Open: m.open.export(), Room: m.room,
 			LeadDB: m.leadDB, PadDB: m.padDB,
+			Phrasing: clonePhrasing(m.phrasing), Memory: cloneMemory(m.memory),
 		}
 		for name, p := range palettes {
 			if reflect.DeepEqual(p, m.palette) {
@@ -165,6 +188,8 @@ func (s MoodSpec) Derive(seed uint64, level int, tension float64) (Params, error
 		grooves: slices.Clone(s.Grooves), drums: s.Drums.internal(), busy: s.Busy.internal(), swing: s.Swing,
 		tenseDrums: s.TenseDrums, open: s.Open.internal(), room: s.Room,
 		leadDB: s.LeadDB, padDB: s.PadDB,
+		// copies, so editing the spec later can't reach a synth playing it
+		phrasing: clonePhrasing(s.Phrasing), memory: cloneMemory(s.Memory),
 	}
 	return m.derive(seed, level, tension), nil
 }
@@ -229,6 +254,13 @@ func (s MoodSpec) EDN() string {
 	if s.PadDB != 0 {
 		fmt.Fprintf(&b, " :pad-db    %s\n", num(s.PadDB))
 	}
+	if s.Phrasing != nil {
+		b.WriteString(s.Phrasing.edn(num))
+	}
+	if m := s.Memory; m != nil {
+		fmt.Fprintf(&b, " :memory    {:restlessness %s :leap %s :return-drift %s :cycle-churn %s}\n",
+			num(m.Restlessness), num(m.Leap), num(m.ReturnDrift), num(m.CycleChurn))
+	}
 	fmt.Fprintf(&b, " :leads     %s", kws(s.Leads))
 	if len(s.Grooves) > 0 {
 		fmt.Fprintf(&b, "\n :grooves   %s\n :drums     %s\n :busy      %s\n :swing     %s",
@@ -238,4 +270,43 @@ func (s MoodSpec) EDN() string {
 		}
 	}
 	return b.String() + "}"
+}
+
+// edn writes the phrasing as a mood entry's :phrasing. A section's colour
+// writes only the fields it sets, and a section with none is left out.
+func (t *Phrasing) edn(num func(float64) string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, " :phrasing  {:phrase-min %d :phrase-max %d :break-chance %s\n", t.PhraseMin, t.PhraseMax, num(t.BreakChance))
+	drop := make([]string, len(t.Drop))
+	for i, l := range t.Drop {
+		drop[i] = ":" + LayerNames()[bits.TrailingZeros8(uint8(l))]
+	}
+	fmt.Fprintf(&b, "             :drop [%s]", strings.Join(drop, " "))
+	var secs []string
+	for sec, sh := range t.Shade {
+		var f []string
+		for _, x := range []struct {
+			k string
+			v float64
+		}{{"open", sh.Open}, {"grit", sh.Grit}, {"dark", sh.Dark}, {"wash", sh.Wash}, {"room", sh.Room},
+			{"echo", sh.Echo}, {"lift", float64(sh.Lift)}, {"busy", sh.Busy}, {"pad", float64(sh.Pad)}} {
+			if x.v != 0 {
+				v := num(x.v)
+				if x.k == "lift" || x.k == "pad" {
+					v = fmt.Sprint(int(x.v))
+				}
+				f = append(f, ":"+x.k+" "+v)
+			}
+		}
+		if sh.Fill {
+			f = append(f, ":fill true")
+		}
+		if len(f) > 0 {
+			secs = append(secs, fmt.Sprintf(":%s {%s}", sectionNames[sec], strings.Join(f, " ")))
+		}
+	}
+	if len(secs) > 0 {
+		fmt.Fprintf(&b, "\n             :shade {%s}", strings.Join(secs, "\n                     "))
+	}
+	return b.String() + "}\n"
 }

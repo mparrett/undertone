@@ -90,6 +90,10 @@ func deriveSpec(a []vm.Value) (vm.Value, error) {
 		// always present, so a mood with no trims clears the last mood's
 		vm.Keyword("mood-lead-db"), vm.Float(p.MoodLeadDB),
 		vm.Keyword("mood-pad-db"), vm.Float(p.MoodPadDB),
+		// the entry's own, read above, so set-parameters reads what moodSpec
+		// checked; nil for a mood with none, which clears the last mood's
+		vm.Keyword("mood-phrasing"), at(m, "phrasing"),
+		vm.Keyword("mood-memory"), at(m, "memory"),
 		vm.Keyword("palette"), palette,
 	}), nil
 }
@@ -103,7 +107,8 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 	if err := retiredKey(m, "bell", "bell-lift"); err != nil {
 		return s, err
 	}
-	known := map[string]bool{"palette": true, "leads": true, "grooves": true, "scales": true, "room": true}
+	known := map[string]bool{"palette": true, "leads": true, "grooves": true, "scales": true, "room": true,
+		"phrasing": true, "memory": true}
 	ints := []struct {
 		k   string
 		dst *int
@@ -179,6 +184,13 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 			return s, fmt.Errorf(":room: %w", err)
 		}
 	}
+	var err error
+	if s.Phrasing, err = phrasingOf(at(m, "phrasing")); err != nil {
+		return s, err
+	}
+	if s.Memory, err = memoryOf(at(m, "memory")); err != nil {
+		return s, err
+	}
 	if v := at(m, "palette"); v != vm.NIL {
 		name, ok := kwStr(m, "palette")
 		if !ok {
@@ -186,7 +198,6 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 		}
 		s.Palette = name
 	}
-	var err error
 	if s.Leads, err = names(m, "leads"); err != nil {
 		return s, err
 	}
@@ -277,4 +288,123 @@ func ints1(v vm.Value) ([]int, bool) {
 		out[i] = int(n)
 	}
 	return out, true
+}
+
+// phrasingOf reads a mood's :phrasing; nil is none. Strict like the rest of
+// an entry: an unknown key, layer or section is an error.
+func phrasingOf(v vm.Value) (*engine.Phrasing, error) {
+	if v == vm.NIL {
+		return nil, nil
+	}
+	m, ok := v.(*vm.PersistentMap)
+	if !ok {
+		return nil, fmt.Errorf(":phrasing must be a map")
+	}
+	var t engine.Phrasing
+	if !integer(m, "phrase-min", &t.PhraseMin) || !integer(m, "phrase-max", &t.PhraseMax) {
+		return nil, fmt.Errorf(":phrasing's :phrase-min and :phrase-max must be integers")
+	}
+	if at(m, "break-chance") != vm.NIL && !flt(m, "break-chance", &t.BreakChance) {
+		return nil, fmt.Errorf(":phrasing's :break-chance must be a number")
+	}
+	if v := at(m, "drop"); v != vm.NIL {
+		vec, ok := asVec(v)
+		if !ok {
+			return nil, fmt.Errorf(":phrasing's :drop must be a vector of layer names")
+		}
+		for _, e := range vec {
+			k, _ := e.(vm.Keyword)
+			l, ok := muteNames[string(k)]
+			if !ok {
+				return nil, fmt.Errorf(":phrasing's :drop: unknown layer %v (drone fifth pad lead air pulse drums)", e)
+			}
+			t.Drop = append(t.Drop, l)
+		}
+	}
+	if v := at(m, "shade"); v != vm.NIL {
+		sm, ok := v.(*vm.PersistentMap)
+		if !ok {
+			return nil, fmt.Errorf(":phrasing's :shade must be a map of sections")
+		}
+		known := map[string]bool{}
+		for i, name := range engine.SectionNames() {
+			known[name] = true
+			if err := shadeOf(at(sm, name), &t.Shade[i]); err != nil {
+				return nil, fmt.Errorf(":phrasing's :shade :%s: %w", name, err)
+			}
+		}
+		if err := onlyKeys(sm, known); err != nil {
+			return nil, fmt.Errorf(":phrasing's :shade: %w", err)
+		}
+	}
+	if err := onlyKeys(m, map[string]bool{"phrase-min": true, "phrase-max": true, "break-chance": true, "drop": true, "shade": true}); err != nil {
+		return nil, fmt.Errorf(":phrasing: %w", err)
+	}
+	return &t, nil
+}
+
+// shadeOf reads one section's colour; an absent field is no change.
+func shadeOf(v vm.Value, sh *engine.Shade) error {
+	if v == vm.NIL {
+		return nil
+	}
+	m, ok := v.(*vm.PersistentMap)
+	if !ok {
+		return fmt.Errorf("must be a map")
+	}
+	known := map[string]bool{"lift": true, "pad": true, "fill": true}
+	for _, f := range []struct {
+		k   string
+		dst *float64
+	}{{"open", &sh.Open}, {"grit", &sh.Grit}, {"dark", &sh.Dark}, {"wash", &sh.Wash}, {"room", &sh.Room}, {"echo", &sh.Echo}, {"busy", &sh.Busy}} {
+		known[f.k] = true
+		if at(m, f.k) != vm.NIL && !flt(m, f.k, f.dst) {
+			return fmt.Errorf(":%s must be a number", f.k)
+		}
+	}
+	for _, f := range []struct {
+		k   string
+		dst *int
+	}{{"lift", &sh.Lift}, {"pad", &sh.Pad}} {
+		if at(m, f.k) != vm.NIL && !integer(m, f.k, f.dst) {
+			return fmt.Errorf(":%s must be an integer", f.k)
+		}
+	}
+	switch at(m, "fill") {
+	case vm.NIL, vm.FALSE:
+	case vm.TRUE:
+		sh.Fill = true
+	default:
+		return fmt.Errorf(":fill must be true or false")
+	}
+	return onlyKeys(m, known)
+}
+
+// memoryOf reads a mood's :memory; nil is none. An absent knob takes
+// engine.NewMemory's default for the restlessness given.
+func memoryOf(v vm.Value) (*engine.Memory, error) {
+	if v == vm.NIL {
+		return nil, nil
+	}
+	m, ok := v.(*vm.PersistentMap)
+	if !ok {
+		return nil, fmt.Errorf(":memory must be a map")
+	}
+	var r float64
+	if at(m, "restlessness") != vm.NIL && !flt(m, "restlessness", &r) {
+		return nil, fmt.Errorf(":memory's :restlessness must be a number")
+	}
+	mem := engine.NewMemory(r)
+	for _, f := range []struct {
+		k   string
+		dst *float64
+	}{{"leap", &mem.Leap}, {"return-drift", &mem.ReturnDrift}, {"cycle-churn", &mem.CycleChurn}} {
+		if at(m, f.k) != vm.NIL && !flt(m, f.k, f.dst) {
+			return nil, fmt.Errorf(":memory's :%s must be a number", f.k)
+		}
+	}
+	if err := onlyKeys(m, map[string]bool{"restlessness": true, "leap": true, "return-drift": true, "cycle-churn": true}); err != nil {
+		return nil, fmt.Errorf(":memory: %w", err)
+	}
+	return &mem, nil
 }

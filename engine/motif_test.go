@@ -69,7 +69,7 @@ func renderFor(p Params, seconds float64) []byte {
 
 func TestMotifSeeded(t *testing.T) {
 	tm, _ := TemperamentFor("rust")
-	p, _ := DeriveMood("rust", 7, 3, 0.5)
+	p, _ := bareMood("rust", 7, 3, 0.5)
 	p.Phrasing, p.Memory = &tm.Phrasing, &tm.Memory
 	a, b := renderFor(p, 10), renderFor(p, 10)
 	if !bytes.Equal(a, b) {
@@ -238,7 +238,7 @@ func BenchmarkMotifBoundary(b *testing.B) {
 // for bit as the generator alone: the motif code doesn't run.
 func TestIdentityPhrasingIsBitExact(t *testing.T) {
 	for _, mood := range []string{"dungeon", "rust", "village"} {
-		p, _ := DeriveMood(mood, 7, 2, 0.4)
+		p, _ := bareMood(mood, 7, 2, 0.4)
 		off := renderFor(p, 30)
 		p.Phrasing = &Phrasing{}
 		if !bytes.Equal(off, renderFor(p, 30)) {
@@ -259,7 +259,7 @@ func TestIdentityPhrasingIsBitExact(t *testing.T) {
 func TestIdentityTrace(t *testing.T) {
 	tm, _ := TemperamentFor("rust")
 	for _, mem := range []*Memory{nil, &tm.Memory} {
-		p, _ := DeriveMood("rust", 7, 2, 0.3)
+		p, _ := bareMood("rust", 7, 2, 0.3)
 		p.Memory = mem
 		s := NewSynth(p)
 		buf := make([]byte, 4096)
@@ -279,7 +279,7 @@ func TestIdentityTrace(t *testing.T) {
 func TestPhrasingKeepsChordsAndLines(t *testing.T) {
 	for _, mood := range []string{"dungeon", "rust", "village"} {
 		tm, _ := TemperamentFor(mood)
-		p, _ := DeriveMood(mood, 7, 2, 0.3)
+		p, _ := bareMood(mood, 7, 2, 0.3)
 		p.Phrasing = &tm.Phrasing
 		p = p.sanitized()
 		var m motifState
@@ -318,7 +318,7 @@ func TestPhrasingKeepsChordsAndLines(t *testing.T) {
 func TestMemoryUnderIdentity(t *testing.T) {
 	for _, mood := range []string{"dungeon", "rust"} {
 		tm, _ := TemperamentFor(mood)
-		p, _ := DeriveMood(mood, 7, 2, 0.3)
+		p, _ := bareMood(mood, 7, 2, 0.3)
 		p.Memory = &tm.Memory
 		p = p.sanitized()
 		var m motifState
@@ -439,10 +439,24 @@ func TestMemoryKnobs(t *testing.T) {
 	}
 }
 
-// A derive hands on the mood's temperament, which plays only when the host
-// opts in: off, the mood sounds exactly as with none; on, exactly as if set
-// directly; and a temperament set directly wins over the mood's.
-func TestMoodTemperamentOptIn(t *testing.T) {
+// bareMood is DeriveMood with the mood's temperament turned off, as every
+// mood played before it was on by default: for tests of the generator, or of
+// one part set directly with nothing of the mood's behind it.
+func bareMood(name string, seed uint64, level int, tension float64) (Params, bool) {
+	p, ok := DeriveMood(name, seed, level, tension)
+	return bare(p), ok
+}
+
+// bare is p with the mood's temperament turned off.
+func bare(p Params) Params {
+	p.NoPhrasing, p.NoMemory = true, true
+	return p
+}
+
+// A derive hands on the mood's temperament, which plays unless the host
+// turns it off: on, exactly as if set directly; off, exactly as a mood with
+// none; and a temperament set directly wins over the mood's.
+func TestMoodTemperamentDefault(t *testing.T) {
 	const n = 20 * SampleRate
 	p, _ := DeriveMood("rust", 7, 2, 0.3)
 	if p.MoodPhrasing == nil || p.MoodMemory == nil {
@@ -451,20 +465,21 @@ func TestMoodTemperamentOptIn(t *testing.T) {
 	tm, _ := TemperamentFor("rust")
 	bare := p
 	bare.MoodPhrasing, bare.MoodMemory = nil, nil
-	off := render(NewSynth(bare), n)
-	if !slices.Equal(render(NewSynth(p), n), off) {
-		t.Fatal("a mood's temperament played without the host opting in")
+	none := render(NewSynth(bare), n)
+	turnedOff := p
+	turnedOff.NoPhrasing, turnedOff.NoMemory = true, true
+	if !slices.Equal(render(NewSynth(turnedOff), n), none) {
+		t.Fatal("a temperament turned off still played")
 	}
 	on := p
-	on.UsePhrasing, on.UseMemory = true, true
 	direct := bare
 	direct.Phrasing, direct.Memory = &tm.Phrasing, &tm.Memory
 	got := render(NewSynth(on), n)
-	if slices.Equal(got, off) {
-		t.Fatal("opting in changed nothing")
+	if slices.Equal(got, none) {
+		t.Fatal("a derived mood played without its temperament")
 	}
 	if !slices.Equal(got, render(NewSynth(direct), n)) {
-		t.Fatal("opting in plays other than the temperament set directly")
+		t.Fatal("the mood's temperament plays other than when set directly")
 	}
 	// a direct Memory (here a frozen one) wins over the mood's
 	frozen := NewMemory(0)
@@ -480,10 +495,9 @@ func TestMoodTemperamentOptIn(t *testing.T) {
 func TestTakenAwayMidPattern(t *testing.T) {
 	for _, off := range []string{"memory", "phrasing", "both"} {
 		p, _ := DeriveMood("rust", 7, 2, 0.3)
-		p.UsePhrasing, p.UseMemory = true, true
 		q := p
-		q.UseMemory = off == "phrasing"
-		q.UsePhrasing = off == "memory"
+		q.NoMemory = off != "phrasing"
+		q.NoPhrasing = off != "memory"
 		// at every second of two minutes, so some land in each section
 		s := NewSynth(p)
 		for range 120 {

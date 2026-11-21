@@ -1,4 +1,4 @@
-render-version 2
+render-version 3
 blip peak=0.25889 lufs=-29.0416 rings=0.12 rms-sum=0.4307
 creak peak=0.17975 lufs=-25.7364 rings=2.90 rms-sum=2.7764
 cry peak=0.19587 lufs=-21.3670 rings=3.00 rms-sum=6.2582
@@ -14,7 +14,7 @@ thunk peak=0.28327 lufs=-24.9357 rings=0.23 rms-sum=0.9034
 tink peak=0.25623 lufs=-22.5787 rings=2.99 rms-sum=4.1896
 twang peak=0.21683 lufs=-30.5447 rings=2.57 rms-sum=0.4996
 zap peak=0.14859 lufs=-26.8268 rings=2.63 rms-sum=1.6185
-bed/dungeon peak=0.50148 lufs=-11.6813 rings=6.00 rms-sum=82.7466
-bed/forge peak=0.61214 lufs=-13.8964 rings=6.00 rms-sum=94.9051
-bed/village peak=0.57476 lufs=-13.3317 rings=6.00 rms-sum=82.1849
-bed/rust peak=0.44749 lufs=-14.6739 rings=6.00 rms-sum=75.3204
+bed/dungeon peak=0.22852 lufs=-17.5398 rings=6.00 rms-sum=40.3659
+bed/forge peak=0.54625 lufs=-13.9594 rings=6.00 rms-sum=60.8114
+bed/village peak=0.47056 lufs=-12.9301 rings=6.00 rms-sum=34.2564
+bed/rust peak=0.39857 lufs=-14.3052 rings=6.00 rms-sum=77.2519

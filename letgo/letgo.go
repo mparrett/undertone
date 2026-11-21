@@ -162,8 +162,10 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 			return err
 		}
 	}
-	use := map[string]*bool{"phrasing": &p.UsePhrasing, "memory": &p.UseMemory}
-	for k := range use {
+	// :phrasing and :memory say whether to play the mood's; the fields say
+	// whether not to
+	off := map[string]*bool{"phrasing": &p.NoPhrasing, "memory": &p.NoMemory}
+	for k := range off {
 		if v := at(lgm, k); v != vm.NIL && v != vm.TRUE && v != vm.FALSE {
 			return fmt.Errorf(":%s must be true or false", k)
 		}
@@ -230,9 +232,9 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	}
 	p.MoodPhrasing, p.MoodMemory = phr, mem
 	// the game's switches for the mood's temperament; absent keeps them
-	for k, dst := range use {
+	for k, dst := range off {
 		if v := at(lgm, k); v != vm.NIL {
-			*dst = v == vm.TRUE
+			*dst = v == vm.FALSE
 		}
 	}
 	if s, ok := kwStr(lgm, "lead"); ok {

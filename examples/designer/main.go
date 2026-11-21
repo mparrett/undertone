@@ -260,12 +260,12 @@ func main() {
 				}
 			}
 			// So is hearing the temperament: the spec carries the mood's, and
-			// the page opts in as a game would. Turning one on or off
+			// the page turns it off as a game would. Turning one on or off
 			// restarts the arc; changing a knob does not.
 			if len(a) > 5 {
 				var hear struct{ Phrasing, Memory bool }
 				_ = json.Unmarshal([]byte(a[5].String()), &hear)
-				p.UsePhrasing, p.UseMemory = hear.Phrasing, hear.Memory
+				p.NoPhrasing, p.NoMemory = !hear.Phrasing, !hear.Memory
 			}
 			syn.SetParametersNow(p)
 			return marshal(map[string]any{

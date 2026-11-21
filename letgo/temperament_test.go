@@ -22,31 +22,31 @@ func TestTemperamentFromLg(t *testing.T) {
 	if p.MoodPhrasing == nil || p.MoodMemory == nil || *p.MoodMemory != tm.Memory || p.MoodPhrasing.BreakChance != tm.Phrasing.BreakChance {
 		t.Fatalf("rust's temperament did not arrive: %+v %+v", p.MoodPhrasing, p.MoodMemory)
 	}
-	if p.UsePhrasing || p.UseMemory {
-		t.Fatal("a mood turned its own temperament on")
+	if p.NoPhrasing || p.NoMemory {
+		t.Fatal("a mood turned its own temperament off")
 	}
-	if _, err := c.Run("(undertone/set-parameters {:phrasing true :memory true})"); err != nil {
+	if _, err := c.Run("(undertone/set-parameters {:phrasing false :memory false})"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.Run("(ambience/score-mood! :dungeon 7 2 0.3)"); err != nil {
 		t.Fatal(err)
 	}
 	dt, _ := engine.TemperamentFor("dungeon")
-	if p := m.params; !p.UsePhrasing || !p.UseMemory || p.MoodMemory == nil || *p.MoodMemory != dt.Memory {
-		t.Fatalf("a mood change lost the switches or kept rust's memory: %v %v %+v", p.UsePhrasing, p.UseMemory, p.MoodMemory)
+	if p := m.params; !p.NoPhrasing || !p.NoMemory || p.MoodMemory == nil || *p.MoodMemory != dt.Memory {
+		t.Fatalf("a mood change lost the switches or kept rust's memory: %v %v %+v", p.NoPhrasing, p.NoMemory, p.MoodMemory)
 	}
-	if _, err := c.Run("(undertone/set-parameters {:memory false})"); err != nil {
+	if _, err := c.Run("(undertone/set-parameters {:memory true})"); err != nil {
 		t.Fatal(err)
 	}
-	if p := m.params; !p.UsePhrasing || p.UseMemory {
-		t.Fatalf(":memory false: phrasing %v memory %v", p.UsePhrasing, p.UseMemory)
+	if p := m.params; !p.NoPhrasing || p.NoMemory {
+		t.Fatalf(":memory true: phrasing off %v memory off %v", p.NoPhrasing, p.NoMemory)
 	}
 	// an entry without them, as every entry before this was
 	if _, err := c.Run("(ambience/score-spec! (dissoc (:village ambience/moods) :phrasing :memory) 7 2 0.3)"); err != nil {
 		t.Fatal(err)
 	}
-	if p := m.params; p.MoodPhrasing != nil || p.MoodMemory != nil || !p.UsePhrasing {
-		t.Fatalf("a mood with none kept the last one's, or lost the switch: %+v %+v %v", p.MoodPhrasing, p.MoodMemory, p.UsePhrasing)
+	if p := m.params; p.MoodPhrasing != nil || p.MoodMemory != nil || !p.NoPhrasing {
+		t.Fatalf("a mood with none kept the last one's, or lost the switch: %+v %+v %v", p.MoodPhrasing, p.MoodMemory, p.NoPhrasing)
 	}
 	// a partial memory takes the defaults for the rest
 	if _, err := c.Run("(ambience/score-spec! (assoc (:village ambience/moods) :memory {:restlessness 0.5 :leap 0.9}) 7 2 0.3)"); err != nil {
@@ -82,7 +82,7 @@ func TestTemperamentRejectsBadInput(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), ":phrasing must be true or false") {
 		t.Fatalf(":phrasing 1: err %v", err)
 	}
-	if m.params.BPM != before.BPM || m.params.UsePhrasing {
+	if m.params.BPM != before.BPM || m.params.NoPhrasing {
 		t.Fatal("a rejected map left changes behind")
 	}
 }

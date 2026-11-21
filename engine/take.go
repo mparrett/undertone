@@ -17,7 +17,7 @@ import (
 // changes with every commit, docs included, and would throw away every cached
 // measurement each time, while a build with a replace directive has no
 // version at all. The golden test is what keeps the number honest.
-const RenderVersion = 2
+const RenderVersion = 3
 
 // MaxTakeSeconds bounds a take's render: a minute of stereo is 10 MB of PCM.
 const MaxTakeSeconds = 60

@@ -141,7 +141,7 @@ func TestPluckLineIsBoundedNotRetuned(t *testing.T) {
 // that leaves it alone must see it as the same note: comparing the voice's
 // bounded note with the pattern's unbounded one restarted it every time.
 func TestOutOfRangeHeldNoteIsNotRestarted(t *testing.T) {
-	p, _ := DeriveMood("dungeon", 7, 5, 0.5)
+	p, _ := bareMood("dungeon", 7, 5, 0.5)
 	p.FifthOffset = 300
 	s := NewSynth(p)
 	playedRMS(s, 1)

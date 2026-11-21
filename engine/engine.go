@@ -1227,14 +1227,15 @@ type Params struct {
 	Memory   *Memory
 
 	// MoodPhrasing and MoodMemory are the mood's own, which a derive sets.
-	// They play only when a host opts in with UsePhrasing and UseMemory, and
-	// then only where Phrasing or Memory is nil. Like the trims, the mood's
-	// and the host's are kept apart, so a mood change brings its own
-	// temperament without turning off what the host turned on.
+	// They play where Phrasing or Memory is nil, unless a host turns them
+	// off with NoPhrasing and NoMemory. Like the trims, the mood's and the
+	// host's are kept apart, so a mood change brings its own temperament
+	// without undoing what the host turned off. Off is the zero value's
+	// opposite so that a mood plays its temperament unless asked not to.
 	MoodPhrasing *Phrasing
 	MoodMemory   *Memory
-	UsePhrasing  bool
-	UseMemory    bool
+	NoPhrasing   bool
+	NoMemory     bool
 }
 
 // dbGain is a trim in dB as a gain factor; 0 dB returns exactly 1, so an
@@ -2311,10 +2312,10 @@ func (p Params) sanitized() Params {
 		p.Open = 0
 	}
 	p.Open = max(-1, min(p.Open, 1))
-	if p.Phrasing == nil && p.UsePhrasing {
+	if p.Phrasing == nil && !p.NoPhrasing {
 		p.Phrasing = p.MoodPhrasing
 	}
-	if p.Memory == nil && p.UseMemory {
+	if p.Memory == nil && !p.NoMemory {
 		p.Memory = p.MoodMemory
 	}
 	if m := p.Memory; m != nil {

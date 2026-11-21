@@ -10,9 +10,9 @@
 ;; The same seed and level give the same ambience byte for byte.
 ;;
 ;; A mood entry may carry a temperament, :phrasing (how its phrases arc) and
-;; :memory (how its lines develop). The derived map hands them on, but they
-;; play only once the game opts in, and the choice outlasts mood changes:
-;;   (undertone/set-parameters {:phrasing true :memory true})
+;; :memory (how its lines develop). The derived map hands them on and they
+;; play; a game turns either off, and the choice outlasts mood changes:
+;;   (undertone/set-parameters {:phrasing false :memory false})
 
 (ns undertone.ambience
   ;; `derive` is the public name for the derivation; core's (hierarchies) is

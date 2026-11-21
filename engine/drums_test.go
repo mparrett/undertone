@@ -282,8 +282,8 @@ func TestDrumStrikeIsFresh(t *testing.T) {
 // SetParametersNow switches the drums at once, as it does swing,
 // rather than leaving the old groove playing out its pattern.
 func TestSetParametersNowSwitchesDrums(t *testing.T) {
-	village, _ := DeriveMood("village", 7, 5, 0)
-	aurora, _ := DeriveMood("aurora", 7, 1, 0)
+	village, _ := bareMood("village", 7, 5, 0)
+	aurora, _ := bareMood("aurora", 7, 1, 0)
 	hits := func(s *Synth) bool {
 		for d := range s.drums {
 			for _, h := range s.drums[d] {

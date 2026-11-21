@@ -34,8 +34,8 @@ type MoodSpec struct {
 	Open                  Line    // how far level opens (+) or closes (-) the svf filters, clamped to -1..1
 	Room                  Room    // the reverb room; it does not move with level
 	LeadDB, PadDB         float64 // trims in dB that balance the mood; a game's add to them
-	// Phrasing and Memory are the mood's temperament, played when a host
-	// opts in (Params.UsePhrasing, UseMemory); nil is none.
+	// Phrasing and Memory are the mood's temperament, played unless a host
+	// turns them off (Params.NoPhrasing, NoMemory); nil is none.
 	Phrasing *Phrasing
 	Memory   *Memory
 }

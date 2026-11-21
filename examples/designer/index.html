@@ -372,12 +372,16 @@
         const odds = el("div", "note odds"); body.append(odds);
         sweeps.push(() => {
           const m = spec.memory; if (!m) return;
+          // A line is decided only on its own chord's turn, so an 8-pattern
+          // hold gives it 8/n turns for an n-chord cycle: 3 is the middle of
+          // the 2-4 a cycle draws. Some changes land as no-ops, so the
+          // untouched odds are a floor.
           const t = +$("tension").value, r = Math.min(1, m.restlessness * (1 + t));
-          odds.textContent = `at tension ${t}: a line gets through an 8-pattern hold untouched ${pct((1 - r) ** 8)} · a phrase brings new chords ${pct(Math.min(1, m.cycleChurn * (1 + t)))}`;
+          odds.textContent = `at tension ${t}: a line changes on up to ${pct(r)} of its turns; with a 3-chord cycle, at least ${pct((1 - r) ** (8 / 3))} get through an 8-pattern hold untouched · a phrase brings new chords ${pct(Math.min(1, m.cycleChurn * (1 + t)))}`;
         });
       },
       (m) => `restless ${fmt(m.restlessness)} · leap ${fmt(m.leap)}`);
-    help(card, `<p><b>restless</b>: how often a line changes at a pattern; 0 plays the first lines forever. Tension raises it, up to double at tension 1. A hold changes at this rate, a build at 0.3 of it, a thin at 1.6, a break not at all.</p>
+    help(card, `<p><b>restless</b>: how often a line changes on its turn (each time the cycle reaches its chord); 0 plays the first lines forever. Tension raises it, up to double at tension 1. A hold changes at this rate, a build at 0.3 of it, a thin at 1.6, a break not at all.</p>
       <p><b>leap</b>: of those changes, the share that redraw the whole line; the rest make one small change: to the lead, shift a note a step or two, add or drop one, move one an octave, mirror one about the note before it, or slide the whole line a row or two in time; to the pad, add, drop or revoice one strike. Low evolves a theme; high keeps starting anew.</p>
       <p><b>return</b>: 0 restates the home lines exactly when a phrase comes back; higher lets the return drift too, at that share of a hold's rate.</p>
       <p><b>churn</b>: the chance a phrase brings a new cycle of chords; the lines carry over.</p>`);

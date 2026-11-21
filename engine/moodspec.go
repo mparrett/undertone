@@ -272,9 +272,6 @@ func (s MoodSpec) EDN() string {
 	return b.String() + "}"
 }
 
-// layerNames are the layers as the lg side names them (:mute, :drop).
-var layerNames = [...]string{"drone", "fifth", "pad", "lead", "air", "pulse", "drums"}
-
 // edn writes the phrasing as a mood entry's :phrasing. A section's colour
 // writes only the fields it sets, and a section with none is left out.
 func (t *Phrasing) edn(num func(float64) string) string {
@@ -282,7 +279,7 @@ func (t *Phrasing) edn(num func(float64) string) string {
 	fmt.Fprintf(&b, " :phrasing  {:phrase-min %d :phrase-max %d :break-chance %s\n", t.PhraseMin, t.PhraseMax, num(t.BreakChance))
 	drop := make([]string, len(t.Drop))
 	for i, l := range t.Drop {
-		drop[i] = ":" + layerNames[bits.TrailingZeros8(uint8(l))]
+		drop[i] = ":" + LayerNames()[bits.TrailingZeros8(uint8(l))]
 	}
 	fmt.Fprintf(&b, "             :drop [%s]", strings.Join(drop, " "))
 	var secs []string

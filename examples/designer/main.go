@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"io"
 	"math"
+	"math/bits"
 	"sync/atomic"
 	"syscall/js"
 
@@ -128,14 +129,7 @@ type memoryJSON struct {
 }
 
 // layerOf is a layer's name, the inverse of layers.
-func layerOf(l engine.Layers) string {
-	for n, b := range layers {
-		if b == l {
-			return n
-		}
-	}
-	return ""
-}
+func layerOf(l engine.Layers) string { return engine.LayerNames()[bits.TrailingZeros8(uint8(l))] }
 
 func toPhrasing(t *engine.Phrasing) *phrasingJSON {
 	if t == nil {
@@ -191,11 +185,15 @@ func (j specJSON) spec() engine.MoodSpec {
 
 var noteNames = []string{"C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"}
 
-// layers are the names the page mutes by; pulse is tension's own layer.
-var layers = map[string]engine.Layers{
-	"drone": engine.LayerDrone, "fifth": engine.LayerFifth, "pad": engine.LayerPad, "lead": engine.LayerLead,
-	"air": engine.LayerAir, "pulse": engine.LayerPulse, "drums": engine.LayerDrums,
-}
+// layers are the names the page mutes and drops by, the engine's own; pulse
+// is tension's layer.
+var layers = func() map[string]engine.Layers {
+	m := map[string]engine.Layers{}
+	for i, n := range engine.LayerNames() {
+		m[n] = engine.Layers(1) << i
+	}
+	return m
+}()
 
 func marshal(v any) string {
 	b, _ := json.Marshal(v)

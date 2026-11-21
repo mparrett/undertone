@@ -215,7 +215,7 @@
   #meterlbl span { transition: background .3s, color .3s; border-radius: 3px; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
   #takeedn { min-height: 6em; height: 9em; resize: vertical; }
-  /* TAKE EDN and EDN side by side when both show and there's room; EDN alone (a lead, a palette) takes the row */
+  /* TAKE EDN and the shot's EDN side by side when both show and there's room; a lead's or palette's EDN alone takes the row */
   .ednrow { display: grid; gap: 4px 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
   .ednrow > * { min-width: 0; }
   .takerow button { min-width: 2.6em; transition: background .25s, color .25s; }
@@ -417,7 +417,7 @@
   </div>
 
   <div id="ednbox">
-  <div class="lab">EDN</div>
+  <div class="lab" id="ednlab">SHOT EDN</div>
   <div class="bar"><button id="copy">copy</button><button id="save">download</button>
     <span class="hint">the map undertone/register-<span id="regkind">shot</span> takes</span></div>
   <textarea id="edn" spellcheck="false"></textarea>
@@ -571,6 +571,7 @@ function render() {
   $("regkind").textContent = kind;
   $("gatebox").hidden = kind === "palette";
   $("namelbl").textContent = `${kind} name`;
+  $("ednlab").textContent = `${kind.toUpperCase()} EDN`;  // beside TAKE EDN, say whose EDN this is
   if (kind === "shot") { $("gatelbl").textContent = "gate ms"; $("gate").value = spec.GateMS; $("gate").min = 1; $("gate").max = 10000; }
   if (kind === "lead") { $("gatelbl").textContent = "gate rows"; $("gate").value = spec.Gate; $("gate").min = 1; $("gate").max = 16; }
   gateToRange();

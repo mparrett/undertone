@@ -9,8 +9,8 @@
 package engine
 
 import (
-	"bytes"
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"

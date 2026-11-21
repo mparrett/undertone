@@ -62,16 +62,16 @@ func registeredNames[T any](reg map[string]T) []string {
 	return names
 }
 
-var trackNames = [...]string{"drone", "fifth", "pad", "air", "pulse"}
+var trackNames = [...]string{"drone", "fifth", "pad", "air", "pulse", "bass"}
 var laneNames = [nDrums]string{"kick", "clap", "shaker"}
 
 // tracks lists the spec's track patches in track order.
 func (s *PaletteSpec) tracks() []*PatchSpec {
-	return []*PatchSpec{&s.Drone, &s.Fifth, &s.Pad, &s.Air, &s.Pulse}
+	return []*PatchSpec{&s.Drone, &s.Fifth, &s.Pad, &s.Air, &s.Pulse, &s.Bass}
 }
 
 func (pl *Palette) tracks() []*Patch {
-	return []*Patch{&pl.Drone, &pl.Fifth, &pl.Pad, &pl.Air, &pl.Pulse}
+	return []*Patch{&pl.Drone, &pl.Fifth, &pl.Pad, &pl.Air, &pl.Pulse, &pl.Bass}
 }
 
 // RegisterPalette makes a spec a palette a mood can name (MoodSpec.Palette,
@@ -86,6 +86,10 @@ func (pl *Palette) tracks() []*Patch {
 // name, or none. The lead track's sound is a lead's, so a game's own is
 // registered with RegisterLead. A kit lane left zero, or marked Default,
 // plays the default kit's; a Default lane naming any other sound is refused.
+// The bass, unlike the bed's tracks, may be left empty: a theme's bass then
+// plays gridBass, the string pluck, and reads back naming it. A bass that
+// builds exactly that patch is stored as the default, so a palette
+// registered from its own spec equals the one it copies.
 //
 // A music patch is held to a one-shot's bounds but two: its release may run
 // to 10 s and its out gain to 4 (musicBounds), as the built-in beds need.
@@ -113,12 +117,23 @@ func (s PaletteSpec) build() (Palette, PaletteSpec, error) {
 	}
 	dst, read := pl.tracks(), out.tracks()
 	for i, ps := range s.tracks() {
+		if ps == &s.Bass && ps.Name == "" && len(ps.Units) == 0 {
+			// unlike the bed's, a bass may be left out: it plays the
+			// default, and reads back as it
+			*read[i] = patchSpec(gridBass)
+			continue
+		}
 		p, err := ps.build()
 		if err != nil {
 			return pl, out, fmt.Errorf("%s: %w", trackNames[i], err)
 		}
-		*dst[i] = p
 		*read[i] = PatchSpec{ps.Name, unitSpecs(p)}
+		if ps == &s.Bass && reflect.DeepEqual(p, gridBass) {
+			// the default named outright stays the default, so a palette
+			// copied from its EDN equals the one it copies
+			continue
+		}
+		*dst[i] = p
 	}
 	// As in every built-in bank, so lg's partial :lead :none can put it
 	// back without knowing which bank is playing (mergeParams).

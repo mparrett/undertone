@@ -30,7 +30,7 @@ func paletteSpec(v vm.Value) (engine.PaletteSpec, error) {
 		ps  *engine.PatchSpec
 	}{
 		{"drone", &s.Drone}, {"fifth", &s.Fifth}, {"pad", &s.Pad},
-		{"air", &s.Air}, {"pulse", &s.Pulse},
+		{"air", &s.Air}, {"pulse", &s.Pulse}, {"bass", &s.Bass},
 	} {
 		pv := at(m, t.key)
 		if pv == vm.NIL {

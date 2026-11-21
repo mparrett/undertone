@@ -181,6 +181,10 @@ out at up to 4, as the built-in beds do. A palette has no patch for the lead
 track: what plays there is a lead, so a game's own melody sound is a
 registered lead. A registered lead plays at the level its patch sets, without
 the measured trim a built-in lead has.
+`:bass` is optional: it is what a theme's bass lane plays, and left out, it
+is the string bass (`:pluck`) every theme has. Generated music never plays
+it. It plays at the lane's fixed gain, set for pluck, which is quiet, so a
+bass of your own sets its level with its `:out`.
 `PaletteSpec.EDN` and `LeadSpec.EDN` write the maps these take.
 
 ### Determinism

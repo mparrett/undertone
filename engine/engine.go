@@ -1320,7 +1320,19 @@ func ApplyLead(p *Params, name string) {
 // Palette is a mood's patch bank: mood = patches + a point in parameter space.
 type Palette struct {
 	Drone, Fifth, Pad, Lead, Air, Pulse Patch
-	Kit                                 kit // zero: drumKit
+	// Bass is what a theme's bass lane plays. Nil plays gridBass, the string
+	// bass every theme had before a palette could choose, so a palette that
+	// names none sounds as it did.
+	Bass Patch
+	Kit  kit // zero: drumKit
+}
+
+// bass is the patch a theme's bass lane plays.
+func (pl Palette) bass() Patch {
+	if pl.Bass == nil {
+		return gridBass
+	}
+	return pl.Bass
 }
 
 var dungeonPalette = Palette{Drone: drone, Fifth: pad, Pad: pad, Lead: bell, Air: air, Pulse: pulse}

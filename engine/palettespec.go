@@ -26,7 +26,9 @@ type DrumSpec struct {
 type PaletteSpec struct {
 	Name                          string
 	Drone, Fifth, Pad, Air, Pulse PatchSpec
-	Kit                           [nDrums]DrumSpec
+	// Bass is what a theme's bass lane plays; empty, the default string bass.
+	Bass PatchSpec
+	Kit  [nDrums]DrumSpec
 }
 
 // LeadSpec is a lead as data: the patch the seed's pick puts on the lead
@@ -90,7 +92,7 @@ func PaletteSpecByName(name string) (PaletteSpec, bool) {
 	s := PaletteSpec{
 		Name:  name,
 		Drone: patchSpec(pl.Drone), Fifth: patchSpec(pl.Fifth), Pad: patchSpec(pl.Pad),
-		Air: patchSpec(pl.Air), Pulse: patchSpec(pl.Pulse),
+		Air: patchSpec(pl.Air), Pulse: patchSpec(pl.Pulse), Bass: patchSpec(pl.bass()),
 	}
 	for i, d := range pl.Kit {
 		def := d.patch == nil

@@ -271,7 +271,7 @@
   </div>
   <div id="trackbox" hidden>
     <div class="lab">EDIT A TRACK OF <span id="trackof"></span> <span class="help" role="button" tabindex="0" title="what the tracks are" onclick="trackhelp.hidden = !trackhelp.hidden">[?]</span></div>
-    <p class="hint" id="trackhelp" hidden>A bed layer (drone to pulse) or a drum lane (kick, clap, shaker, dashed): each is its own patch.</p>
+    <p class="hint" id="trackhelp" hidden>A bed layer (drone to pulse), the bass a theme plays, or a drum lane (kick, clap, shaker, dashed): each is its own patch.</p>
     <div class="bar" id="tracks"></div>
   </div>
   <div class="stat">
@@ -312,7 +312,8 @@
       <li><b>lead</b>: the soloist. The <i>music</i> plays it on every melody note. Its gate is in rows, the music's steps
         (a row is an eighth note).</li>
       <li><b>bed palette</b>: the backing band, everything but the melody: a patch each for drone, fifth, pad, air and pulse,
-        and for the drum lanes (kick, clap, shaker). The music plays them all at once, so you edit one track at a time.</li>
+        and for the drum lanes (kick, clap, shaker). The music plays them all at once, so you edit one track at a time.
+        <b>bass</b> is what a theme's bass lane plays (left alone, the string bass); the pads play it as a bass note under the bed.</li>
     </ul>
     <p>A <b>mood</b> ties them together. It is the arrangement: scales and key, tempo, how loud each layer is and how busy the
     drums are at each level, the room, and which palette and leads to play. The game moves the mood's
@@ -466,7 +467,7 @@ const SHORT = { attack: "atk", decay: "dec", sustain: "sus", release: "rel", tra
   feedback: "fb", cutoff: "cut", depth: "dep", amount: "amt", offset: "off" };
 const compact = () => $("units").classList.contains("compact");
 const SHAPES = ["sine", "saw", "pulse", "noise"];
-const TRACKS = ["drone", "fifth", "pad", "air", "pulse"];  // a palette has no melody track: a melody sound is a registered lead
+const TRACKS = ["drone", "fifth", "pad", "air", "pulse", "bass"];  // a palette has no melody track: a melody sound is a registered lead
 const LANES = ["kick", "clap", "shaker"];
 const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums", "bass"];  // the engine's layer order: bass, added later, is after drums
 
@@ -743,7 +744,8 @@ function renderAudition() {
     ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it. Paste takes in TAKE EDN and each gets a row like this one, plus <kbd>t</kbd>: the take as pasted. The keyboard plays the row marked · keys; a click selects a row"
     : kind === "lead"
       ? "keys <kbd>1</kbd>–<kbd>8</kbd> play this lead on that degree (it plays solo); ♫ plays the title theme with it. The bed also plays it in the generator's place"
-      : "keys <kbd>1</kbd>–<kbd>8</kbd> play a lead note over this palette; ♫ plays the title theme through it. <b>solo</b> hears the track being edited alone";
+      : (track === "bass" ? "keys <kbd>1</kbd>–<kbd>8</kbd> play a theme's bass note through this palette's bass, under the bed;"
+        : "keys <kbd>1</kbd>–<kbd>8</kbd> play a lead note over this palette;") + " ♫ plays the title theme through it. <b>solo</b> hears the track being edited alone";
 }
 let lastDeg = 0;
 // Shift-click a pad to fire it every LOOP_MS until clicked again, so a sound
@@ -818,7 +820,9 @@ function fire(d) {
   lastDeg = d;
   if (kind !== "shot") {
     audible(); themeNote = true;
-    const err = U().theme(JSON.stringify([{ lead: String(d + 1), bed: true }])); if (err) return say(err, true);
+    // the bass plays only under a theme, so its pad plays a theme's bass note
+    const lane = kind === "palette" && track === "bass" ? "bass" : "lead";
+    const err = U().theme(JSON.stringify([{ [lane]: String(d + 1), bed: true }])); if (err) return say(err, true);
     flash($("pads").children[d]); return;
   }
   if (!playing) { setPlaying(true); auditionPlaying = true; }
@@ -1124,7 +1128,7 @@ function renderTakeRows() {
 // take's first :degree trigger onto degree d, at that trigger's octave; a
 // take with no :degree doesn't move, so its pads are left unnamed.
 function padNotes() {
-  const ns = U()?.padNotes(kind !== "shot");
+  const ns = U()?.padNotes(kind === "shot" ? "shot" : kind === "palette" && track === "bass" ? "bass" : "lead");
   const name = (n) => NOTE[n % 12] + (Math.floor(n / 12) - 1);
   const label = (row, up) => [...row.querySelectorAll("button")].slice(0, 8).forEach((b, d) => {
     let s = b.querySelector(".pn"); if (!s) b.append(s = el("span", "pn"));

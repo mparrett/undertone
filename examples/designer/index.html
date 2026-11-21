@@ -7,20 +7,24 @@
 <style>
   :root { --bg: #0d0d10; --panel: #15151a; --line: #26262e; --fg: #d6d1c2; --mut: #8a8576; --err: #c96a5f;
           /* one hue per kind of section, shared with the grid's lanes */
-          --tempo: #e0b84f; --layer: #5fa8c9; --drum: #9cc46a; --aud: #b48ad6; }
+          --tempo: #e0b84f; --layer: #5fa8c9; --drum: #9cc46a; --aud: #b48ad6;
+          /* trims adjust layers without being one: the layers' hue, greyed */
+          --trim: color-mix(in srgb, var(--layer) 50%, var(--mut)); }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
          font: 14px/1.45 ui-monospace, Menlo, monospace; }
   main { max-width: 1400px; margin: 0 auto; display: grid; gap: 24px; }
-  /* wide: playing | start from | audition across the top; then layers down
-     the left, beside tempo over drums; then export. A phone takes the order
-     tempo, layers, drums in one column */
+  /* wide: start from | playing | audition across the top; then layers over
+     trims down the left, beside tempo over drums; then export. Each column
+     stacks on its own, so neither leaves a gap for the other's height. A
+     phone takes one column in the order a mood is built */
+  #sections { display: flex; flex-direction: column; }
+  #sections > .col { display: contents; }
+  .sec.tempo { order: 1; } .sec.layer { order: 2; } .sec.trim { order: 3; } .sec.drum { order: 4; }
   @media (min-width: 900px) { body { padding: 32px; }
     .top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
-    #sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; align-items: start;
-                grid-template-areas: "layer tempo" "layer drum";
-                grid-template-rows: auto 1fr; /* spare height goes below drums, not above */ }
-    .sec.layer { grid-area: layer; } .sec.tempo { grid-area: tempo; } .sec.drum { grid-area: drum; }
+    #sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; align-items: start; }
+    #sections > .col { display: block; }
     /* one card per row, so each is wide enough to lie flat */
     #sections .cards { grid-template-columns: minmax(0, 1fr); }
     .top > * > :first-child { margin-top: 0; } }
@@ -78,6 +82,7 @@
   /* sections: a coloured rule and title per kind; cards carry the colour on their edge */
   .sec { --sec: var(--mut); margin-bottom: 26px; }
   .sec.tempo { --sec: var(--tempo); } .sec.layer { --sec: var(--layer); } .sec.drum { --sec: var(--drum); }
+  .sec.trim { --sec: var(--trim); }
   .sec > header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
                   border-bottom: 1px solid color-mix(in srgb, var(--sec) 45%, transparent); padding-bottom: 6px; margin-bottom: 10px; }
   .sec > header h2 { margin: 0; font-size: 12px; letter-spacing: .14em; color: var(--sec); font-weight: 700; }
@@ -126,17 +131,19 @@
 <body>
 <main class="loading">
  <div class="top">
-  <div class="playing">
+  <div class="from">
    <h1>UNDERTONE · DESIGNER</h1>
+   <div class="ctl">
+    <div class="lab">START FROM</div>
+    <div class="bar" id="moods"></div>
+    <label class="switch" id="buildup" style="margin-left:0;display:inline-flex" title="a mood starts with only its lowest layer; bring the rest in from the mix">
+     <input type="checkbox"> build up: start with one layer</label>
+   </div>
+  </div>
+  <div class="playing">
    <div id="status">loading the engine…</div>
    <div id="dockslot"><div id="dock"><div class="row"><button id="play" disabled>loading…</button><div id="now">–</div></div>
     <div id="mix" title="tap a layer to mute or unmute it; none, then one layer, solos it"></div></div></div>
-  </div>
-  <div class="ctl">
-   <div class="lab">START FROM</div>
-   <div class="bar" id="moods"></div>
-   <label class="switch" id="buildup" style="margin-left:0;display:inline-flex" title="a mood starts with only its lowest layer; bring the rest in from the mix">
-    <input type="checkbox"> build up: start with one layer</label>
   </div>
   <div class="ctl">
    <details class="aud" id="audition">
@@ -149,7 +156,7 @@
    </details>
   </div>
  </div>
- <section id="sections"></section>
+ <section id="sections"><div class="col" id="colL"></div><div class="col" id="colR"></div></section>
  <div class="ctl" id="exportbox">
   <div class="lab">EXPORT</div>
   <div class="bar"><input id="name" type="text" aria-label="mood name"></div>
@@ -164,7 +171,8 @@
   const status = $("status");
   const GAIN = { min: 0, max: 1, step: 0.01, smin: -0.2, smax: 0.2, sstep: 0.01 };
   // Sections in the order a mood is built: its time and key, then the
-  // layers from the floor up, then the drums.
+  // layers from the floor up and their trims, then the drums. col "L" puts
+  // a section in the left column on a wide screen.
   const SECTIONS = [
     { id: "tempo", title: "TEMPO & HARMONY", note: "how fast, in what key, where the lead sits", items: [
       { line: "bpm", min: 30, max: 160, step: 1, smin: -10, smax: 10, sstep: 0.5, note: "tempo (the seed adds 0–4)" },
@@ -176,15 +184,17 @@
       ]},
       { patches: true },
     ]},
-    { id: "layer", title: "LAYERS", note: "floor to sky · each value is base + step × level, kept within min and max", items: [
+    { id: "layer", col: "L", title: "LAYERS", note: "floor to sky · each value is base + step × level, kept within min and max", items: [
       { line: "drone", ...GAIN, note: "the floor: low drone gain" },
       { line: "fifth", ...GAIN, note: "the second voice's gain" },
       { line: "pad",   ...GAIN, note: "pad chords: how often they play" },
       { line: "lead",  ...GAIN, note: "the lead: how often it plays" },
       { line: "air",   ...GAIN, note: "the top: air or breeze gain" },
       { line: "open",  min: -1, max: 1, step: 0.05, smin: -0.3, smax: 0.3, sstep: 0.01, note: "the resonant filters: level opens (+) or closes (−) them, up to two octaves" },
-      { int: "leadDB", label: "lead dB", min: -24, max: 12, step: 1, note: "trims the lead to balance the mix, whichever lead plays; a game's trim adds to it" },
-      { int: "padDB",  label: "pad dB",  min: -24, max: 12, step: 1, note: "trims the pad to balance the mix; a game's trim adds to it" },
+    ]},
+    { id: "trim", title: "TRIMS", note: "dB, to balance the mix: how loud the lead and pad sound, which their densities do not set", col: "L", items: [
+      { int: "leadDB", label: "lead dB", min: -24, max: 12, step: 1, note: "the lead, whichever plays; a game's trim adds to it" },
+      { int: "padDB",  label: "pad dB",  min: -24, max: 12, step: 1, note: "the pad; a game's trim adds to it" },
     ]},
     { id: "drum", title: "DRUMS", note: "kick, backbeat, top: the palette's kit", toggle: true, items: [
       { grooves: true },
@@ -407,7 +417,7 @@
                    : it.patches ? patchesCard() : groovesCard());
     }
     sec.append(head, cards);
-    $("sections").append(sec);
+    $(s.col === "L" ? "colL" : "colR").append(sec);
     foldSection(sec, s.id);
    }
   }

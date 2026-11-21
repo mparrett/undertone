@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -210,5 +211,81 @@ func TestScriptedReadAnyLength(t *testing.T) {
 		if !bytes.Equal(got, want) {
 			t.Errorf("size %d: stream differs from one aligned read", size)
 		}
+	}
+}
+
+// :until-silent renders as long as the sound lasts: a script's trigger still
+// to come keeps the render going through the silence before it (2.5 s is past
+// the echo hold at this tempo, so only the script can keep it going), and the WAV
+// is a prefix of a fixed render with the same script.
+func TestRenderWAVUntilSilent(t *testing.T) {
+	c := renderLg(t, "renderuntil")
+	if _, err := c.Run(`(undertone/set-music-gain 0.0)`); err != nil {
+		t.Fatal(err)
+	}
+	const script = `[[2.5 :trigger [{:shot :footstep :gain 0.8}]]]`
+	dir := t.TempDir()
+	until, fixed := filepath.Join(dir, "until.wav"), filepath.Join(dir, "fixed.wav")
+	if _, err := c.Run(`(undertone/render-wav "` + until + `" :until-silent ` + script + `)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Run(`(undertone/render-wav "` + fixed + `" 4.0 ` + script + `)`); err != nil {
+		t.Fatal(err)
+	}
+	u, err := os.ReadFile(until)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, _ := os.ReadFile(fixed)
+	secs := float64(len(u)-44) / 4 / engine.SampleRate
+	if secs < 2.5 || secs > 2.9 {
+		t.Errorf("a footstep at 2.5 s rendered %.3f s", secs)
+	}
+	if len(u) > len(f) {
+		t.Fatalf("the until-silent render (%d bytes) outran the 4 s one", len(u))
+	}
+	if !bytes.Equal(u[44:], f[44:len(u)]) {
+		t.Error("the until-silent render is not a prefix of the fixed one")
+	}
+	if _, err := c.Run(`(undertone/render-wav nil :until-silen)`); err == nil {
+		t.Error("a misspelt keyword rendered")
+	}
+}
+
+// A theme's rest is quiet but not the end: :until-silent plays an outro with
+// two silent grids through to its last note, ending where a long fixed render
+// stops being audible (36 s on: the outro rings out at full gain).
+func TestRenderWAVUntilSilentWaitsOutATheme(t *testing.T) {
+	c := renderLg(t, "renderuntiltheme")
+	const script = `[[0.0 :play-theme {:grids [{:lead [1]} {:lead [0]} {:lead [0]} {:lead [5]}] :then :silence}]]`
+	dir := t.TempDir()
+	until, fixed := filepath.Join(dir, "until.wav"), filepath.Join(dir, "fixed.wav")
+	if _, err := c.Run(`(undertone/render-wav "` + until + `" :until-silent ` + script + `)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Run(`(undertone/render-wav "` + fixed + `" 60.0 ` + script + `)`); err != nil {
+		t.Fatal(err)
+	}
+	u, err := os.ReadFile(until)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, _ := os.ReadFile(fixed)
+	pcm := func(b []byte) []int16 {
+		out := make([]int16, (len(b)-44)/2)
+		for i := range out {
+			out[i] = int16(uint16(b[44+2*i]) | uint16(b[45+2*i])<<8)
+		}
+		return out
+	}
+	thr := 32767 * math.Pow(10, engine.SilentFloorDB/20)
+	end := 0
+	for i, v := range pcm(f) {
+		if math.Abs(float64(v)) >= thr {
+			end = i/2 + 1
+		}
+	}
+	if got, want := len(pcm(u))/2, end+engine.SampleRate/100; got != want {
+		t.Errorf("the outro rendered to %.3f s; it sounds until %.3f s, plus the 10 ms margin", float64(got)/engine.SampleRate, float64(want)/engine.SampleRate)
 	}
 }

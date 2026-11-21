@@ -2,6 +2,7 @@ package letgo
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -23,10 +24,16 @@ type step struct {
 // seconds from the current parameters and music gain, applying script on
 // the way, writes a WAV to path unless path is nil, and returns the SHA-256
 // of the PCM as hex, so an lg test can pin a render without reading the
-// file back.
+// file back. A seconds of 0 renders until the sound is silent
+// (engine.ReadUntilSilent), with the script's steps still to come counting
+// as sound, up to engine.MaxTakeSeconds.
 func (m *Music) renderWAV(path vm.Value, seconds float64, script vm.Value) (vm.Value, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	until := seconds == 0
+	if until {
+		seconds = engine.MaxTakeSeconds
+	}
 	steps, err := parseScript(script, m.params, seconds)
 	if err != nil {
 		return vm.NIL, fmt.Errorf("undertone/render-wav: %w", err)
@@ -34,6 +41,17 @@ func (m *Music) renderWAV(path vm.Value, seconds float64, script vm.Value) (vm.V
 	src := &scripted{s: engine.NewSynth(m.params), steps: steps}
 	m.applyGains(src.s)
 	sum := sha256.New()
+	if until {
+		pcm := engine.ReadUntilSilent(src.s, src, seconds, engine.SilentFloorDB,
+			func() bool { return len(src.steps) > 0 })
+		if p, ok := path.(vm.String); ok {
+			if err := engine.WritePCMWAV(string(p), pcm); err != nil {
+				return vm.NIL, fmt.Errorf("undertone/render-wav: %w", err)
+			}
+		}
+		_ = binary.Write(sum, binary.LittleEndian, pcm)
+		return vm.String(hex.EncodeToString(sum.Sum(nil))), nil
+	}
 	switch p := path.(type) {
 	case vm.String:
 		err = engine.WriteWAV(string(p), io.TeeReader(src, sum), seconds)

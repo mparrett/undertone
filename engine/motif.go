@@ -587,7 +587,25 @@ func (m *motifState) churn(p *Params) float64 {
 	if p.Memory == nil {
 		return 0
 	}
+	// capped after the knob, where the old 0.6 × restless() capped before
+	// it: the two differ only when Restlessness × (1+tension) passes 1
 	return min(1, p.Memory.CycleChurn*(1+m.tension))
+}
+
+// leap and returnDrift are p's knobs, 0 without memory, so no caller
+// depends on having checked p.Memory itself.
+func leap(p *Params) float64 {
+	if p.Memory == nil {
+		return 0
+	}
+	return p.Memory.Leap
+}
+
+func returnDrift(p *Params) float64 {
+	if p.Memory == nil {
+		return 0
+	}
+	return p.Memory.ReturnDrift
 }
 
 func (m *motifState) saveHome() {
@@ -618,7 +636,10 @@ func (m *motifState) shaded(p Params) Params {
 // them, the arc's layer bias and the section's colour into the pattern. It
 // only reads the arc, so a mid-pattern call (applyNow) draws the same.
 func (m *motifState) reshape(p *Params, pat int, pats *[nTracks][rows]trackRow, drums *[nDrums][rows]drumHit) {
-	if !m.mem {
+	// m.mem is what advance last saw; a mid-pattern SetParametersNow can
+	// take memory away before the next boundary resyncs it, and then this
+	// pattern's rest is the generator's
+	if !m.mem || p.Memory == nil {
 		// the generator's lines as drawn, under the section's pad colour
 		m.lastLead, m.lastPad = "gen", "gen"
 		padShade(p, m.chord, m.to, pats)
@@ -631,7 +652,7 @@ func (m *motifState) reshape(p *Params, pat int, pats *[nTracks][rows]trackRow, 
 	r := m.rng(p.Seed, uint64(pat), 0x5eed)
 	mult := change[m.sec]
 	if m.sec == secReturn {
-		mult = p.Memory.ReturnDrift
+		mult = returnDrift(p)
 	}
 	rate := m.restless(p) * mult
 	k := m.slot
@@ -807,7 +828,8 @@ func tonicOf(c int8) int8 {
 // and halves the next; a break leaves only the anchor. From drumsStay
 // tension up the drums stay in whatever the section.
 func (m *motifState) applyArc(p *Params, pats *[nTracks][rows]trackRow, drums *[nDrums][rows]drumHit) {
-	if !m.phr {
+	// as in reshape: phrasing may have gone since the boundary
+	if !m.phr || !p.phrasing() {
 		return
 	}
 	t := p.Phrasing
@@ -863,7 +885,7 @@ func scaleLayer(l Layers, g float64, pats *[nTracks][rows]trackRow, drums *[nDru
 func (m *motifState) decideLead(p *Params, chord int, pats *[nTracks][rows]trackRow, r *rng, rate float64) string {
 	x := r.f()
 	switch {
-	case x < rate*p.Memory.Leap:
+	case x < rate*leap(p):
 		m.leads[m.slot] = freshLead(p, chord, pats)
 		return "redraw"
 	case x < rate:
@@ -876,7 +898,7 @@ func (m *motifState) decidePad(p *Params, chord int, pats *[nTracks][rows]trackR
 	pad := &m.pads[m.slot]
 	x := r.f()
 	switch {
-	case x < rate*p.Memory.Leap:
+	case x < rate*leap(p):
 		*pad = freshPad(p, chord, pats)
 		return "redraw"
 	case x < rate:

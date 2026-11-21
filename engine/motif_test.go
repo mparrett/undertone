@@ -472,3 +472,24 @@ func TestMoodTemperamentOptIn(t *testing.T) {
 		t.Fatal("a direct Memory did not win, or the mood's phrasing went with it")
 	}
 }
+
+// A host may take phrasing or memory away mid-pattern with SetParametersNow;
+// the motif keeps what the last boundary saw until the next, so the rest of
+// the pattern must play without what was taken, not dereference it.
+func TestTakenAwayMidPattern(t *testing.T) {
+	for _, off := range []string{"memory", "phrasing", "both"} {
+		p, _ := DeriveMood("rust", 7, 2, 0.3)
+		p.UsePhrasing, p.UseMemory = true, true
+		q := p
+		q.UseMemory = off == "phrasing"
+		q.UsePhrasing = off == "memory"
+		// at every second of two minutes, so some land in each section
+		s := NewSynth(p)
+		for range 120 {
+			render(s, SampleRate)
+			s.SetParametersNow(q)
+			render(s, SampleRate/4)
+			s.SetParametersNow(p)
+		}
+	}
+}

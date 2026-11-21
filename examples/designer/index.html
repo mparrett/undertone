@@ -18,7 +18,8 @@
   @media (min-width: 900px) { body { padding: 32px; }
     .top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
     #sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; align-items: start;
-                grid-template-areas: "layer tempo" "layer drum"; }
+                grid-template-areas: "layer tempo" "layer drum";
+                grid-template-rows: auto 1fr; /* spare height goes below drums, not above */ }
     .sec.layer { grid-area: layer; } .sec.tempo { grid-area: tempo; } .sec.drum { grid-area: drum; }
     /* one card per row, so each is wide enough to lie flat */
     #sections .cards { grid-template-columns: minmax(0, 1fr); }

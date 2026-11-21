@@ -227,3 +227,22 @@ func TestRenderVersionGolden(t *testing.T) {
 		t.Errorf("the reference takes changed: run go test ./engine -run TestRenderVersionGolden -update")
 	}
 }
+
+// The hash reads a temperament's values, not its address: copies hash
+// alike, and a changed knob hashes differently.
+func TestTakeHashTemperament(t *testing.T) {
+	mk := func(leap float64) Take {
+		k := Take{Params: DeriveDungeon(7, 3, 0.5), Seconds: 2}
+		m := *k.Params.MoodMemory
+		m.Leap = leap
+		k.Params.MoodMemory = &m
+		return k
+	}
+	a, b := mk(0.25), mk(0.25) // two allocations of one value
+	if a.Hash() != b.Hash() {
+		t.Fatal("equal temperaments at different addresses hash differently")
+	}
+	if mk(0.25).Hash() == mk(0.5).Hash() {
+		t.Fatal("a changed Leap hashes the same")
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"runtime"
+	"slices"
 	"testing"
 )
 
@@ -374,5 +375,121 @@ func TestPhrasingIgnoresTheCycle(t *testing.T) {
 	}
 	if longer == 0 {
 		t.Error("no phrase drew a cycle longer than its return: the test proves nothing")
+	}
+}
+
+// knobRun plays rust with full phrasing and a restless memory under the given
+// knobs, and reports what its lines did. Restlessness is high so every kind
+// of change turns up in a few hundred patterns.
+func knobRun(t *testing.T, set func(*Memory)) (redraws, small, returnChanges, newCycles int) {
+	t.Helper()
+	tm, _ := TemperamentFor("rust")
+	mem := NewMemory(0.9)
+	set(&mem)
+	p, _ := DeriveMood("rust", 7, 2, 0.3)
+	p.Phrasing, p.Memory = &tm.Phrasing, &mem
+	p = p.sanitized()
+	var m motifState
+	phrase, home := 0, [maxProg]int8{}
+	for pat := range 600 {
+		motifPattern(&m, &p, pat)
+		if pat == 0 || m.phrase != phrase {
+			if pat > 0 && m.homeProg != home {
+				newCycles++
+			}
+			phrase, home = m.phrase, m.homeProg
+		}
+		for _, l := range []string{m.lastLead, m.lastPad} {
+			switch l {
+			case "redraw":
+				redraws++
+			case "shift", "drop", "add", "revoice":
+				small++
+			}
+			if m.sec == secReturn && l != "home" && l != "fresh" {
+				returnChanges++
+			}
+		}
+	}
+	return
+}
+
+// Each memory knob does what it says, and only that: Leap splits redraws
+// from small changes, ReturnDrift lets a return move off home, CycleChurn
+// brings new chord cycles.
+func TestMemoryKnobs(t *testing.T) {
+	if r, s, _, _ := knobRun(t, func(m *Memory) { m.Leap = 0 }); r != 0 || s == 0 {
+		t.Errorf("Leap 0: %d redraws, %d small changes; want none and some", r, s)
+	}
+	if r, s, _, _ := knobRun(t, func(m *Memory) { m.Leap = 1 }); r == 0 || s != 0 {
+		t.Errorf("Leap 1: %d redraws, %d small changes; want some and none", r, s)
+	}
+	if _, _, rc, _ := knobRun(t, func(m *Memory) { m.ReturnDrift = 0 }); rc != 0 {
+		t.Errorf("ReturnDrift 0: a return changed its lines %d times", rc)
+	}
+	if _, _, rc, _ := knobRun(t, func(m *Memory) { m.ReturnDrift = 1 }); rc == 0 {
+		t.Error("ReturnDrift 1: no return changed its lines")
+	}
+	if _, _, _, nc := knobRun(t, func(m *Memory) { m.CycleChurn = 0 }); nc != 0 {
+		t.Errorf("CycleChurn 0: %d new cycles", nc)
+	}
+	if _, _, _, nc := knobRun(t, func(m *Memory) { m.CycleChurn = 1 }); nc == 0 {
+		t.Error("CycleChurn 1: no new cycle")
+	}
+}
+
+// A derive hands on the mood's temperament, which plays only when the host
+// opts in: off, the mood sounds exactly as with none; on, exactly as if set
+// directly; and a temperament set directly wins over the mood's.
+func TestMoodTemperamentOptIn(t *testing.T) {
+	const n = 20 * SampleRate
+	p, _ := DeriveMood("rust", 7, 2, 0.3)
+	if p.MoodPhrasing == nil || p.MoodMemory == nil {
+		t.Fatal("rust derives without its temperament")
+	}
+	tm, _ := TemperamentFor("rust")
+	bare := p
+	bare.MoodPhrasing, bare.MoodMemory = nil, nil
+	off := render(NewSynth(bare), n)
+	if !slices.Equal(render(NewSynth(p), n), off) {
+		t.Fatal("a mood's temperament played without the host opting in")
+	}
+	on := p
+	on.UsePhrasing, on.UseMemory = true, true
+	direct := bare
+	direct.Phrasing, direct.Memory = &tm.Phrasing, &tm.Memory
+	got := render(NewSynth(on), n)
+	if slices.Equal(got, off) {
+		t.Fatal("opting in changed nothing")
+	}
+	if !slices.Equal(got, render(NewSynth(direct), n)) {
+		t.Fatal("opting in plays other than the temperament set directly")
+	}
+	// a direct Memory (here a frozen one) wins over the mood's
+	frozen := NewMemory(0)
+	on.Memory = &frozen
+	if s := on.sanitized(); s.Memory != &frozen || s.Phrasing != p.MoodPhrasing {
+		t.Fatal("a direct Memory did not win, or the mood's phrasing went with it")
+	}
+}
+
+// A host may take phrasing or memory away mid-pattern with SetParametersNow;
+// the motif keeps what the last boundary saw until the next, so the rest of
+// the pattern must play without what was taken, not dereference it.
+func TestTakenAwayMidPattern(t *testing.T) {
+	for _, off := range []string{"memory", "phrasing", "both"} {
+		p, _ := DeriveMood("rust", 7, 2, 0.3)
+		p.UsePhrasing, p.UseMemory = true, true
+		q := p
+		q.UseMemory = off == "phrasing"
+		q.UsePhrasing = off == "memory"
+		// at every second of two minutes, so some land in each section
+		s := NewSynth(p)
+		for range 120 {
+			render(s, SampleRate)
+			s.SetParametersNow(q)
+			render(s, SampleRate/4)
+			s.SetParametersNow(p)
+		}
 	}
 }

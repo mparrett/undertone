@@ -249,6 +249,8 @@
     { name: "dread", level: 4, tension: 1 },
   ];
   let spec = null, ready = false, playing = false, stashedGrooves = null, grooveCopies = {};
+  // the engine's presets, read once the wasm is up
+  let PRESETS_T = null;
   // hearing the temperament is the page's choice, as muting is: never exported
   const hear = { phrasing: false, memory: false };
   // The layers apply() can silence, floor to sky.
@@ -356,6 +358,8 @@
     rm.onclick = () => { spec[name] = null; sync(); changed(); };
     none.append(el("span", "note", "this mood has none"), add);
     controls(body); body.append(rm);
+    // a slider's move unlights a preset chip that no longer matches
+    body.addEventListener("input", sync);
     card.append(body, none);
     // display, not hidden: .bar's display: flex would win over [hidden]
     syncers.push(() => { body.style.display = spec[name] ? "" : "none"; none.style.display = spec[name] ? "none" : ""; });
@@ -363,10 +367,26 @@
     return card;
   }
 
+  const MEM0 = { restlessness: 0.3, leap: 0.25, returnDrift: 0, cycleChurn: 0.18 };
+  // presetChips is a row of the engine's presets for a part: a tap sets the
+  // part from one, and the chip stays lit while the values are the preset's.
+  function presetChips(part, keys, from) {
+    const row = el("div", "drops"), presets = PRESETS_T[part];
+    const vals = (p) => part === "memory" ? p.memory : p;
+    for (const p of presets) {
+      const b = el("span", "chip", p.name); b.title = p.note;
+      b.onclick = () => { spec[part] = from(p); sync(); changed(); };
+      row.append(b);
+      syncers.push(() => b.classList.toggle("on", !!spec[part] && keys.every((k) => spec[part][k] === vals(p)[k])));
+    }
+    return row;
+  }
+
   function memoryCard() {
-    const card = partCard("memory", "how the lead and pad lines develop: each chord of the cycle keeps its own, which at each pattern repeats, changes one thing or is redrawn",
-      () => ({ restlessness: 0.3, leap: 0.25, returnDrift: 0, cycleChurn: 0.18 }),
+    const card = partCard("memory", "how the lead and pad lines develop: each chord of the cycle keeps its own, which on that chord's turn repeats, changes one thing or is redrawn",
+      () => ({ ...MEM0 }),
       (body) => {
+        body.append(presetChips("memory", Object.keys(MEM0), (p) => ({ ...p.memory })));
         for (const [k, label] of [["restlessness", "restless"], ["leap", "leap"], ["returnDrift", "return"], ["cycleChurn", "churn"]])
           body.append(slider(label, 0, 1, 0.01, () => spec.memory?.[k] ?? 0, (v) => { if (spec.memory) spec.memory[k] = v; }));
         const odds = el("div", "note odds"); body.append(odds);
@@ -394,6 +414,9 @@
       () => ({ phraseMin: 10, phraseMax: 16, breakChance: 0.4, drop: ["lead", "pad", "drums", "fifth"], shade: [{}, {}, {}, {}, {}] }),
       (body) => {
         const ph = () => spec.phrasing;
+        // a preset sets lengths and breaks; drops and colour stay the mood's
+        body.append(presetChips("phrasing", ["phraseMin", "phraseMax", "breakChance"],
+          (p) => ({ ...spec.phrasing, phraseMin: p.phraseMin, phraseMax: p.phraseMax, breakChance: p.breakChance })));
         body.append(
           slider("shortest", 5, 24, 1, () => ph()?.phraseMin ?? 5, (v) => { if (ph()) { ph().phraseMin = v; if (ph().phraseMax < v) { ph().phraseMax = v; sync(); } } }),
           slider("longest", 5, 24, 1, () => ph()?.phraseMax ?? 5, (v) => { if (ph()) { ph().phraseMax = v; if (ph().phraseMin > v) { ph().phraseMin = v; sync(); } } }),
@@ -746,6 +769,7 @@
   window.undertoneDesignerFailed = (msg) => { status.textContent = "audio failed: " + msg; };
   window.undertoneDesignerReady = () => {
     ready = true;
+    PRESETS_T = JSON.parse(undertoneDesigner.presets());
     buildSections();
     for (const m of JSON.parse(undertoneDesigner.moods())) {
       const b = el("span", "chip", m); b.dataset.v = m; b.onclick = () => { load(m); if (!playing) setPlaying(true); }; $("moods").append(b);

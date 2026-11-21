@@ -18,6 +18,7 @@
 //	                         ({phrasing, memory}); returns {error} or what was
 //	                         derived: {bpm, key, lead, groove, gains}
 //	trace()                  where the arc is: engine.MotifState, as JSON
+//	presets()                the memory and phrasing presets, as JSON
 //	edn(json)                the spec as an ambience/moods entry
 //	palettes(), grooves()    the names a spec can use, as JSON
 //	play() / stop()          call from the tap handler: iOS resumes audio only inside one
@@ -280,6 +281,31 @@ func main() {
 		// MotifTrace reads the audio state unsynchronised; js/wasm runs one
 		// thread, so the page's poll and the audio callback never overlap.
 		"trace": js.FuncOf(func(js.Value, []js.Value) any { return marshal(syn.MotifTrace()) }),
+		"presets": js.FuncOf(func(js.Value, []js.Value) any {
+			type mem struct {
+				Name   string      `json:"name"`
+				Note   string      `json:"note"`
+				Memory *memoryJSON `json:"memory"`
+			}
+			type phr struct {
+				Name        string  `json:"name"`
+				Note        string  `json:"note"`
+				PhraseMin   int     `json:"phraseMin"`
+				PhraseMax   int     `json:"phraseMax"`
+				BreakChance float64 `json:"breakChance"`
+			}
+			var out struct {
+				Memory   []mem `json:"memory"`
+				Phrasing []phr `json:"phrasing"`
+			}
+			for _, p := range engine.MemoryPresets() {
+				out.Memory = append(out.Memory, mem{p.Name, p.Note, (*memoryJSON)(&p.Memory)})
+			}
+			for _, p := range engine.PhrasingPresets() {
+				out.Phrasing = append(out.Phrasing, phr{p.Name, p.Note, p.PhraseMin, p.PhraseMax, p.BreakChance})
+			}
+			return marshal(out)
+		}),
 		"edn": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			s, ok := parse(a[0])
 			if !ok {

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -31,11 +32,39 @@ func main() {
 	trace := flag.Bool("trace", false, "print the arc and each lane's choice per pattern")
 	parts := flag.String("parts", "all", "with -temper, what to turn on: all, phrasing or memory")
 	notesOut := flag.String("notes", "", "write every note event as TSV, to compare renders note for note")
+	memPreset := flag.String("memory-preset", "", "with -temper, a memory preset in place of the mood's (held, evolving, wandering, restless)")
+	phrPreset := flag.String("phrasing-preset", "", "with -temper, a phrasing preset's lengths and breaks on the mood's phrasing (patient, steady, breathless)")
 	flag.Parse()
+	var override *engine.Temperament
 	usePhrasing, useMemory := *parts != "memory", *parts != "phrasing"
 	if *parts != "all" && *parts != "phrasing" && *parts != "memory" {
 		fmt.Fprintf(os.Stderr, "-parts wants all, phrasing or memory, not %q\n", *parts)
 		os.Exit(2)
+	}
+
+	if *memPreset != "" || *phrPreset != "" {
+		tm, ok := engine.TemperamentFor(*mood)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "mood %q has no temperament\n", *mood)
+			os.Exit(2)
+		}
+		if *memPreset != "" {
+			i := slices.IndexFunc(engine.MemoryPresets(), func(x engine.MemoryPreset) bool { return x.Name == *memPreset })
+			if i < 0 {
+				fmt.Fprintf(os.Stderr, "no memory preset %q\n", *memPreset)
+				os.Exit(2)
+			}
+			tm.Memory = engine.MemoryPresets()[i].Memory
+		}
+		if *phrPreset != "" {
+			i := slices.IndexFunc(engine.PhrasingPresets(), func(x engine.PhrasingPreset) bool { return x.Name == *phrPreset })
+			if i < 0 {
+				fmt.Fprintf(os.Stderr, "no phrasing preset %q\n", *phrPreset)
+				os.Exit(2)
+			}
+			tm.Phrasing = engine.PhrasingPresets()[i].Apply(tm.Phrasing)
+		}
+		override = &tm
 	}
 
 	from, to := *tension, *tension
@@ -60,6 +89,9 @@ func main() {
 			if !ok {
 				fmt.Fprintf(os.Stderr, "mood %q has no temperament\n", *mood)
 				os.Exit(2)
+			}
+			if override != nil {
+				tm = *override
 			}
 			if usePhrasing {
 				p.Phrasing = &tm.Phrasing

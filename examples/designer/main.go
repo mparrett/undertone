@@ -112,8 +112,8 @@ type specJSON struct {
 	Memory   *memoryJSON   `json:"memory"`
 }
 
-// phrasingJSON is engine.Phrasing with its layers by name. The page has no
-// colour control yet; Shade rides along so an edit keeps the mood's.
+// phrasingJSON is engine.Phrasing with its layers by name; Shade, each
+// section's colour, goes as engine.Shade's own field names.
 type phrasingJSON struct {
 	PhraseMin   int             `json:"phraseMin"`
 	PhraseMax   int             `json:"phraseMax"`

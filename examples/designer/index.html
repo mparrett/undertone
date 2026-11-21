@@ -12,10 +12,16 @@
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
          font: 14px/1.45 ui-monospace, Menlo, monospace; }
   main { max-width: 1400px; margin: 0 auto; display: grid; gap: 24px; }
-  /* wide: playing | start from | audition across the top, then tempo | layers |
-     drums, then export; a phone takes the same order in one column */
+  /* wide: playing | start from | audition across the top; then layers down
+     the left, beside tempo over drums; then export. A phone takes the order
+     tempo, layers, drums in one column */
   @media (min-width: 900px) { body { padding: 32px; }
-    .top, #sections { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
+    .top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
+    #sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; align-items: start;
+                grid-template-areas: "layer tempo" "layer drum"; }
+    .sec.layer { grid-area: layer; } .sec.tempo { grid-area: tempo; } .sec.drum { grid-area: drum; }
+    /* one card per row, so each is wide enough to lie flat */
+    #sections .cards { grid-template-columns: minmax(0, 1fr); }
     .top > * > :first-child { margin-top: 0; } }
   #exportbox .bar { max-width: 32em; }
   h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 10px; font-weight: 600; }
@@ -80,7 +86,13 @@
   .card .hd span { color: var(--sec); margin-left: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card .hd b { flex: none; }
   /* a grid item is as wide as its content by default; a long summary must truncate instead */
-  .card { min-width: 0; }
+  .card { min-width: 0; container-type: inline-size; }
+  /* a wide line card lies flat: its sliders and clamps beside its sweep */
+  @container (min-width: 520px) {
+    .lc { display: grid; grid-template-columns: minmax(0, 1fr) 19em; gap: 6px 20px; align-items: end; }
+    .lc .sweep { margin-top: 0; height: 64px; }
+    .ints { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
+  }
   .card .note { font-size: 12px; color: var(--mut); }
   /* collapsing: a card folds to its title row; a section's title opens or
      shuts all its cards, and its arrow shows which a tap will do */
@@ -202,8 +214,9 @@
 
   function lineCard(c) {
     const k = c.line, card = el("div", "card", `<div class="hd"><b>${k}</b><span></span></div><div class="note">${c.note}</div>`);
-    card.append(slider("base", c.min, c.max, c.step, () => spec[k].base, (v) => spec[k].base = v),
-                slider("step", c.smin, c.smax, c.sstep, () => spec[k].step, (v) => spec[k].step = v));
+    const ctl = el("div"), graph = el("div");
+    ctl.append(slider("base", c.min, c.max, c.step, () => spec[k].base, (v) => spec[k].base = v),
+               slider("step", c.smin, c.smax, c.sstep, () => spec[k].step, (v) => spec[k].step = v));
     const cl = el("div", "clamps");
     for (const side of ["lo", "hi"]) {
       const lab = el("label", "", `<input type="checkbox"> ${side === "lo" ? "min" : "max"} <input type="number" step="${c.step}">`);
@@ -216,7 +229,11 @@
     const sw = el("div", "sweep");
     sw.title = "the value at each level, 0 to 10; the lit bar is the audition level";
     for (let l = 0; l <= 10; l++) sw.append(el("i"));
-    card.append(cl, sw, el("div", "sweepcap", "<span>level 0</span><span>value by level · lit = now</span><span>10</span>"));
+    ctl.append(cl);
+    graph.append(sw, el("div", "sweepcap", "<span>level 0</span><span>value by level · lit = now</span><span>10</span>"));
+    const lc = el("div", "lc");
+    lc.append(ctl, graph);
+    card.append(lc);
     sweeps.push((level) => {
       // a signed line (open) draws its size, dimmed below zero, so a
       // closing slope shows as well as an opening one
@@ -253,11 +270,13 @@
 
   function groupCard(g) {
     const card = el("div", "card", `<div class="hd"><b>${g.group}</b></div><div class="note">${g.note}</div>`);
+    const ints = el("div", "ints");
     for (const c of g.ints) {
       const s = slider(c.label, c.min, c.max, c.step, () => spec[c.int], (v) => spec[c.int] = v);
       s.title = c.tip; s.style.gridTemplateColumns = "3.5em 1fr 4ch";
-      card.append(s);
+      ints.append(s);
     }
+    card.append(ints);
     summary(card, () => {
       const r = spec.rootBase, key = NOTES[((r % 12) + 12) % 12] + (Math.floor(r / 12) - 1);
       return spec.rootStep ? `${key} · ${spec.rootStep > 0 ? "+" : "−"}${Math.abs(spec.rootStep)}/level` : key;

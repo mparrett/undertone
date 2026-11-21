@@ -357,7 +357,7 @@
     </ul>
 
     <h3>TAKING IT TO A GAME</h3>
-    <p>The EDN box is exactly what the lg binding takes. Load it at boot, then use the name:</p>
+    <p>The SHOT, LEAD or BED PALETTE EDN box is exactly what the lg binding takes (TAKE EDN holds trigger maps, to audition). Load it at boot, then use the name:</p>
 <pre>(undertone/register-shot   (read-string (slurp "sfx/zap.edn")))
 (undertone/trigger {:shot :zap :degree 2})
 
@@ -492,9 +492,11 @@ const cap = (s) => s[0].toUpperCase() + s.slice(1);
 const limit = (v) => v === "rel" ? (kind === "shot" ? 2 : 10) : v === "gain" ? (kind === "shot" ? 2 : 4) : v;
 
 // ---- the list of names ----
+// a palette is the bed's band, all but the lead, so the page calls it a bed palette
+const kindLabel = (k) => k === "palette" ? "bed palette" : k;
 function buildKinds() {
   for (const k of ["shot", "lead", "palette"]) {
-    const c = el("span", "chip", k === "palette" ? "bed palette" : k); c.dataset.k = k;  // a palette is the bed's band, all but the lead
+    const c = el("span", "chip", kindLabel(k)); c.dataset.k = k;
     // each kind keeps what was being edited, so switching back resumes it
     // rather than opening another copy
     c.onclick = () => { if (spec) last[kind] = { spec, track, builtin }; kind = k; last[k] ? resume(last[k]) : openFirst(); flashLoaded(); };
@@ -527,7 +529,7 @@ function buildNames() {
     $("names").append(c);
   }
   for (const c of $("kinds").children) c.classList.toggle("on", c.dataset.k === kind);
-  $("openkind").textContent = kind === "palette" ? "BED PALETTE" : kind.toUpperCase();
+  $("openkind").textContent = kindLabel(kind).toUpperCase();
 }
 // A click above loads a sound into the editor below, often out of view or
 // looking much like the last one, so the name and the units flash once.
@@ -571,7 +573,8 @@ function render() {
   $("regkind").textContent = kind;
   $("gatebox").hidden = kind === "palette";
   $("namelbl").textContent = `${kind} name`;
-  $("ednlab").textContent = `${kind.toUpperCase()} EDN`;  // beside TAKE EDN, say whose EDN this is
+  // a shot's sits beside TAKE EDN, and the two boxes take different maps
+  $("ednlab").textContent = `${kindLabel(kind).toUpperCase()} EDN`;
   if (kind === "shot") { $("gatelbl").textContent = "gate ms"; $("gate").value = spec.GateMS; $("gate").min = 1; $("gate").max = 10000; }
   if (kind === "lead") { $("gatelbl").textContent = "gate rows"; $("gate").value = spec.Gate; $("gate").min = 1; $("gate").max = 16; }
   gateToRange();

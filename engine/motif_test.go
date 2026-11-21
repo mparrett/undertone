@@ -15,6 +15,9 @@ func TestPatternChordMatches(t *testing.T) {
 			for _, tension := range []float64{0, 0.5, 1} {
 				p, _ := DeriveMood(mood, seed, 3, tension)
 				p = p.sanitized()
+				// trims, a game's and a mood's, so the levels below are checked
+				// with them: no built-in mood sets its own yet
+				p.LeadDB, p.MoodLeadDB, p.PadDB, p.MoodPadDB = 2, -5, -1, 3
 				for pat := range 40 {
 					fresh := buildPatterns(p, pat)
 					on := buildPatternsOn(p, pat, chordDraw(p, pat))
@@ -41,6 +44,11 @@ func TestPatternChordMatches(t *testing.T) {
 							if fresh[tr][i].note != got[tr][i].note {
 								t.Fatalf("%s seed %d tension %v pattern %d track %d row %d: fresh %d, read back %d",
 									mood, seed, tension, pat, tr, i, fresh[tr][i].note, got[tr][i].note)
+							}
+							// and at the generator's level, trims included
+							if fresh[tr][i].gain != got[tr][i].gain {
+								t.Fatalf("%s seed %d pattern %d track %d row %d: gain %v, read back %v",
+									mood, seed, pat, tr, i, fresh[tr][i].gain, got[tr][i].gain)
 							}
 						}
 					}

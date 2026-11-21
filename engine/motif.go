@@ -600,7 +600,7 @@ func (m *motifState) reshape(p *Params, pat int, pats *[nTracks][rows]trackRow, 
 	chord := chordAt(*p, m.chord)
 	lead, pad := m.leads[k], m.pads[k]
 	if p.LeadName != "" {
-		g := 0.55 * leadGain(p.LeadName)
+		g := 0.55 * leadGain(p.LeadName) * trimGain(p.LeadDB, p.MoodLeadDB) // as buildPatterns writes it
 		for i := range rows {
 			pats[3][i] = trackRow{}
 			if lead.on[i] {
@@ -618,7 +618,7 @@ func (m *motifState) reshape(p *Params, pat int, pats *[nTracks][rows]trackRow, 
 	for k, row := range []int{0, 8} {
 		pats[2][row] = trackRow{}
 		if pad.on[k] {
-			pats[2][row] = trackRow{chord + p.Scale[2*pad.voice[k]], 0.7, 6, p.Palette.Pad}
+			pats[2][row] = trackRow{chord + p.Scale[2*pad.voice[k]], 0.7 * trimGain(p.PadDB, p.MoodPadDB), 6, p.Palette.Pad}
 		}
 	}
 	m.applyArc(p, pats, drums)

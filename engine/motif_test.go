@@ -333,3 +333,38 @@ func TestMemoryUnderIdentity(t *testing.T) {
 		}
 	}
 }
+
+// Phrasing without memory sizes its sections from the phrase's length alone:
+// the chord cycle it draws is never played, so it must not stretch a return
+// or a hold. Every phrase's thin, hold and return add up to its length, with
+// the return the plain minimum.
+func TestPhrasingIgnoresTheCycle(t *testing.T) {
+	longer := 0
+	for _, mood := range MoodNames() {
+		tm, ok := TemperamentFor(mood)
+		if !ok {
+			continue
+		}
+		for seed := range uint64(40) {
+			p, _ := DeriveMood(mood, seed, 2, 0.3)
+			p.Phrasing = &tm.Phrasing
+			p = p.sanitized()
+			m := motifState{phr: true}
+			for ph := range 4 {
+				m.phrase = ph
+				m.plan(&p, ph*20, ph == 0)
+				n := m.lens[secHold] + m.lens[secThin] + m.lens[secReturn]
+				if m.lens[secReturn] != max(2, n/5) || m.lens[secThin] != max(1, n/5) {
+					t.Fatalf("%s seed %d phrase %d: return %d, thin %d in %d patterns; want %d and %d",
+						mood, seed, ph, m.lens[secReturn], m.lens[secThin], n, max(2, n/5), max(1, n/5))
+				}
+				if m.homeNProg > max(2, n/5) {
+					longer++ // a case the cycle would have stretched
+				}
+			}
+		}
+	}
+	if longer == 0 {
+		t.Error("no phrase drew a cycle longer than its return: the test proves nothing")
+	}
+}

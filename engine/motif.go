@@ -703,10 +703,15 @@ func (m *motifState) plan(p *Params, pat int, newCycle bool) {
 		m.drawCycle(&r, p, pat)
 	}
 	m.lens[secThin] = max(1, n/5)
-	// a return plays the whole home cycle at least once
-	m.lens[secReturn] = max(2, n/5, m.homeNProg)
-	// and the hold the whole cycle, so the return is a cycle already heard
-	m.lens[secHold] = max(2, m.homeNProg, n-m.lens[secThin]-m.lens[secReturn])
+	// With memory, a return plays the whole home cycle at least once, and the
+	// hold the whole cycle, so the return is a cycle already heard. Without
+	// it the cycle is never played, so it mustn't size the sections.
+	cycle := 0
+	if m.mem {
+		cycle = m.homeNProg
+	}
+	m.lens[secReturn] = max(2, n/5, cycle)
+	m.lens[secHold] = max(2, cycle, n-m.lens[secThin]-m.lens[secReturn])
 	m.sec, m.secPos = secHold, 0
 	m.held = false
 	if first {

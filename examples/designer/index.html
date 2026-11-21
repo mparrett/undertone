@@ -157,6 +157,14 @@
   .arcsecs span.on[data-s=thin] { background: #e0b84f; } .arcsecs span.on[data-s=break] { background: #8a8576; }
   .arcsecs span.on[data-s=return] { background: #b48ad6; }
   .drops { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  /* colour: pick a section, see what each one sets, edit the picked one */
+  .colsecs span { cursor: pointer; }
+  .colsecs span.now { box-shadow: inset 0 0 0 2px var(--fg); }
+  .colsum { display: grid; grid-template-columns: 4.5em 1fr; gap: 1px 8px; font-size: 11px; color: var(--mut); margin: 2px 0 8px; }
+  .colsum b { font-weight: 600; cursor: pointer; } .colsum span { cursor: pointer; }
+  .colsum .sel { color: var(--fg); }
+  .colflags { display: flex; gap: 14px; align-items: center; font-size: 12px; color: var(--mut); margin: 4px 0; flex-wrap: wrap; }
+  .colflags label { display: flex; gap: 6px; align-items: center; }
   .drops .chip { padding: 3px 8px; font-size: 12px; }
 </style>
 </head>
@@ -231,7 +239,7 @@
       { int: "padDB",  label: "pad dB",  min: -24, max: 12, step: 1, note: "the pad; a game's trim adds to it" },
     ]},
     { id: "arc", col: "L", hear: true, title: "PHRASE & MEMORY", note: "over minutes: how a phrase arcs and how the lines develop · heard with hear on, as a game hears it unless it turns them off", items: [
-      { now: true }, { memory: true }, { phrasing: true },
+      { now: true }, { memory: true }, { phrasing: true }, { colour: true },
     ]},
     { id: "drum", title: "DRUMS", note: "kick, backbeat, top: the palette's kit", toggle: true, items: [
       { grooves: true },
@@ -449,7 +457,6 @@
             drops.append(b);
           }
         });
-        body.append(el("div", "note", "each section's colour (filter, reverb, echo, the lead's register) comes with the mood; editing it comes later"));
       },
       (t) => `${t.phraseMin}–${t.phraseMax} patterns · break ${fmt(t.breakChance)}`);
     help(card, `<p><b>shortest, longest</b>: a phrase's length in patterns, drawn between them; tension shortens it by up to 40%.</p>
@@ -460,6 +467,75 @@
   // nowCard follows the arc as it plays; the meter loop feeds it.
   const ARC = ["build", "hold", "thin", "break", "return"];
   let showArc = () => {};
+  // colourCard edits each section's colour, Phrasing.Shade: offsets on the
+  // mood's own settings that glide in over a section's first rows. Ranges
+  // are what the engine clamps to.
+  const SHADE = [
+    ["Open", "open", -1, 1, "the mood's filters: + opens, − closes"],
+    ["Dark", "dark", 0, 1, "a lowpass over the whole mix, for moods with no filters to move"],
+    ["Grit", "grit", -1, 1, "added to the patches' drive"],
+    ["Wash", "wash", -1, 1, "+ sends the mix to the reverb; − dries the patches' own sends"],
+    ["Room", "room", -1, 1, "how long the reverb rings"],
+    ["Echo", "echo", -1, 1, "the delay sends, scaled by 1 + echo"],
+    ["Busy", "busy", -1, 1, "added to the shaker's fullness"],
+  ];
+  const shadeGist = (sh) => {
+    const parts = SHADE.filter(([k]) => sh[k]).map(([k, n]) => `${n} ${sh[k] > 0 ? "+" : ""}${fmt(sh[k])}`);
+    if (sh.Lift) parts.push(`lead ${sh.Lift > 0 ? "up" : "down"} ${Math.abs(sh.Lift)} oct`);
+    if (sh.Pad) parts.push(sh.Pad < 0 ? "pad one strike" : "pad both strikes");
+    if (sh.Fill) parts.push("fill in");
+    return parts.join(" · ") || "unchanged";
+  };
+  function colourCard() {
+    const card = el("div", "card", `<div class="hd"><b>colour</b></div><div class="note">how each section sounds: offsets on the mood's own settings, gliding in over a section's first 8 rows · heard when the arc reaches that section</div>`);
+    const body = el("div", "knobs"), none = el("div", "note", "colour comes with phrasing; add phrasing above to edit it");
+    let pick = 0;
+    const sh = () => spec.phrasing.shade[pick];
+    const secs = el("div", "arcsecs colsecs");
+    ARC.forEach((s, i) => { const c = el("span", "", s); c.dataset.s = s; c.onclick = () => { pick = i; sync(); }; secs.append(c); });
+    const sum = el("div", "colsum");
+    body.append(secs, sum);
+    for (const [k, label, lo, hi] of SHADE)
+      body.append(slider(label, lo, hi, 0.05, () => spec.phrasing ? sh()[k] ?? 0 : 0, (v) => { if (spec.phrasing) { sh()[k] = v; lightSum(); } }));
+    body.append(slider("lift", -2, 2, 1, () => spec.phrasing ? sh().Lift ?? 0 : 0, (v) => { if (spec.phrasing) { sh().Lift = v; lightSum(); } }));
+    const flags = el("div", "colflags");
+    const pad = el("label", "", `pad <select><option value="-1">one strike</option><option value="0">as the mood</option><option value="1">both strikes</option></select>`);
+    const fill = el("label", "", `<input type="checkbox"> a drum fill into it`);
+    pad.querySelector("select").onchange = (e) => { sh().Pad = +e.target.value; lightSum(); changed(); };
+    fill.querySelector("input").onchange = (e) => { sh().Fill = e.target.checked; lightSum(); changed(); };
+    const clear = el("button", "small", "clear this section");
+    clear.onclick = () => { spec.phrasing.shade[pick] = {}; sync(); changed(); };
+    flags.append(pad, fill, clear);
+    body.append(flags);
+    // the summary is redrawn on every slider move, alone
+    const lightSum = () => {
+      if (!spec.phrasing) return;
+      sum.innerHTML = ARC.map((s, i) => `<b data-i="${i}" class="${i === pick ? "sel" : ""}">${s}</b><span data-i="${i}" class="${i === pick ? "sel" : ""}">${shadeGist(spec.phrasing.shade[i])}</span>`).join("");
+    };
+    sum.onclick = (e) => { const i = e.target.dataset?.i; if (i != null) { pick = +i; sync(); } };
+    syncers.push(() => {
+      body.style.display = spec.phrasing ? "" : "none"; none.style.display = spec.phrasing ? "none" : "";
+      if (!spec.phrasing) return;
+      for (const c of secs.children) c.classList.toggle("on", c.dataset.s === ARC[pick]);
+      pad.querySelector("select").value = String(sh().Pad ?? 0);
+      fill.querySelector("input").checked = !!sh().Fill;
+      lightSum();
+    });
+    // outline the section that's playing, from the now card's feed
+    const base = showArc;
+    showArc = (m) => {
+      base(m);
+      for (const c of secs.children) c.classList.toggle("now", !!m?.Chord && heard().phrasing && c.dataset.s === m.Section);
+    };
+    card.append(body, none);
+    summary(card, () => spec.phrasing ? `${spec.phrasing.shade.filter((x) => shadeGist(x) !== "unchanged").length} of 5 sections coloured` : "none");
+    help(card, `<p><b>open, dark</b>: both darken or brighten. Open moves the mood's own filters; dark lowpasses the whole mix, for moods whose patches have no filter to move.</p>
+      <p><b>wash, room, echo</b>: the space. Wash adds reverb (or, below 0, dries the patches' own sends), room lengthens it, echo scales the delay.</p>
+      <p><b>lift</b>: the lead's register, in octaves. <b>pad</b>: one strike per pattern or both. <b>fill</b>: the pattern before this section ends in a drum fill.</p>
+      <p>The sliders that move continuously glide in over the section's first 8 rows; lift, pad and fill change the notes, so they take effect at the section's first pattern.</p>`);
+    return card;
+  }
+
   function nowCard() {
     const card = el("div", "card", `<div class="hd"><b>now</b></div><div class="note">where the arc is, as you hear it · turning hear on starts it from its build</div>`);
     const secs = el("div", "arcsecs"), line = el("div", "note odds");
@@ -598,7 +674,7 @@
     for (const it of s.items) {
       cards.append(it.line ? lineCard(it) : it.int ? intCard(it) : it.group ? groupCard(it)
                    : it.patches ? patchesCard() : it.now ? nowCard() : it.memory ? memoryCard()
-                   : it.phrasing ? phrasingCard() : groovesCard());
+                   : it.phrasing ? phrasingCard() : it.colour ? colourCard() : groovesCard());
     }
     sec.append(head, cards);
     $(s.col === "L" ? "colL" : "colR").append(sec);

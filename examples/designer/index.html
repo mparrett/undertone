@@ -467,16 +467,20 @@
   // nowCard follows the arc as it plays; the meter loop feeds it.
   const ARC = ["build", "hold", "thin", "break", "return"];
   let showArc = () => {};
+  // cards other than the now card that follow the arc; the trace feeds all
+  const arcListeners = [];
+  const feedArc = (m) => { showArc(m); for (const f of arcListeners) f(m); };
   // colourCard edits each section's colour, Phrasing.Shade: offsets on the
   // mood's own settings that glide in over a section's first rows. Ranges
-  // are what the engine clamps to.
+  // cover what the engine can use: room is clamped on the mood's size plus
+  // the offset, so ±2 reaches either end, and echo is only floored at −1.
   const SHADE = [
     ["Open", "open", -1, 1, "the mood's filters: + opens, − closes"],
     ["Dark", "dark", 0, 1, "a lowpass over the whole mix, for moods with no filters to move"],
     ["Grit", "grit", -1, 1, "added to the patches' drive"],
     ["Wash", "wash", -1, 1, "+ sends the mix to the reverb; − dries the patches' own sends"],
-    ["Room", "room", -1, 1, "how long the reverb rings"],
-    ["Echo", "echo", -1, 1, "the delay sends, scaled by 1 + echo"],
+    ["Room", "room", -2, 2, "how long the reverb rings"],
+    ["Echo", "echo", -1, 2, "the delay sends, scaled by 1 + echo"],
     ["Busy", "busy", -1, 1, "added to the shaker's fullness"],
   ];
   const shadeGist = (sh) => {
@@ -501,10 +505,10 @@
     const flags = el("div", "colflags");
     const pad = el("label", "", `pad <select><option value="-1">one strike</option><option value="0">as the mood</option><option value="1">both strikes</option></select>`);
     const fill = el("label", "", `<input type="checkbox"> a drum fill into it`);
-    pad.querySelector("select").onchange = (e) => { sh().Pad = +e.target.value; lightSum(); changed(); };
-    fill.querySelector("input").onchange = (e) => { sh().Fill = e.target.checked; lightSum(); changed(); };
+    pad.querySelector("select").onchange = (e) => { if (spec.phrasing) { sh().Pad = +e.target.value; lightSum(); changed(); } };
+    fill.querySelector("input").onchange = (e) => { if (spec.phrasing) { sh().Fill = e.target.checked; lightSum(); changed(); } };
     const clear = el("button", "small", "clear this section");
-    clear.onclick = () => { spec.phrasing.shade[pick] = {}; sync(); changed(); };
+    clear.onclick = () => { if (spec.phrasing) { spec.phrasing.shade[pick] = {}; sync(); changed(); } };
     flags.append(pad, fill, clear);
     body.append(flags);
     // the summary is redrawn on every slider move, alone
@@ -521,12 +525,10 @@
       fill.querySelector("input").checked = !!sh().Fill;
       lightSum();
     });
-    // outline the section that's playing, from the now card's feed
-    const base = showArc;
-    showArc = (m) => {
-      base(m);
+    // outline the section that's playing, from the trace the now card reads
+    arcListeners.push((m) => {
       for (const c of secs.children) c.classList.toggle("now", !!m?.Chord && heard().phrasing && c.dataset.s === m.Section);
-    };
+    });
     card.append(body, none);
     summary(card, () => spec.phrasing ? `${spec.phrasing.shade.filter((x) => shadeGist(x) !== "unchanged").length} of 5 sections coloured` : "none");
     help(card, `<p><b>open, dark</b>: both darken or brighten. Open moves the mood's own filters; dark lowpasses the whole mix, for moods whose patches have no filter to move.</p>
@@ -662,7 +664,7 @@
       // a part the mood does not have cannot be heard
       for (const part of ["phrasing", "memory"]) {
         const sw = el("label", "switch", `<input type="checkbox"> hear ${part}`), box = sw.querySelector("input");
-        box.onchange = () => { hear[part] = box.checked; changed(); showArc(null); };
+        box.onchange = () => { hear[part] = box.checked; changed(); feedArc(null); };
         syncers.push(() => {
           box.disabled = !spec[part];
           box.checked = heard()[part];
@@ -805,7 +807,7 @@
     $("play").classList.toggle("on", playing);
     $("play").innerHTML = playing ? "&#10074;&#10074; stop" : "&#9654; play";
     status.textContent = playing ? "playing" : "stopped";
-    if (playing) startMeters(); else showArc(null);
+    if (playing) startMeters(); else feedArc(null);
   }
   $("play").onclick = () => setPlaying(!playing);
 
@@ -822,7 +824,7 @@
     });
     // the arc moves a pattern at a time, so a few looks a second follow it
     const now = performance.now();
-    if (v && (heard().phrasing || heard().memory) && now - lastTrace > 250) { lastTrace = now; showArc(JSON.parse(undertoneDesigner.trace())); }
+    if (v && (heard().phrasing || heard().memory) && now - lastTrace > 250) { lastTrace = now; feedArc(JSON.parse(undertoneDesigner.trace())); }
     metering = !!v;
     if (metering) requestAnimationFrame(meters);
   }

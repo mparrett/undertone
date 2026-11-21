@@ -199,6 +199,13 @@ func main() {
 					p.Mute |= layers[l]
 				}
 			}
+			// The trims are the audition's, like muting: dB offsets the
+			// engine sanitizes, 0 when unset.
+			if len(a) > 5 {
+				var trim struct{ Lead, Pad float64 }
+				_ = json.Unmarshal([]byte(a[5].String()), &trim)
+				p.LeadDB, p.PadDB = trim.Lead, trim.Pad
+			}
 			syn.SetParametersNow(p)
 			return marshal(map[string]any{
 				"bpm": math.Round(p.BPM), "key": noteNames[((p.Root%12)+12)%12], "root": p.Root,
@@ -209,6 +216,7 @@ func main() {
 				},
 			})
 		}),
+		"levels": js.FuncOf(func(js.Value, []js.Value) any { return marshal(syn.LayerLevels()) }),
 		"edn": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			s, ok := parse(a[0])
 			if !ok {

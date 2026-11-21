@@ -187,6 +187,15 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 			// gate come too; a :lead below still overrides all three.
 			p.Palette = d.Palette
 			p.LeadName, p.LeadGate = d.LeadName, d.LeadGate
+			// and its temperament, which plays by default: the last mood's
+			// under this one's palette would be neither. An explicit
+			// :mood-phrasing or :mood-memory in the same map still wins.
+			if !setPhr {
+				phr = d.MoodPhrasing
+			}
+			if !setMem {
+				mem = d.MoodMemory
+			}
 		}
 	}
 	// :palette names a bank directly, for a mood the host has no row for. The

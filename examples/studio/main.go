@@ -227,7 +227,12 @@ func main() {
 		if len(a) > 2 && a[2].Type() == js.TypeNumber {
 			g = a[2].Float() // a page measuring a shot alone passes 0
 		}
-		return engine.Take{Params: cur, MusicGain: g, Shots: shots, Seconds: a[1].Float()}, true
+		// The bed is the mood's full mix, without its arc: a take is a few
+		// seconds from the start, and with the arc that is the build, which
+		// a game plays only once. A shot is measured against the mood.
+		bed := cur
+		bed.NoPhrasing, bed.NoMemory = true, true
+		return engine.Take{Params: bed, MusicGain: g, Shots: shots, Seconds: a[1].Float()}, true
 	}
 	src := &gate{src: syn}
 

@@ -48,6 +48,21 @@ func TestTemperamentFromLg(t *testing.T) {
 	if p := m.params; p.MoodPhrasing != nil || p.MoodMemory != nil || !p.NoPhrasing {
 		t.Fatalf("a mood with none kept the last one's, or lost the switch: %+v %+v %v", p.MoodPhrasing, p.MoodMemory, p.NoPhrasing)
 	}
+	// :mood brings its temperament with its palette, which plays by default;
+	// an explicit :mood-memory in the same map wins
+	if _, err := c.Run("(undertone/set-parameters {:mood :forge})"); err != nil {
+		t.Fatal(err)
+	}
+	ft, _ := engine.TemperamentFor("forge")
+	if p := m.params; p.MoodMemory == nil || *p.MoodMemory != ft.Memory || p.MoodPhrasing == nil || p.MoodPhrasing.BreakChance != ft.Phrasing.BreakChance {
+		t.Fatalf(":mood :forge kept another mood's temperament: %+v", p.MoodMemory)
+	}
+	if _, err := c.Run("(undertone/set-parameters {:mood :forge :mood-memory {:restlessness 0.1}})"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := m.params.MoodMemory, engine.NewMemory(0.1); got == nil || *got != want {
+		t.Fatalf("an explicit :mood-memory lost to :mood: %+v", got)
+	}
 	// a partial memory takes the defaults for the rest
 	if _, err := c.Run("(ambience/score-spec! (assoc (:village ambience/moods) :memory {:restlessness 0.5 :leap 0.9}) 7 2 0.3)"); err != nil {
 		t.Fatal(err)

@@ -52,6 +52,9 @@
   #mix .chip[data-v=pulse] { --sec: var(--aud); }
   #mix .chip.on::before { content: "♪ "; }
   #mix button { font-size: 12px; padding: 3px 8px; }
+  /* each chip's meter: a bar along its foot, as loud as the layer is now */
+  #mix .chip { position: relative; overflow: hidden; }
+  #mix .chip i { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--sec); }
   .card.muted { opacity: .55; }
   .card.muted .hd span { color: var(--mut); }
   #now { flex: 1; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
@@ -143,6 +146,9 @@
     <label class="sl">level <input id="level" type="range" min="-2" max="10" step="1" value="0"><output id="levelv">0</output></label>
     <label class="sl">tension <input id="tension" type="range" min="0" max="1" step="0.05" value="0"><output id="tensionv">0</output></label>
     <label class="sl">seed <input id="seed" type="range" min="1" max="40" step="1" value="1"><output id="seedv">1</output></label>
+    <div class="lab">TRIMS <small style="font-weight:400;letter-spacing:0">· dB, for balancing the mix; not in the EDN</small></div>
+    <label class="sl">lead dB <input id="leaddb" type="range" min="-24" max="12" step="1" value="0"><output id="leaddbv">0</output></label>
+    <label class="sl">pad dB <input id="paddb" type="range" min="-24" max="12" step="1" value="0"><output id="paddbv">0</output></label>
    </details>
   </div>
  </div>
@@ -409,10 +415,12 @@
 
   function sync() { for (const f of syncers) f(); $("name").value = spec.name; }
   const audition = () => [+$("seed").value, +$("level").value, +$("tension").value];
+  const trim = () => ({ lead: +$("leaddb").value, pad: +$("paddb").value });
   function showAudition() {
     const [seed, level, tension] = audition();
     const p = PRESETS.find((p) => p.level === level && p.tension === tension);
-    $("audsum").textContent = `${p ? p.name + " · " : ""}level ${level} · tension ${tension} · seed ${seed}`;
+    const trims = Object.entries(trim()).filter(([, db]) => db).map(([k, db]) => ` · ${k} ${db > 0 ? "+" : ""}${db} dB`).join("");
+    $("audsum").textContent = `${p ? p.name + " · " : ""}level ${level} · tension ${tension} · seed ${seed}${trims}`;
     for (const b of document.querySelectorAll("#presets .chip")) b.classList.toggle("on", p && b.dataset.v === p.name);
   }
 
@@ -422,7 +430,8 @@
     const [seed, level, tension] = audition();
     showAudition();
     for (const f of sweeps) f(level);
-    const r = JSON.parse(undertoneDesigner.apply(JSON.stringify(spec), seed, level, tension, JSON.stringify([...muted])));
+    const r = JSON.parse(undertoneDesigner.apply(JSON.stringify(spec), seed, level, tension,
+                                                 JSON.stringify([...muted]), JSON.stringify(trim())));
     status.classList.toggle("err", !!r.error);
     if (r.error) { status.textContent = r.error; return; }
     status.textContent = playing ? "playing" : "ready: tap play";
@@ -453,7 +462,7 @@
     for (const b of document.querySelectorAll("#mix .chip")) b.classList.toggle("on", !muted.has(b.dataset.v));
   }
   for (const l of LAYERS) {
-    const b = el("span", "chip on", l); b.dataset.v = l;
+    const b = el("span", "chip on", l); b.dataset.v = l; b.append(el("i"));
     if (l === "pulse") b.title = "tension's pulse: silent at tension 0";
     b.onclick = () => { muted.has(l) ? muted.delete(l) : muted.add(l); setMuted([...muted]); changed(); };
     $("mix").append(b);
@@ -476,7 +485,7 @@
     };
     $("presets").append(b);
   }
-  for (const id of ["level", "tension", "seed"]) {
+  for (const id of ["level", "tension", "seed", "leaddb", "paddb"]) {
     $(id).oninput = () => { $(id + "v").textContent = $(id).value; changed(); };
   }
   $("name").oninput = (e) => { spec.name = e.target.value.trim().replace(/[^\w-]/g, "") || "untitled"; changed(); };
@@ -494,6 +503,18 @@
     status.textContent = playing ? "playing" : "stopped";
   }
   $("play").onclick = () => setPlaying(!playing);
+
+  // The mix chips' meters, from the engine's per-layer peaks (dry, before
+  // muting): a muted layer reads 0 here since you do not hear it. The square
+  // root spreads the quiet layers out, as the studio's meters do.
+  const chips = [...document.querySelectorAll("#mix .chip")];
+  (function meters() {
+    const v = ready && playing ? JSON.parse(undertoneDesigner.levels()) : null;
+    chips.forEach((c, i) => {
+      c.firstElementChild.style.width = `${!v || muted.has(LAYERS[i]) ? 0 : Math.min(100, Math.sqrt(v[i]) * 140)}%`;
+    });
+    requestAnimationFrame(meters);
+  })();
 
   const wide = matchMedia("(min-width: 900px)"), main = document.querySelector("main");
   // Docked: always on a phone; on a wide screen once the dock's slot has

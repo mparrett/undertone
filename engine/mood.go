@@ -61,6 +61,10 @@ type mood struct {
 
 	// room is the reverb room; the zero Room is the default long, dark one.
 	room Room
+
+	// leadDB and padDB trim the lead and the pad, in dB, to balance the
+	// mood; a game's trims add to them (Params.MoodLeadDB).
+	leadDB, padDB float64
 }
 
 var moods = []mood{
@@ -297,6 +301,8 @@ func (m *mood) derive(seed uint64, level int, tension float64) Params {
 		DrumGain:    m.drums.at(l),
 		DrumBusy:    m.busy.at(l),
 		Swing:       m.swing,
+		MoodLeadDB:  m.leadDB,
+		MoodPadDB:   m.padDB,
 	}
 	pickLead(&p, m.leads)
 	if len(m.grooves) > 0 {

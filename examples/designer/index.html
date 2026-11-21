@@ -146,9 +146,6 @@
     <label class="sl">level <input id="level" type="range" min="-2" max="10" step="1" value="0"><output id="levelv">0</output></label>
     <label class="sl">tension <input id="tension" type="range" min="0" max="1" step="0.05" value="0"><output id="tensionv">0</output></label>
     <label class="sl">seed <input id="seed" type="range" min="1" max="40" step="1" value="1"><output id="seedv">1</output></label>
-    <div class="lab">TRIMS <small style="font-weight:400;letter-spacing:0">· dB, for balancing the mix; not in the EDN</small></div>
-    <label class="sl">lead dB <input id="leaddb" type="range" min="-24" max="12" step="1" value="0"><output id="leaddbv">0</output></label>
-    <label class="sl">pad dB <input id="paddb" type="range" min="-24" max="12" step="1" value="0"><output id="paddbv">0</output></label>
    </details>
   </div>
  </div>
@@ -186,6 +183,8 @@
       { line: "lead",  ...GAIN, note: "the lead: how often it plays" },
       { line: "air",   ...GAIN, note: "the top: air or breeze gain" },
       { line: "open",  min: -1, max: 1, step: 0.05, smin: -0.3, smax: 0.3, sstep: 0.01, note: "the resonant filters: level opens (+) or closes (−) them, up to two octaves" },
+      { int: "leadDB", label: "lead dB", min: -24, max: 12, step: 1, note: "trims the lead to balance the mix, whichever lead plays; a game's trim adds to it" },
+      { int: "padDB",  label: "pad dB",  min: -24, max: 12, step: 1, note: "trims the pad to balance the mix; a game's trim adds to it" },
     ]},
     { id: "drum", title: "DRUMS", note: "kick, backbeat, top: the palette's kit", toggle: true, items: [
       { grooves: true },
@@ -415,12 +414,10 @@
 
   function sync() { for (const f of syncers) f(); $("name").value = spec.name; }
   const audition = () => [+$("seed").value, +$("level").value, +$("tension").value];
-  const trim = () => ({ lead: +$("leaddb").value, pad: +$("paddb").value });
   function showAudition() {
     const [seed, level, tension] = audition();
     const p = PRESETS.find((p) => p.level === level && p.tension === tension);
-    const trims = Object.entries(trim()).filter(([, db]) => db).map(([k, db]) => ` · ${k} ${db > 0 ? "+" : ""}${db} dB`).join("");
-    $("audsum").textContent = `${p ? p.name + " · " : ""}level ${level} · tension ${tension} · seed ${seed}${trims}`;
+    $("audsum").textContent = `${p ? p.name + " · " : ""}level ${level} · tension ${tension} · seed ${seed}`;
     for (const b of document.querySelectorAll("#presets .chip")) b.classList.toggle("on", p && b.dataset.v === p.name);
   }
 
@@ -430,8 +427,7 @@
     const [seed, level, tension] = audition();
     showAudition();
     for (const f of sweeps) f(level);
-    const r = JSON.parse(undertoneDesigner.apply(JSON.stringify(spec), seed, level, tension,
-                                                 JSON.stringify([...muted]), JSON.stringify(trim())));
+    const r = JSON.parse(undertoneDesigner.apply(JSON.stringify(spec), seed, level, tension, JSON.stringify([...muted])));
     status.classList.toggle("err", !!r.error);
     if (r.error) { status.textContent = r.error; return; }
     status.textContent = playing ? "playing" : "ready: tap play";
@@ -485,7 +481,7 @@
     };
     $("presets").append(b);
   }
-  for (const id of ["level", "tension", "seed", "leaddb", "paddb"]) {
+  for (const id of ["level", "tension", "seed"]) {
     $(id).oninput = () => { $(id + "v").textContent = $(id).value; changed(); };
   }
   $("name").oninput = (e) => { spec.name = e.target.value.trim().replace(/[^\w-]/g, "") || "untitled"; changed(); };

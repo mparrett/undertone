@@ -1212,6 +1212,13 @@ type Params struct {
 	// than a voice at the mix, because the grid bass plays on the fifth's
 	// voice; SetParametersNow fades notes already sounding to the new level.
 	LeadDB, PadDB, BassDB float64
+
+	// MoodLeadDB and MoodPadDB are the mood's own trims, which a derive sets.
+	// They add to LeadDB and PadDB rather than sharing them, so a mood's
+	// balance and a game's mix on top are separate: a game that turns the
+	// lead down keeps each mood's correction, and a mood change replaces
+	// the mood's trims without resetting the game's.
+	MoodLeadDB, MoodPadDB float64
 }
 
 // dbGain is a trim in dB as a gain factor; 0 dB returns exactly 1, so an
@@ -1221,6 +1228,12 @@ func dbGain(db float64) float64 {
 		return 1
 	}
 	return math.Pow(10, db/20)
+}
+
+// trimGain is a game's trim and a mood's together as a gain factor, held to
+// the range one trim has.
+func trimGain(game, mood float64) float64 {
+	return dbGain(max(-60, min(game+mood, 12)))
 }
 
 // Layers is a set of the music's layers, one bit each.
@@ -1426,7 +1439,7 @@ func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 			// open voicing pentatonic music uses: root, third and sixth in
 			// major pentatonic, a stack of fourths in minor.
 			deg := []int{0, 2, 4}[r.n(3)]
-			out[2][row] = trackRow{chord + p.Scale[deg], 0.7 * dbGain(p.PadDB), 6, p.Palette.Pad}
+			out[2][row] = trackRow{chord + p.Scale[deg], 0.7 * trimGain(p.PadDB, p.MoodPadDB), 6, p.Palette.Pad}
 		}
 	}
 	// The lead starts an octave above the chord and walks between the
@@ -1438,7 +1451,7 @@ func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
 		if r.f() < p.LeadDensity {
 			deg += r.n(5) - 2
 			deg = max(3, min(deg, 2*n+3))
-			out[3][i] = trackRow{chord + scaleTone(p.Scale, deg) + p.LeadLift, 0.55 * leadGain(p.LeadName) * dbGain(p.LeadDB), p.LeadGate, p.Palette.Lead}
+			out[3][i] = trackRow{chord + scaleTone(p.Scale, deg) + p.LeadLift, 0.55 * leadGain(p.LeadName) * trimGain(p.LeadDB, p.MoodLeadDB), p.LeadGate, p.Palette.Lead}
 		}
 	}
 	// Without a lead the walk is still drawn, so the pulse below draws the
@@ -2231,7 +2244,7 @@ func (p Params) sanitized() Params {
 		p.LeadGate = 1
 	}
 	// a trim past +12 dB would clip the mix; under -60 dB it is silence anyway
-	for _, d := range []*float64{&p.LeadDB, &p.PadDB, &p.BassDB} {
+	for _, d := range []*float64{&p.LeadDB, &p.PadDB, &p.BassDB, &p.MoodLeadDB, &p.MoodPadDB} {
 		if *d != *d {
 			*d = 0
 		}

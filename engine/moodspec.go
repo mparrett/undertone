@@ -32,6 +32,7 @@ type MoodSpec struct {
 	TenseDrums            float64 // drum gain at full tension for drums the level leaves silent
 	Open                  Line    // how far level opens (+) or closes (-) the svf filters, clamped to -1..1
 	Room                  Room    // the reverb room; it does not move with level
+	LeadDB, PadDB         float64 // trims in dB that balance the mood; a game's add to them
 }
 
 var palettes = map[string]Palette{
@@ -112,6 +113,7 @@ func MoodByName(name string) (MoodSpec, bool) {
 			Leads: slices.Clone(m.leads), Grooves: slices.Clone(m.grooves),
 			Drums: m.drums.export(), Busy: m.busy.export(), Swing: m.swing,
 			TenseDrums: m.tenseDrums, Open: m.open.export(), Room: m.room,
+			LeadDB: m.leadDB, PadDB: m.padDB,
 		}
 		for name, p := range palettes {
 			if reflect.DeepEqual(p, m.palette) {
@@ -162,6 +164,7 @@ func (s MoodSpec) Derive(seed uint64, level int, tension float64) (Params, error
 		calm: s.Calm, leadLift: s.LeadLift, palette: pal, leads: slices.Clone(s.Leads),
 		grooves: slices.Clone(s.Grooves), drums: s.Drums.internal(), busy: s.Busy.internal(), swing: s.Swing,
 		tenseDrums: s.TenseDrums, open: s.Open.internal(), room: s.Room,
+		leadDB: s.LeadDB, padDB: s.PadDB,
 	}
 	return m.derive(seed, level, tension), nil
 }
@@ -218,6 +221,13 @@ func (s MoodSpec) EDN() string {
 	}
 	if s.Room != (Room{}) {
 		fmt.Fprintf(&b, " :room      {:size %s :damp %s}\n", num(s.Room.Size), num(s.Room.Damp))
+	}
+	// 0 is no trim, so an untrimmed mood's entry reads as it always has
+	if s.LeadDB != 0 {
+		fmt.Fprintf(&b, " :lead-db   %s\n", num(s.LeadDB))
+	}
+	if s.PadDB != 0 {
+		fmt.Fprintf(&b, " :pad-db    %s\n", num(s.PadDB))
 	}
 	fmt.Fprintf(&b, " :leads     %s", kws(s.Leads))
 	if len(s.Grooves) > 0 {

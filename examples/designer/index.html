@@ -460,12 +460,13 @@
     showAudition();
     for (const f of sweeps) f(level);
     const r = JSON.parse(undertoneDesigner.apply(JSON.stringify(spec), seed, level, tension, JSON.stringify([...muted])));
+    // before the error check: the box always shows what copy would copy
+    $("edn").value = undertoneDesigner.edn(JSON.stringify(spec));
     status.classList.toggle("err", !!r.error);
     if (r.error) { status.textContent = r.error; return; }
     status.textContent = playing ? "playing" : "ready: tap play";
     $("now").innerHTML = `<span class="k">now</span> ${r.bpm} bpm · ${r.key} · ${r.lead ? "lead " + r.lead : "no lead"}` +
       (r.groove ? ` · groove ${r.groove}` : ` · no drums`);
-    $("edn").value = undertoneDesigner.edn(JSON.stringify(spec));
   }
 
   function load(name) {
@@ -552,7 +553,11 @@
   $("copy").onclick = async () => {
     const t = undertoneDesigner.edn(JSON.stringify(spec));
     try { await navigator.clipboard.writeText(t); status.textContent = "EDN copied"; }
-    catch { $("edn").select(); status.textContent = "select the EDN above to copy it"; }
+    catch {
+      // iOS selects nothing in a read-only textarea on select() alone
+      const ta = $("edn"); ta.value = t; ta.focus(); ta.select(); ta.setSelectionRange(0, t.length);
+      status.textContent = "select the EDN above to copy it";
+    }
   };
   function setPlaying(on) {
     playing = on;

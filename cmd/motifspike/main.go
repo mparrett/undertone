@@ -1,9 +1,9 @@
-// motifspike renders a mood with and without motif memory and the phrase
-// arc, for listening to the spike side by side. Tension can hold or ramp.
+// motifspike renders a mood with and without the phrase arc and motif
+// memory, for listening to the spike side by side. Tension can hold or ramp.
 //
 //	go run ./cmd/motifspike -mood rust -seed 7 -dur 150 -temper -wav on.wav
 //	go run ./cmd/motifspike -mood dungeon -ramp 0,0.8 -wav ramp-off.wav
-//	go run ./cmd/motifspike -mood rust -temper -parts texture -notes tex.tsv
+//	go run ./cmd/motifspike -mood rust -temper -parts phrasing -notes arc.tsv
 package main
 
 import (
@@ -26,15 +26,15 @@ func main() {
 	tension := flag.Float64("tension", 0.3, "fixed tension (ignored with -ramp)")
 	ramp := flag.String("ramp", "", "from,to: tension rises linearly over the render")
 	dur := flag.Float64("dur", 150, "seconds")
-	temper := flag.Bool("temper", false, "turn on motif memory and the phrase arc")
+	temper := flag.Bool("temper", false, "turn on the phrase arc and motif memory")
 	wav := flag.String("wav", "", "output WAV")
 	trace := flag.Bool("trace", false, "print the arc and each lane's choice per pattern")
-	parts := flag.String("parts", "all", "with -temper, the arc's parts to run: all, texture or memory")
+	parts := flag.String("parts", "all", "with -temper, what to turn on: all, phrasing or memory")
 	notesOut := flag.String("notes", "", "write every note event as TSV, to compare renders note for note")
 	flag.Parse()
-	arcParts, ok := map[string]engine.ArcParts{"all": engine.ArcAll, "texture": engine.ArcTexture, "memory": engine.ArcMemory}[*parts]
-	if !ok {
-		fmt.Fprintf(os.Stderr, "-parts wants all, texture or memory, not %q\n", *parts)
+	usePhrasing, useMemory := *parts != "memory", *parts != "phrasing"
+	if *parts != "all" && *parts != "phrasing" && *parts != "memory" {
+		fmt.Fprintf(os.Stderr, "-parts wants all, phrasing or memory, not %q\n", *parts)
 		os.Exit(2)
 	}
 
@@ -61,8 +61,12 @@ func main() {
 				fmt.Fprintf(os.Stderr, "mood %q has no temperament\n", *mood)
 				os.Exit(2)
 			}
-			tm.Parts = arcParts
-			p.Temperament = &tm
+			if usePhrasing {
+				p.Phrasing = &tm.Phrasing
+			}
+			if useMemory {
+				p.Memory = &tm.Memory
+			}
 		}
 		return p
 	}

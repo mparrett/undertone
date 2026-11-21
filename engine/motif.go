@@ -5,37 +5,54 @@ import (
 	"strings"
 )
 
-// Motif memory and phrase arcs: a spike, off unless Params.Temperament is set.
+// Phrasing and motif memory: a spike, each off unless Params.Phrasing or
+// Params.Memory is set.
 //
-// Without it, every pattern is drawn fresh from the seed and the params, so
-// over minutes only tension moves the music. With it:
+// Without them, every pattern is drawn fresh from the seed and the params, so
+// over minutes only tension moves the music: one phrase that never ends,
+// held, which is the identity phrasing. With memory:
 //
 //   - a phrase holds a cycle of 2-4 chords, taken from the generator's own
 //     chord draws, and the lead and pad keep one line per chord of the
 //     cycle, so a repeated line comes back over the chord it was first
 //     played on;
 //   - at each boundary the line for this chord repeats, changes one thing,
-//     or is drawn anew;
+//     or is drawn anew.
+//
+// With phrasing:
+//
 //   - a slow arc over 8-32 patterns (build, hold, thin, break, return) takes
 //     layers out and brings them back, gives each section its own colour
 //     (filters, grit, room, echo, the lead's register, the drums' busyness),
-//     and on return restores the phrase's home chords and lines;
-//   - tension shortens phrases, makes the lines more restless, holds off a
-//     break, and keeps the drums in.
+//     and, with memory too, on return restores the phrase's home chords and
+//     lines;
+//   - tension shortens phrases, holds off a break, and keeps the drums in; with
+//     memory it also makes the lines more restless.
+//
+// Each runs alone. Memory under the identity phrasing develops its lines in
+// one endless hold, with no return to restore them; phrasing without memory
+// arranges and colours the generator's own chords and lines.
 //
 // Every choice comes from an rng keyed by the seed and the pattern or phrase,
 // so a seed still determines the music. All the state is fixed-size and lives
 // in the Synth: the boundary and the mix stage run on the audio thread and
 // allocate nothing.
 
-// Temperament is how a mood behaves over minutes: how restless its lines are,
-// how long its phrases run, how often it goes quiet, which layers leave
-// first when it thins, and how each section of a phrase sounds.
+// Temperament is how a mood behaves over minutes: its phrasing and its
+// memory, for a host to opt into either or both.
 type Temperament struct {
-	// Restlessness, 0..1, is how often a line changes at a boundary; the rest
-	// of the time it repeats.
-	Restlessness float64
-	// PhraseMin and PhraseMax bound a phrase's length in patterns.
+	Phrasing Phrasing
+	Memory   Memory
+}
+
+// Phrasing is the arc a mood's phrases take: how long they run, how often
+// they go quiet, which layers leave first when they thin, and how each
+// section sounds. The zero value is the identity phrasing: one phrase that
+// never ends, held, with no layer out and no colour, which plays as if
+// Params.Phrasing were nil.
+type Phrasing struct {
+	// PhraseMin and PhraseMax bound a phrase's length in patterns. PhraseMax
+	// 0 is the identity: one endless hold.
 	PhraseMin, PhraseMax int
 	// BreakChance is the chance a phrase drops to its anchor layers for a
 	// pattern or two before it returns.
@@ -46,47 +63,30 @@ type Temperament struct {
 	// Shade is each section's colour, in section order: build, hold, thin,
 	// break, return.
 	Shade [nSections]Shade
-	// Parts picks which of the arc's parts run, so they can be heard apart.
-	// The zero value runs them all.
-	Parts ArcParts
 }
 
-// ArcParts splits the arc in two halves that together make the whole: what
-// changes the sound and what changes the notes.
-type ArcParts uint8
-
-const (
-	ArcAll ArcParts = iota
-	// ArcTexture runs only the section colour that leaves the pitched notes
-	// alone: Open, Grit, Dark, Wash, Room, Echo, Busy and Fill. The arc keeps
-	// its timeline, but the generator draws every chord and line and no layer
-	// leaves, so lead, fifth and pad play the same notes as without a
-	// temperament. Busy and Fill change the drums.
-	ArcTexture
-	// ArcMemory runs the rest: chord cycles, line memory, the layers the arc
-	// takes out, and the colour that edits notes (Lift, Pad).
-	ArcMemory
-)
-
-// shade is the section's colour as far as Parts lets it play.
-func (t *Temperament) shade(sec section) Shade {
-	sh := t.Shade[sec]
-	switch t.Parts {
-	case ArcTexture:
-		sh.Lift, sh.Pad = 0, 0
-	case ArcMemory:
-		sh = Shade{Lift: sh.Lift, Pad: sh.Pad}
-	}
-	return sh
+// Memory is how a mood's lines develop: each chord of a cycle keeps a lead
+// and a pad line, which at a boundary repeat, change one thing or are drawn
+// anew.
+type Memory struct {
+	// Restlessness, 0..1, is how often a line changes at a boundary; the rest
+	// of the time it repeats. At 0 the first lines play forever.
+	Restlessness float64
 }
 
-// playChord is the chord this pattern plays: the cycle's, or with only the
-// texture running the generator's own draw (-1).
-func (m *motifState) playChord(t *Temperament) int {
-	if t.Parts == ArcTexture {
-		return -1
+// phrasing reports whether p's phrasing is other than the identity.
+func (p *Params) phrasing() bool { return p.Phrasing != nil && p.Phrasing.PhraseMax > 0 }
+
+// motifOn reports whether the motif code runs at all. When it doesn't, the
+// generator plays exactly as it did before phrasing and memory existed.
+func (p *Params) motifOn() bool { return p.phrasing() || p.Memory != nil }
+
+// shadeOf is a section's colour under p's phrasing; the identity has none.
+func shadeOf(p *Params, sec section) Shade {
+	if !p.phrasing() {
+		return Shade{}
 	}
-	return m.chord
+	return p.Phrasing.Shade[sec]
 }
 
 // Shade is a section's colour: offsets on the mood's derived params while the
@@ -118,7 +118,7 @@ type Shade struct {
 // often, the machine dropping out and coming back with a fill. Neither
 // drops the pulse: it carries tension, which the game owns.
 var temperaments = map[string]Temperament{
-	"dungeon": {Restlessness: 0.3, PhraseMin: 10, PhraseMax: 16, BreakChance: 0.35,
+	"dungeon": {Memory: Memory{Restlessness: 0.3}, Phrasing: Phrasing{PhraseMin: 10, PhraseMax: 16, BreakChance: 0.35,
 		Drop: []Layers{LayerLead, LayerPad, LayerFifth, LayerAir},
 		Shade: [nSections]Shade{
 			secBuild:  {Dark: 0.35, Wash: 0.25}, // far off, coming into focus
@@ -126,8 +126,8 @@ var temperaments = map[string]Temperament{
 			secThin:   {Dark: 0.25, Wash: 0.3, Echo: 0.6, Pad: -1}, // sparser, wetter
 			secBreak:  {Dark: 0.6, Wash: 0.5, Room: 0.3},           // closed, a long room
 			secReturn: {Echo: -0.4, Pad: 1},                        // open, dry, full
-		}},
-	"rust": {Restlessness: 0.55, PhraseMin: 8, PhraseMax: 12, BreakChance: 0.7,
+		}}},
+	"rust": {Memory: Memory{Restlessness: 0.55}, Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.7,
 		Drop: []Layers{LayerPad, LayerLead, LayerDrums, LayerFifth},
 		Shade: [nSections]Shade{
 			secBuild:  {Open: -0.4, Wash: 0.15},
@@ -135,72 +135,73 @@ var temperaments = map[string]Temperament{
 			secThin:   {Open: -0.25, Wash: 0.2, Echo: 0.6, Lift: -1, Busy: -0.2, Pad: -1},
 			secBreak:  {Open: -0.6, Grit: 0.2, Wash: 0.35, Room: 0.4}, // the machine idling in a hall
 			secReturn: {Open: 0.35, Grit: 0.1, Wash: -0.4, Echo: -0.4, Busy: 0.3, Pad: 1, Fill: true},
-		}},
+		}}},
 	// The other moods' are first guesses by character, for hearing the arc
 	// across the range; not tuned by ear. Their colour is bolder than the
 	// dungeon's, whose measured under 1 dB against no colour at all. Each
 	// moves both Open (for patches with svf filters) and Dark (for those
 	// without), since which a mood's patches have isn't checked here.
-	"aurora": {Restlessness: 0.25, PhraseMin: 10, PhraseMax: 16, BreakChance: 0.3, // slow, shimmering
+	"aurora": {Memory: Memory{Restlessness: 0.25}, Phrasing: Phrasing{PhraseMin: 10, PhraseMax: 16, BreakChance: 0.3, // slow, shimmering
 		Drop: []Layers{LayerLead, LayerFifth, LayerPad},
 		Shade: [nSections]Shade{
 			secBuild:  {Dark: 0.3, Wash: 0.35},
 			secThin:   {Wash: 0.45, Echo: 0.8, Room: 0.3, Pad: -1},
 			secBreak:  {Open: -0.4, Dark: 0.55, Wash: 0.6, Room: 0.5},
 			secReturn: {Open: 0.3, Wash: -0.2, Echo: -0.3, Lift: 1, Pad: 1},
-		}},
-	"meadow": {Restlessness: 0.4, PhraseMin: 8, PhraseMax: 12, BreakChance: 0.4, // light, open air
+		}}},
+	"meadow": {Memory: Memory{Restlessness: 0.4}, Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.4, // light, open air
 		Drop: []Layers{LayerLead, LayerPad, LayerDrums, LayerFifth},
 		Shade: [nSections]Shade{
 			secBuild:  {Open: -0.3, Dark: 0.25},
 			secThin:   {Wash: 0.3, Echo: 0.6, Busy: -0.3, Pad: -1},
 			secBreak:  {Open: -0.45, Dark: 0.45, Wash: 0.35},
 			secReturn: {Open: 0.35, Wash: -0.2, Busy: 0.25, Pad: 1, Fill: true},
-		}},
-	"forge": {Restlessness: 0.5, PhraseMin: 8, PhraseMax: 12, BreakChance: 0.6, // heavy, hammering
+		}}},
+	"forge": {Memory: Memory{Restlessness: 0.5}, Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.6, // heavy, hammering
 		Drop: []Layers{LayerPad, LayerLead, LayerFifth, LayerDrums},
 		Shade: [nSections]Shade{
 			secBuild:  {Open: -0.4, Dark: 0.3},
 			secThin:   {Open: -0.2, Echo: 0.5, Busy: -0.3, Lift: -1, Pad: -1},
 			secBreak:  {Open: -0.6, Grit: 0.3, Dark: 0.35, Room: 0.3},
 			secReturn: {Open: 0.35, Grit: 0.15, Wash: -0.3, Busy: 0.35, Pad: 1, Fill: true},
-		}},
-	"void": {Restlessness: 0.2, PhraseMin: 12, PhraseMax: 16, BreakChance: 0.5, // sparse, patient
+		}}},
+	"void": {Memory: Memory{Restlessness: 0.2}, Phrasing: Phrasing{PhraseMin: 12, PhraseMax: 16, BreakChance: 0.5, // sparse, patient
 		Drop: []Layers{LayerLead, LayerFifth, LayerPad},
 		Shade: [nSections]Shade{
 			secBuild:  {Dark: 0.45, Wash: 0.4},
 			secThin:   {Dark: 0.3, Wash: 0.5, Echo: 0.8, Pad: -1},
 			secBreak:  {Open: -0.5, Dark: 0.7, Wash: 0.6, Room: 0.5},
 			secReturn: {Open: 0.2, Wash: -0.3, Echo: -0.3, Pad: 1},
-		}},
-	"village": {Restlessness: 0.5, PhraseMin: 8, PhraseMax: 12, BreakChance: 0.45, // lively, busy
+		}}},
+	"village": {Memory: Memory{Restlessness: 0.5}, Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.45, // lively, busy
 		Drop: []Layers{LayerPad, LayerLead, LayerDrums, LayerFifth},
 		Shade: [nSections]Shade{
 			secBuild:  {Open: -0.3, Dark: 0.2, Busy: -0.2},
 			secThin:   {Wash: 0.25, Echo: 0.5, Busy: -0.35, Pad: -1},
 			secBreak:  {Open: -0.45, Dark: 0.4, Wash: 0.3},
 			secReturn: {Open: 0.35, Wash: -0.3, Busy: 0.35, Pad: 1, Fill: true},
-		}},
-	"stratosphere": {Restlessness: 0.35, PhraseMin: 10, PhraseMax: 14, BreakChance: 0.4, // high, airy
+		}}},
+	"stratosphere": {Memory: Memory{Restlessness: 0.35}, Phrasing: Phrasing{PhraseMin: 10, PhraseMax: 14, BreakChance: 0.4, // high, airy
 		Drop: []Layers{LayerLead, LayerPad, LayerFifth},
 		Shade: [nSections]Shade{
 			secBuild:  {Dark: 0.3, Wash: 0.4},
 			secThin:   {Wash: 0.45, Echo: 0.7, Lift: 1, Pad: -1},
 			secBreak:  {Open: -0.4, Dark: 0.45, Wash: 0.6, Room: 0.5},
 			secReturn: {Open: 0.3, Wash: -0.2, Echo: -0.3, Pad: 1},
-		}},
-	"overworld": {Restlessness: 0.45, PhraseMin: 8, PhraseMax: 12, BreakChance: 0.5, // open, travelling
+		}}},
+	"overworld": {Memory: Memory{Restlessness: 0.45}, Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.5, // open, travelling
 		Drop: []Layers{LayerPad, LayerLead, LayerFifth, LayerDrums},
 		Shade: [nSections]Shade{
 			secBuild:  {Open: -0.3, Dark: 0.3},
 			secThin:   {Wash: 0.3, Echo: 0.6, Busy: -0.25, Pad: -1},
 			secBreak:  {Open: -0.5, Dark: 0.5, Wash: 0.4, Room: 0.3},
 			secReturn: {Open: 0.35, Wash: -0.3, Busy: 0.3, Pad: 1, Fill: true},
-		}},
+		}}},
 }
 
 // TemperamentFor is a mood's temperament, for a host to opt in with
-// p.Temperament = &t. Moods without one report false.
+// p.Phrasing = &t.Phrasing, p.Memory = &t.Memory, or both. Moods without one
+// report false.
 func TemperamentFor(mood string) (Temperament, bool) {
 	t, ok := temperaments[mood]
 	return t, ok
@@ -265,7 +266,8 @@ type padLine struct {
 }
 
 type motifState struct {
-	started bool
+	started  bool
+	phr, mem bool // phrasing other than the identity; memory
 
 	// One line per slot of the chord cycle; have marks the slots played.
 	leads [maxProg]leadLine
@@ -308,29 +310,43 @@ type motifState struct {
 	lastLead, lastPad string
 }
 
-// motifRow runs at every row with a temperament set: at a pattern boundary it
-// moves the arc on and builds the pattern; at every row it pushes the
-// section's colour to the voices.
+// motifRow runs at every row with phrasing or memory set: at a pattern
+// boundary it moves the arc on and builds the pattern; at every row, with
+// phrasing, it pushes the section's colour to the voices.
 func (s *Synth) motifRow() {
-	m := &s.motif
 	if s.row == 0 {
-		m.advance(&s.params, s.pat)
-		m.sp = m.shaded(s.params)
-		s.pats = buildPatternsOn(m.sp, s.pat, m.playChord(s.params.Temperament))
-		s.drums = buildDrums(m.sp, s.pat)
-		m.reshape(&m.sp, s.pat, &s.pats, &s.drums)
+		s.motif.advance(&s.params, s.pat)
+		s.motifBuild(s.pat)
 	}
-	s.pushShade(s.row)
+	if s.motif.phr {
+		s.pushShade(s.row)
+	}
 }
 
 // motifNow redoes the pattern for a SetParametersNow mid-pattern.
 func (s *Synth) motifNow(pat, row int) {
+	s.motifBuild(pat)
+	if s.motif.phr {
+		s.pushShade(row)
+	}
+}
+
+// motifBuild builds the pattern: on the cycle's chord with memory, the
+// generator's own without; with the section's colour only under phrasing,
+// since the identity's must not run at all to stay bit-exact.
+func (s *Synth) motifBuild(pat int) {
 	m := &s.motif
-	m.sp = m.shaded(s.params)
-	s.pats = buildPatternsOn(m.sp, pat, m.playChord(s.params.Temperament))
+	m.sp = s.params
+	if m.phr {
+		m.sp = m.shaded(s.params)
+	}
+	chord := -1
+	if m.mem {
+		chord = m.chord
+	}
+	s.pats = buildPatternsOn(m.sp, pat, chord)
 	s.drums = buildDrums(m.sp, pat)
 	m.reshape(&m.sp, pat, &s.pats, &s.drums)
-	s.pushShade(row)
 }
 
 // pushShade sets the voices, the reverb and the mix stage to the section's
@@ -379,8 +395,8 @@ func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(hi, x)) }
 
 // mixShade is the mix stage the section colours: a lowpass over the music
 // (Dark), a send of it to the reverb or a cut of the patches' own reverb
-// sends (Wash), and a scale on the delay sends (Echo). It runs only with a
-// temperament, so a render without one is untouched.
+// sends (Wash), and a scale on the delay sends (Echo). It runs only with
+// phrasing, so a render without is untouched.
 type mixShade struct {
 	dark, wash, echo       float64
 	darkTo, washTo, echoTo float64
@@ -425,14 +441,14 @@ func (x *mixShade) run(l, r *float64, b *sends) {
 
 // advance moves the arc and the chord cycle on a pattern, at a boundary.
 func (m *motifState) advance(p *Params, pat int) {
-	t := p.Temperament
 	T := clamp(p.PulseGain, 0, 1)
 	secWas := m.sec
-	first := !m.started
+	first := !m.started || m.phr != p.phrasing() || m.mem != (p.Memory != nil)
 	if first {
-		*m = motifState{started: true, tension: T, prevTension: T}
-		m.plan(t, p, pat, true)
-		m.from, m.to = t.shade(m.sec), t.shade(m.sec)
+		// a host turning phrasing or memory on or off starts the arc afresh
+		*m = motifState{started: true, phr: p.phrasing(), mem: p.Memory != nil, tension: T, prevTension: T}
+		m.plan(p, pat, true)
+		m.from, m.to = shadeOf(p, m.sec), shadeOf(p, m.sec)
 	} else {
 		m.prevTension, m.tension = m.tension, T
 		m.secPos++
@@ -447,7 +463,7 @@ func (m *motifState) advance(p *Params, pat int) {
 				r := m.rng(p.Seed, uint64(m.phrase), 0x7a11)
 				// a restless mood lets its theme wander between phrases: the
 				// lines stay, under a new cycle of chords
-				m.plan(t, p, pat, r.f() < m.restless(t)*0.6)
+				m.plan(p, pat, r.f() < m.restless(p)*0.6)
 				continue
 			}
 			m.sec++
@@ -470,7 +486,7 @@ func (m *motifState) advance(p *Params, pat int) {
 	// the cycle drifts in a hold or thin: at its start, one chord may change
 	if (m.sec == secHold || m.sec == secThin) && m.slot == 0 && m.cyc > 0 && m.nProg > 1 {
 		r := m.rng(p.Seed, uint64(pat), 0xc40d)
-		if r.f() < m.restless(t)*change[m.sec]*0.4 {
+		if r.f() < m.restless(p)*change[m.sec]*0.4 {
 			k := 1 + r.n(m.nProg-1)
 			was := m.prog[k]
 			m.prog[k] = int8(chordDraw(*p, pat+k))
@@ -485,13 +501,16 @@ func (m *motifState) advance(p *Params, pat int) {
 		}
 	}
 	m.chord = int(m.prog[m.slot])
+	if !m.mem {
+		m.chord = chordDraw(*p, pat) // the generator's own
+	}
 	m.fresh = !m.have[m.slot]
 	m.prevLead, m.prevPad = m.leads[m.slot], m.pads[m.slot]
 
 	if !first {
 		m.glideIn = m.sec != secWas || m.secPos == 0
 		if m.glideIn {
-			m.from, m.to = m.cur, t.shade(m.sec)
+			m.from, m.to = m.cur, shadeOf(p, m.sec)
 		}
 	}
 	// a fill into the next section, on the last pattern of this one
@@ -499,7 +518,7 @@ func (m *motifState) advance(p *Params, pat int) {
 	if next == secBreak && (m.tension-m.prevTension > risingBy || m.tension >= breakTension) {
 		next = secReturn // the break will be held off
 	}
-	m.fill = m.secPos == m.lens[m.sec]-1 && t.shade(next).Fill
+	m.fill = m.secPos == m.lens[m.sec]-1 && shadeOf(p, next).Fill
 }
 
 // nextSection is the section after this one, skipping those planned empty.
@@ -512,8 +531,12 @@ func (m *motifState) nextSection() section {
 	return secHold
 }
 
-func (m *motifState) restless(t *Temperament) float64 {
-	return min(1, t.Restlessness*(1+m.tension))
+// restless is how often a line changes now; without memory nothing does.
+func (m *motifState) restless(p *Params) float64 {
+	if p.Memory == nil {
+		return 0
+	}
+	return min(1, p.Memory.Restlessness*(1+m.tension))
 }
 
 func (m *motifState) saveHome() {
@@ -544,17 +567,18 @@ func (m *motifState) shaded(p Params) Params {
 // them, the arc's layer bias and the section's colour into the pattern. It
 // only reads the arc, so a mid-pattern call (applyNow) draws the same.
 func (m *motifState) reshape(p *Params, pat int, pats *[nTracks][rows]trackRow, drums *[nDrums][rows]drumHit) {
-	t := p.Temperament
-	if t.Parts == ArcTexture {
-		// the generator's pattern as drawn, the colour aside
+	if !m.mem {
+		// the generator's lines as drawn, under the section's pad colour
 		m.lastLead, m.lastPad = "gen", "gen"
+		padShade(p, m.chord, m.to, pats)
+		m.applyArc(p, pats, drums)
 		if m.fill {
 			fill(p, drums)
 		}
 		return
 	}
 	r := m.rng(p.Seed, uint64(pat), 0x5eed)
-	rate := m.restless(t) * change[m.sec]
+	rate := m.restless(p) * change[m.sec]
 	k := m.slot
 	m.leads[k], m.pads[k] = m.prevLead, m.prevPad
 	switch {
@@ -597,9 +621,24 @@ func (m *motifState) reshape(p *Params, pat int, pats *[nTracks][rows]trackRow, 
 			pats[2][row] = trackRow{chord + p.Scale[2*pad.voice[k]], 0.7, 6, p.Palette.Pad}
 		}
 	}
-	m.applyArc(t, pats, drums)
+	m.applyArc(p, pats, drums)
 	if m.fill {
 		fill(p, drums)
+	}
+}
+
+// padShade is the section's pad colour on the generator's own pad: the second
+// strike out, or sounded a stacked tone above the first.
+func padShade(p *Params, chordIdx int, sh Shade, pats *[nTracks][rows]trackRow) {
+	switch {
+	case sh.Pad < 0:
+		pats[2][8] = trackRow{}
+	case sh.Pad > 0 && pats[2][8].note == 0 && pats[2][0].note != 0:
+		if l := freshPad(p, chordIdx, pats); l.on[0] {
+			tr := pats[2][0]
+			tr.note = chordAt(*p, chordIdx) + p.Scale[2*((l.voice[0]+1)%3)]
+			pats[2][8] = tr
+		}
 	}
 }
 
@@ -635,9 +674,17 @@ func (m *motifState) rng(seed, i, salt uint64) rng {
 // Only the first phrase builds; later ones start from the hold a return leads
 // into. The first phrase, or one whose theme wanders, draws a new chord cycle
 // from the generator's draws for the patterns ahead; otherwise the phrase
-// keeps the home cycle.
-func (m *motifState) plan(t *Temperament, p *Params, pat int, newCycle bool) {
+// keeps the home cycle. The identity phrasing plans one endless hold, its
+// cycle drawn once.
+func (m *motifState) plan(p *Params, pat int, newCycle bool) {
 	r := m.rng(p.Seed, uint64(m.phrase), 0xa4c)
+	if !m.phr {
+		m.drawCycle(&r, p, pat)
+		m.lens = [nSections]int{secHold: math.MaxInt}
+		m.sec, m.secPos, m.cyc = secHold, 0, 0
+		return
+	}
+	t := p.Phrasing
 	lo, hi := max(t.PhraseMin, 5), max(t.PhraseMax, t.PhraseMin, 5)
 	n := lo + r.n(hi-lo+1)
 	n = max(6, int(math.Round(float64(n)*(1-0.4*m.tension))))
@@ -653,21 +700,7 @@ func (m *motifState) plan(t *Temperament, p *Params, pat int, newCycle bool) {
 	}
 	// the cycle is drawn after the sections, so its draws leave theirs alone
 	if newCycle || first {
-		m.nProg = 2 + r.n(maxProg-1)
-		same := true
-		for i := range m.nProg {
-			m.prog[i] = int8(chordDraw(*p, pat+i))
-			same = same && tonicOf(m.prog[i]) == tonicOf(m.prog[0])
-		}
-		// a cycle of one chord is no cycle: the last moves off the first
-		if same {
-			if tonicOf(m.prog[0]) == 0 {
-				m.prog[m.nProg-1] = int8(2 + r.n(2))
-			} else {
-				m.prog[m.nProg-1] = 0
-			}
-		}
-		m.homeProg, m.homeNProg = m.prog, m.nProg
+		m.drawCycle(&r, p, pat)
 	}
 	m.lens[secThin] = max(1, n/5)
 	// a return plays the whole home cycle at least once
@@ -679,6 +712,26 @@ func (m *motifState) plan(t *Temperament, p *Params, pat int, newCycle bool) {
 	if first {
 		m.sec = secBuild
 	}
+}
+
+// drawCycle draws a chord cycle from the generator's draws for the patterns
+// ahead, and makes it home.
+func (m *motifState) drawCycle(r *rng, p *Params, pat int) {
+	m.nProg = 2 + r.n(maxProg-1)
+	same := true
+	for i := range m.nProg {
+		m.prog[i] = int8(chordDraw(*p, pat+i))
+		same = same && tonicOf(m.prog[i]) == tonicOf(m.prog[0])
+	}
+	// a cycle of one chord is no cycle: the last moves off the first
+	if same {
+		if tonicOf(m.prog[0]) == 0 {
+			m.prog[m.nProg-1] = int8(2 + r.n(2))
+		} else {
+			m.prog[m.nProg-1] = 0
+		}
+	}
+	m.homeProg, m.homeNProg = m.prog, m.nProg
 }
 
 // tonicOf folds the two tonic draws together.
@@ -693,7 +746,11 @@ func tonicOf(c int8) int8 {
 // layers in one by one, last-listed first; a thin takes out the first listed
 // and halves the next; a break leaves only the anchor. From drumsStay
 // tension up the drums stay in whatever the section.
-func (m *motifState) applyArc(t *Temperament, pats *[nTracks][rows]trackRow, drums *[nDrums][rows]drumHit) {
+func (m *motifState) applyArc(p *Params, pats *[nTracks][rows]trackRow, drums *[nDrums][rows]drumHit) {
+	if !m.phr {
+		return
+	}
+	t := p.Phrasing
 	k := len(t.Drop)
 	out, half := 0, 0
 	switch m.sec {
@@ -940,27 +997,28 @@ func freshPad(p *Params, chordIdx int, pats *[nTracks][rows]trackRow) padLine {
 
 // MotifState is where the arc is, for a trace.
 type MotifState struct {
-	Section   string  // "off" without a temperament
+	Section   string  // "hold" under the identity phrasing
 	Phrase    int     // phrases since the start
 	Lead, Pad string  // what the last boundary did to each line
 	Chord     string  // this pattern's chord
-	Cycle     string  // the phrase's chord cycle, this pattern's slot bracketed
+	Cycle     string  // with memory, the phrase's chord cycle, this pattern's slot bracketed
 	Tension   float64 // as the arc read it
 	Fill      bool    // this pattern ends in a fill
 	Held      bool    // tension held off this phrase's break
 }
 
 // MotifTrace reports where the arc is and what the last boundary did to the
-// lead and pad lines. It reads the audio thread's state unsynchronised and
+// lead and pad lines. Under the identity phrasing, with or without memory, it
+// is phrase 0 in a hold. It reads the audio thread's state unsynchronised and
 // allocates: for an offline render that calls it between Reads, not for a
 // live host.
 func (s *Synth) MotifTrace() MotifState {
 	m := &s.motif
 	if !m.started {
-		return MotifState{Section: "off"}
+		return MotifState{Section: secHold.String(), Lead: "gen", Pad: "gen"}
 	}
 	var b strings.Builder
-	for i := range m.nProg {
+	for i := range m.nProg * b2i(m.mem) {
 		if i > 0 {
 			b.WriteByte('-')
 		}

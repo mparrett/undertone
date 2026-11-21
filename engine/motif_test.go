@@ -29,14 +29,13 @@ func TestPatternChordMatches(t *testing.T) {
 					// a fresh slot: the lines are read back from the pattern and
 					// written again
 					var m motifState
-					m.nProg, m.chord, m.fresh = 1, chordDraw(p, pat), true
-					tm := Temperament{}
-					p.Temperament = &tm
+					m.nProg, m.chord, m.fresh, m.mem = 1, chordDraw(p, pat), true, true
+					p.Memory = &Memory{}
 					m.lens[secHold] = 100
 					m.sec = secHold
 					var drums [nDrums][rows]drumHit
 					m.reshape(&p, pat, &got, &drums)
-					p.Temperament = nil
+					p.Memory = nil
 					for _, tr := range []int{2, 3} {
 						for i := range rows {
 							if fresh[tr][i].note != got[tr][i].note {
@@ -61,12 +60,12 @@ func renderFor(p Params, seconds float64) []byte {
 func TestMotifSeeded(t *testing.T) {
 	tm, _ := TemperamentFor("rust")
 	p, _ := DeriveMood("rust", 7, 3, 0.5)
-	p.Temperament = &tm
+	p.Phrasing, p.Memory = &tm.Phrasing, &tm.Memory
 	a, b := renderFor(p, 10), renderFor(p, 10)
 	if !bytes.Equal(a, b) {
 		t.Fatal("the same seed rendered two ways with a temperament")
 	}
-	p.Temperament = nil
+	p.Phrasing, p.Memory = nil, nil
 	if bytes.Equal(a, renderFor(p, 10)) {
 		t.Fatal("a temperament changed nothing")
 	}
@@ -77,8 +76,15 @@ func TestMotifSeeded(t *testing.T) {
 // motifPattern is one boundary of the arc without a Synth.
 func motifPattern(m *motifState, p *Params, pat int) ([nTracks][rows]trackRow, [nDrums][rows]drumHit) {
 	m.advance(p, pat)
-	sp := m.shaded(*p)
-	pats, drums := buildPatternsOn(sp, pat, m.playChord(p.Temperament)), buildDrums(sp, pat)
+	sp := *p
+	if m.phr {
+		sp = m.shaded(*p)
+	}
+	chord := -1
+	if m.mem {
+		chord = m.chord
+	}
+	pats, drums := buildPatternsOn(sp, pat, chord), buildDrums(sp, pat)
 	m.reshape(&sp, pat, &pats, &drums)
 	return pats, drums
 }
@@ -90,7 +96,7 @@ func TestMotifArcAndBounds(t *testing.T) {
 	for _, mood := range []string{"dungeon", "rust"} {
 		tm, _ := TemperamentFor(mood)
 		p, _ := DeriveMood(mood, 11, 2, 0.3)
-		p.Temperament = &tm
+		p.Phrasing, p.Memory = &tm.Phrasing, &tm.Memory
 		p = p.sanitized()
 		var m motifState
 		seen := map[string]bool{}
@@ -132,7 +138,7 @@ func TestMotifTension(t *testing.T) {
 	tm, _ := TemperamentFor("rust")
 	phraseLen := func(tension float64) float64 {
 		p, _ := DeriveMood("rust", 3, 2, tension)
-		p.Temperament = &tm
+		p.Phrasing, p.Memory = &tm.Phrasing, &tm.Memory
 		p = p.sanitized()
 		var m motifState
 		for pat := range 400 {
@@ -165,7 +171,7 @@ func TestMotifTension(t *testing.T) {
 		n := 0
 		for pat := range 70 {
 			p, _ := DeriveMood("rust", 3, 2, 0.02+slope*float64(pat))
-			p.Temperament = &tm
+			p.Phrasing, p.Memory = &tm.Phrasing, &tm.Memory
 			p = p.sanitized()
 			motifPattern(&m, &p, pat)
 			if m.sec == secBreak {
@@ -190,7 +196,7 @@ func TestMotifDoesNotAllocate(t *testing.T) {
 	for _, mood := range []string{"dungeon", "rust"} {
 		tm, _ := TemperamentFor(mood)
 		p, _ := DeriveMood(mood, 7, 4, 0.6)
-		p.Temperament = &tm
+		p.Phrasing, p.Memory = &tm.Phrasing, &tm.Memory
 		synths = append(synths, NewSynth(p))
 	}
 	buf := make([]byte, benchSlice*4)
@@ -209,7 +215,7 @@ func TestMotifDoesNotAllocate(t *testing.T) {
 func BenchmarkMotifBoundary(b *testing.B) {
 	tm, _ := TemperamentFor("rust")
 	p, _ := DeriveMood("rust", 7, 3, 0.5)
-	p.Temperament = &tm
+	p.Phrasing, p.Memory = &tm.Phrasing, &tm.Memory
 	p = p.sanitized()
 	var m motifState
 	b.ReportAllocs()
@@ -218,49 +224,112 @@ func BenchmarkMotifBoundary(b *testing.B) {
 	}
 }
 
-// pitchedNotes renders p and returns every note event but the drums'.
-func pitchedNotes(p Params, seconds float64) []NoteEvent {
-	s := NewSynth(p)
-	buf := make([]byte, 1024*4)
-	var out []NoteEvent
-	var cur uint64
-	for range int(seconds * SampleRate / 1024) {
-		s.Read(buf)
-		var evs []NoteEvent
-		evs, cur, _ = s.NoteEvents(cur, nil)
-		for _, e := range evs {
-			if e.Layer != layerDrums {
-				out = append(out, e)
+// The identity phrasing, nil or the zero value, without memory, renders bit
+// for bit as the generator alone: the motif code doesn't run.
+func TestIdentityPhrasingIsBitExact(t *testing.T) {
+	for _, mood := range []string{"dungeon", "rust", "village"} {
+		p, _ := DeriveMood(mood, 7, 2, 0.4)
+		off := renderFor(p, 30)
+		p.Phrasing = &Phrasing{}
+		if !bytes.Equal(off, renderFor(p, 30)) {
+			t.Errorf("%s: the zero Phrasing changed the render", mood)
+		}
+		tm, _ := TemperamentFor(mood)
+		ph := tm.Phrasing
+		ph.PhraseMax = 0 // the identity, whatever else is set
+		p.Phrasing = &ph
+		if !bytes.Equal(off, renderFor(p, 30)) {
+			t.Errorf("%s: a Phrasing with PhraseMax 0 changed the render", mood)
+		}
+	}
+}
+
+// The trace answers with or without phrasing: under the identity it is
+// phrase 0, held, however long the music runs.
+func TestIdentityTrace(t *testing.T) {
+	tm, _ := TemperamentFor("rust")
+	for _, mem := range []*Memory{nil, &tm.Memory} {
+		p, _ := DeriveMood("rust", 7, 2, 0.3)
+		p.Memory = mem
+		s := NewSynth(p)
+		buf := make([]byte, 4096)
+		for range int(90 * SampleRate / 1024) {
+			s.Read(buf)
+			if m := s.MotifTrace(); m.Section != "hold" || m.Phrase != 0 {
+				t.Fatalf("memory %v: trace %+v, want phrase 0 in a hold", mem != nil, m)
 			}
 		}
 	}
-	return out
 }
 
-// With only the texture running, the arc colours the sound but every pitched
-// note is the one the generator plays without a temperament: same frame,
-// note and gain. The texture is then heard against the same performance.
-func TestMotifTextureKeepsNotes(t *testing.T) {
-	for _, mood := range []string{"dungeon", "rust"} {
-		for _, tension := range []float64{0.3, 0.7} {
-			p, _ := DeriveMood(mood, 7, 2, tension)
-			off := pitchedNotes(p, 120)
-			tm, _ := TemperamentFor(mood)
-			tm.Parts = ArcTexture
-			p.Temperament = &tm
-			tex := pitchedNotes(p, 120)
-			if len(off) != len(tex) || len(off) == 0 {
-				t.Fatalf("%s %v: %d notes off, %d with the texture", mood, tension, len(off), len(tex))
+// Phrasing without memory arranges and colours the generator's own pattern:
+// every pitched note it plays is the one the generator draws on the shaded
+// params, or silence where the arc took a layer out; only the pad's second
+// strike may be added. The chord is the generator's.
+func TestPhrasingKeepsChordsAndLines(t *testing.T) {
+	for _, mood := range []string{"dungeon", "rust", "village"} {
+		tm, _ := TemperamentFor(mood)
+		p, _ := DeriveMood(mood, 7, 2, 0.3)
+		p.Phrasing = &tm.Phrasing
+		p = p.sanitized()
+		var m motifState
+		kept, dropped := 0, 0
+		for pat := range 200 {
+			got, _ := motifPattern(&m, &p, pat)
+			if m.chord != chordDraw(p, pat) {
+				t.Fatalf("%s pattern %d: chord %d, the generator draws %d", mood, pat, m.chord, chordDraw(p, pat))
 			}
-			for i := range off {
-				if off[i] != tex[i] {
-					t.Fatalf("%s %v: note %d off %+v, texture %+v", mood, tension, i, off[i], tex[i])
+			want := buildPatterns(m.shaded(p), pat)
+			for tr := range nTracks {
+				for i := range rows {
+					g, w := got[tr][i].note, want[tr][i].note
+					switch {
+					case g == w && g != 0:
+						kept++
+					case g == 0 && w != 0:
+						dropped++
+					case g == w:
+					case tr == 2 && i == 8 && w == 0 && m.to.Pad > 0:
+					default:
+						t.Fatalf("%s pattern %d (%s) track %d row %d: note %d, the generator's %d", mood, pat, m.sec, tr, i, g, w)
+					}
 				}
 			}
-			tm.Parts = ArcMemory
-			if mem := pitchedNotes(p, 120); len(mem) == len(off) && mem[len(mem)-1] == off[len(off)-1] && mem[len(mem)/2] == off[len(off)/2] {
-				t.Errorf("%s %v: memory left the notes as they were", mood, tension)
+		}
+		if kept == 0 || dropped == 0 {
+			t.Errorf("%s: %d notes kept, %d dropped: want both", mood, kept, dropped)
+		}
+	}
+}
+
+// Memory under the identity phrasing develops its lines in one endless hold:
+// lines change, but nothing of the arc runs. The drums, which only the arc
+// touches, play as without memory, and the chords keep to the cycle.
+func TestMemoryUnderIdentity(t *testing.T) {
+	for _, mood := range []string{"dungeon", "rust"} {
+		tm, _ := TemperamentFor(mood)
+		p, _ := DeriveMood(mood, 7, 2, 0.3)
+		p.Memory = &tm.Memory
+		p = p.sanitized()
+		var m motifState
+		changed := 0
+		for pat := range 200 {
+			_, drums := motifPattern(&m, &p, pat)
+			if m.sec != secHold || m.phrase != 0 || m.fill || m.to != (Shade{}) {
+				t.Fatalf("%s pattern %d: section %s phrase %d fill %v colour %+v", mood, pat, m.sec, m.phrase, m.fill, m.to)
 			}
+			if drums != buildDrums(p, pat) {
+				t.Fatalf("%s pattern %d: memory alone changed the drums", mood, pat)
+			}
+			if m.chord != int(m.prog[m.slot]) {
+				t.Fatalf("%s pattern %d: chord %d off the cycle", mood, pat, m.chord)
+			}
+			if m.lastLead != "repeat" && m.lastLead != "fresh" {
+				changed++
+			}
+		}
+		if changed == 0 {
+			t.Errorf("%s: no line changed in 200 patterns", mood)
 		}
 	}
 }

@@ -1220,9 +1220,11 @@ type Params struct {
 	// the mood's trims without resetting the game's.
 	MoodLeadDB, MoodPadDB float64
 
-	// Temperament, when set, turns on motif memory and the phrase arc
-	// (motif.go): a spike, off by default, so nil plays as before.
-	Temperament *Temperament
+	// Phrasing and Memory, when set, turn on the phrase arc and motif memory
+	// (motif.go), each without the other: a spike, off by default, so nil
+	// plays as before.
+	Phrasing *Phrasing
+	Memory   *Memory
 }
 
 // dbGain is a trim in dB as a gain factor; 0 dB returns exactly 1, so an
@@ -1953,7 +1955,7 @@ func (s *Synth) applyNow(c *paramCmd) {
 	if row < 0 {
 		pat, row = pat-1, rows-1
 	}
-	if s.params.Temperament != nil && s.motif.started {
+	if s.params.motifOn() && s.motif.started {
 		s.motifNow(pat, row)
 	} else {
 		s.pats = buildPatterns(s.params, pat)
@@ -2003,13 +2005,13 @@ func (s *Synth) step() {
 		if c := s.next.Swap(nil); c != nil && s.landsAtBoundary(c) {
 			s.apply(c)
 		}
-		if s.params.Temperament == nil {
+		if !s.params.motifOn() {
 			s.pats = buildPatterns(s.params, s.pat)
 			s.drums = buildDrums(s.params, s.pat)
 			s.motif.started = false
 		}
 	}
-	if s.params.Temperament != nil {
+	if s.params.motifOn() {
 		s.motifRow()
 	}
 	if g := s.playingGrid(); g != nil {
@@ -2113,7 +2115,7 @@ func (s *Synth) frame() (int16, int16) {
 	if s.nframe%layerFold == 0 {
 		s.layers.fold(layerFoldDecay)
 	}
-	if s.motif.started {
+	if s.motif.started && s.motif.phr {
 		s.motif.mix.run(&l, &r, &s.bus)
 	}
 	if g := s.musicLevel.next(); g != 1 {

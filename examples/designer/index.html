@@ -7,25 +7,43 @@
 <style>
   :root { --bg: #0d0d10; --panel: #15151a; --line: #26262e; --fg: #d6d1c2; --mut: #8a8576; --err: #c96a5f;
           /* one hue per kind of section, shared with the grid's lanes */
-          --tempo: #e0b84f; --layer: #5fa8c9; --drum: #9cc46a; --aud: #b48ad6; }
+          --tempo: #e0b84f; --layer: #5fa8c9; --drum: #9cc46a; --aud: #b48ad6;
+          /* trims adjust layers without being one: the layers' hue, greyed */
+          --trim: color-mix(in srgb, var(--layer) 50%, var(--mut)); }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
          font: 14px/1.45 ui-monospace, Menlo, monospace; }
   main { max-width: 1400px; margin: 0 auto; display: grid; gap: 24px; }
-  /* wide: playing | start from | audition across the top; then layers down
-     the left, beside tempo over drums; then export. A phone takes the order
-     tempo, layers, drums in one column */
+  /* wide: start from | playing | audition across the top; then layers over
+     trims down the left, beside tempo over drums over export. Each column
+     stacks on its own, so neither leaves a gap for the other's height. A
+     phone takes one column in the order a mood is built */
+  #sections { display: flex; flex-direction: column; }
+  #sections > .col { display: contents; }
+  .sec.tempo { order: 1; } .sec.layer { order: 2; } .sec.trim { order: 3; } .sec.drum { order: 4; } #exportbox { order: 5; }
   @media (min-width: 900px) { body { padding: 32px; }
     .top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
-    #sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; align-items: start;
-                grid-template-areas: "layer tempo" "layer drum";
-                grid-template-rows: auto 1fr; /* spare height goes below drums, not above */ }
-    .sec.layer { grid-area: layer; } .sec.tempo { grid-area: tempo; } .sec.drum { grid-area: drum; }
+    #sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; align-items: start; }
+    #sections > .col { display: block; }
     /* one card per row, so each is wide enough to lie flat */
     #sections .cards { grid-template-columns: minmax(0, 1fr); }
     .top > * > :first-child { margin-top: 0; } }
   #exportbox .bar { max-width: 32em; }
-  h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 10px; font-weight: 600; }
+  /* EDN boxes, as the studio has them: a highlighted <pre> sits under a
+     transparent textarea. Both share one grid cell, font, padding and border,
+     and neither wraps, so their lines stay aligned; scroll is copied from
+     the textarea. */
+  .hl { display: grid; }
+  .hl > * { grid-area: 1 / 1; margin: 0; font: 12px/1.45 ui-monospace, Menlo, monospace; padding: 5px 9px;
+            border: 1px solid var(--line); border-radius: 8px; white-space: pre; overflow-wrap: normal; tab-size: 2;
+            box-sizing: border-box; width: 100%; min-width: 0; min-height: 0; }
+  .hl > pre { background: var(--panel); color: var(--fg); overflow: hidden; pointer-events: none; contain: size; }  /* the textarea sets the height */
+  .hl > textarea { background: transparent; color: transparent; caret-color: var(--fg); overflow: auto; position: relative; resize: none; }
+  .hl > textarea::selection { background: color-mix(in srgb, var(--layer) 35%, transparent); color: transparent; }
+  .e-kw { color: var(--aud); } .e-num { color: var(--layer); } .e-str { color: var(--tempo); } .e-br { color: var(--mut); }
+  .e-cm { color: var(--mut); font-style: italic; } .e-off { opacity: .6; }
+  h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
+  .sub { color: var(--mut); font-size: 12px; margin: 0 0 10px; }
   .lab { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 16px 0 6px; font-weight: 600; }
   #status { color: var(--mut); min-height: 1.45em; font-size: 13px; }
   #status.err { color: var(--err); }
@@ -65,6 +83,10 @@
             padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
             background: color-mix(in srgb, var(--bg) 92%, transparent); border-top: 1px solid var(--line); backdrop-filter: blur(6px); }
   @media (min-width: 900px) { main.docked #dock { padding-left: 32px; padding-right: 32px; } }
+  #mixlab { margin: 4px 0 -2px; }
+  /* a wide screen docks only once scrolled, past the label already seen, so
+     there the docked bar drops it; a phone docks from the start and keeps it */
+  @media (min-width: 900px) { main.docked #mixlab { display: none; } }
   #now .k { color: var(--mut); }
   textarea { width: 100%; min-height: 18em; font: 12px/1.4 ui-monospace, Menlo, monospace; color: var(--fg);
              background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
@@ -78,6 +100,7 @@
   /* sections: a coloured rule and title per kind; cards carry the colour on their edge */
   .sec { --sec: var(--mut); margin-bottom: 26px; }
   .sec.tempo { --sec: var(--tempo); } .sec.layer { --sec: var(--layer); } .sec.drum { --sec: var(--drum); }
+  .sec.trim { --sec: var(--trim); }
   .sec > header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
                   border-bottom: 1px solid color-mix(in srgb, var(--sec) 45%, transparent); padding-bottom: 6px; margin-bottom: 10px; }
   .sec > header h2 { margin: 0; font-size: 12px; letter-spacing: .14em; color: var(--sec); font-weight: 700; }
@@ -126,17 +149,21 @@
 <body>
 <main class="loading">
  <div class="top">
-  <div class="playing">
+  <div class="from">
    <h1>UNDERTONE · DESIGNER</h1>
+   <p class="sub">shape a mood; hear it at any level; take it away as EDN</p>
+   <div class="ctl">
+    <div class="lab">START FROM</div>
+    <div class="bar" id="moods"></div>
+    <label class="switch" id="buildup" style="margin-left:0;display:inline-flex" title="a mood starts with only its lowest layer; bring the rest in from the mix">
+     <input type="checkbox"> build up: start with one layer</label>
+   </div>
+  </div>
+  <div class="playing">
    <div id="status">loading the engine…</div>
    <div id="dockslot"><div id="dock"><div class="row"><button id="play" disabled>loading…</button><div id="now">–</div></div>
+    <div class="lab" id="mixlab">MIX <small style="font-weight:400;letter-spacing:0">· tap a layer to mute it; none, then one, solos it</small></div>
     <div id="mix" title="tap a layer to mute or unmute it; none, then one layer, solos it"></div></div></div>
-  </div>
-  <div class="ctl">
-   <div class="lab">START FROM</div>
-   <div class="bar" id="moods"></div>
-   <label class="switch" id="buildup" style="margin-left:0;display:inline-flex" title="a mood starts with only its lowest layer; bring the rest in from the mix">
-    <input type="checkbox"> build up: start with one layer</label>
   </div>
   <div class="ctl">
    <details class="aud" id="audition">
@@ -149,12 +176,12 @@
    </details>
   </div>
  </div>
- <section id="sections"></section>
+ <section id="sections"><div class="col" id="colL"></div><div class="col" id="colR"></div></section>
  <div class="ctl" id="exportbox">
   <div class="lab">EXPORT</div>
   <div class="bar"><input id="name" type="text" aria-label="mood name"></div>
-  <div class="bar"><button id="export">show EDN</button><button id="copy">copy</button></div>
-  <textarea id="edn" readonly hidden></textarea>
+  <textarea id="edn" readonly aria-label="the mood as EDN"></textarea>
+  <div class="bar"><button id="copy">copy</button></div>
  </div>
 </main>
 
@@ -164,7 +191,8 @@
   const status = $("status");
   const GAIN = { min: 0, max: 1, step: 0.01, smin: -0.2, smax: 0.2, sstep: 0.01 };
   // Sections in the order a mood is built: its time and key, then the
-  // layers from the floor up, then the drums.
+  // layers from the floor up and their trims, then the drums. col "L" puts
+  // a section in the left column on a wide screen.
   const SECTIONS = [
     { id: "tempo", title: "TEMPO & HARMONY", note: "how fast, in what key, where the lead sits", items: [
       { line: "bpm", min: 30, max: 160, step: 1, smin: -10, smax: 10, sstep: 0.5, note: "tempo (the seed adds 0–4)" },
@@ -176,15 +204,17 @@
       ]},
       { patches: true },
     ]},
-    { id: "layer", title: "LAYERS", note: "floor to sky · each value is base + step × level, kept within min and max", items: [
+    { id: "layer", col: "L", title: "LAYERS", note: "floor to sky · each value is base + step × level, kept within min and max", items: [
       { line: "drone", ...GAIN, note: "the floor: low drone gain" },
       { line: "fifth", ...GAIN, note: "the second voice's gain" },
       { line: "pad",   ...GAIN, note: "pad chords: how often they play" },
       { line: "lead",  ...GAIN, note: "the lead: how often it plays" },
       { line: "air",   ...GAIN, note: "the top: air or breeze gain" },
       { line: "open",  min: -1, max: 1, step: 0.05, smin: -0.3, smax: 0.3, sstep: 0.01, note: "the resonant filters: level opens (+) or closes (−) them, up to two octaves" },
-      { int: "leadDB", label: "lead dB", min: -24, max: 12, step: 1, note: "trims the lead to balance the mix, whichever lead plays; a game's trim adds to it" },
-      { int: "padDB",  label: "pad dB",  min: -24, max: 12, step: 1, note: "trims the pad to balance the mix; a game's trim adds to it" },
+    ]},
+    { id: "trim", title: "TRIMS", note: "dB, to balance the mix: how loud the lead and pad sound, which their densities do not set", col: "L", items: [
+      { int: "leadDB", label: "lead dB", min: -24, max: 12, step: 1, note: "the lead, whichever plays; a game's trim adds to it" },
+      { int: "padDB",  label: "pad dB",  min: -24, max: 12, step: 1, note: "the pad; a game's trim adds to it" },
     ]},
     { id: "drum", title: "DRUMS", note: "kick, backbeat, top: the palette's kit", toggle: true, items: [
       { grooves: true },
@@ -407,9 +437,11 @@
                    : it.patches ? patchesCard() : groovesCard());
     }
     sec.append(head, cards);
-    $("sections").append(sec);
+    $(s.col === "L" ? "colL" : "colR").append(sec);
     foldSection(sec, s.id);
    }
+   // export closes the right column, under drums; on a phone it is last
+   $("colR").append($("exportbox"));
   }
 
   function sync() { for (const f of syncers) f(); $("name").value = spec.name; }
@@ -428,12 +460,13 @@
     showAudition();
     for (const f of sweeps) f(level);
     const r = JSON.parse(undertoneDesigner.apply(JSON.stringify(spec), seed, level, tension, JSON.stringify([...muted])));
+    // before the error check: the box always shows what copy would copy
+    $("edn").value = undertoneDesigner.edn(JSON.stringify(spec));
     status.classList.toggle("err", !!r.error);
     if (r.error) { status.textContent = r.error; return; }
     status.textContent = playing ? "playing" : "ready: tap play";
     $("now").innerHTML = `<span class="k">now</span> ${r.bpm} bpm · ${r.key} · ${r.lead ? "lead " + r.lead : "no lead"}` +
       (r.groove ? ` · groove ${r.groove}` : ` · no drums`);
-    if (!$("edn").hidden) $("edn").value = undertoneDesigner.edn(JSON.stringify(spec));
   }
 
   function load(name) {
@@ -485,11 +518,46 @@
     $(id).oninput = () => { $(id + "v").textContent = $(id).value; changed(); };
   }
   $("name").oninput = (e) => { spec.name = e.target.value.trim().replace(/[^\w-]/g, "") || "untitled"; changed(); };
-  $("export").onclick = () => { $("edn").hidden = false; $("edn").value = undertoneDesigner.edn(JSON.stringify(spec)); };
+  // EDN highlighting, the studio's (and the sfx board's) tokenizer.
+  // Explanatory comments dim; commented-out code keeps its colours, faded.
+  const TOK = /("(?:\\.|[^"\\])*")|(:[^\s\[\]{}()",;]+)|(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)(?![\w.])|([\[\]{}()])|([^"\[\]{}():\-\d;]+|[\s\S])/g;
+  const escH = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const tokensH = (code) => code.replace(TOK, (m, str, k, num, br) => {
+    const c = str ? "e-str" : k ? "e-kw" : num ? "e-num" : br ? "e-br" : null;
+    return c ? `<span class="${c}">${escH(m)}</span>` : escH(m);
+  });
+  function highlightEDN(block) {
+    return block.split("\n").map((line) => {
+      const m = /^(\s*;+\s?)(.*)$/.exec(line);
+      if (!m) return tokensH(line);
+      return /^\s*[\[{(:]/.test(m[2])
+        ? `<span class="e-cm">${escH(m[1])}</span><span class="e-off">${tokensH(m[2])}</span>`
+        : `<span class="e-cm">${escH(line)}</span>`;
+    }).join("\n");
+  }
+  // Wrap a textarea in the highlight layer; its value setter repaints, and
+  // copy reads the textarea, so it stays plain text. The designer's box is
+  // read-only and as tall as the mood, so it never scrolls vertically.
+  function highlightBox(ta) {
+    const wrap = el("div", "hl"), pre = el("pre"); pre.setAttribute("aria-hidden", "true");
+    ta.replaceWith(wrap); wrap.append(pre, ta); ta.wrap = "off";
+    const d = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
+    // a trailing space keeps a final empty line, and the extra lines the room a scrollbar takes
+    const paint = () => { const v = d.get.call(ta); pre.innerHTML = highlightEDN(v) + " \n\n"; ta.rows = v.split("\n").length + 1; sync(); };
+    const sync = () => { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; };
+    Object.defineProperty(ta, "value", { get() { return d.get.call(ta); }, set(v) { d.set.call(ta, v); paint(); } });
+    ta.addEventListener("scroll", sync);
+    paint();
+  }
+  highlightBox($("edn"));
   $("copy").onclick = async () => {
     const t = undertoneDesigner.edn(JSON.stringify(spec));
     try { await navigator.clipboard.writeText(t); status.textContent = "EDN copied"; }
-    catch { $("edn").hidden = false; $("edn").value = t; status.textContent = "select the EDN below to copy it"; }
+    catch {
+      // iOS selects nothing in a read-only textarea on select() alone
+      const ta = $("edn"); ta.value = t; ta.focus(); ta.select(); ta.setSelectionRange(0, t.length);
+      status.textContent = "select the EDN above to copy it";
+    }
   };
   function setPlaying(on) {
     playing = on;

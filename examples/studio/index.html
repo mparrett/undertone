@@ -215,7 +215,7 @@
   #meterlbl span { transition: background .3s, color .3s; border-radius: 3px; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
   #takeedn { min-height: 6em; height: 9em; resize: vertical; }
-  /* TAKE EDN and EDN side by side when both show and there's room; EDN alone (a lead, a palette) takes the row */
+  /* TAKE EDN and the shot's EDN side by side when both show and there's room; a lead's or palette's EDN alone takes the row */
   .ednrow { display: grid; gap: 4px 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
   .ednrow > * { min-width: 0; }
   .takerow button { min-width: 2.6em; transition: background .25s, color .25s; }
@@ -357,7 +357,7 @@
     </ul>
 
     <h3>TAKING IT TO A GAME</h3>
-    <p>The EDN box is exactly what the lg binding takes. Load it at boot, then use the name:</p>
+    <p>The SHOT, LEAD or BED PALETTE EDN box is exactly what the lg binding takes (TAKE EDN holds trigger maps, to audition). Load it at boot, then use the name:</p>
 <pre>(undertone/register-shot   (read-string (slurp "sfx/zap.edn")))
 (undertone/trigger {:shot :zap :degree 2})
 
@@ -417,7 +417,7 @@
   </div>
 
   <div id="ednbox">
-  <div class="lab">EDN</div>
+  <div class="lab" id="ednlab">SHOT EDN</div>
   <div class="bar"><button id="copy">copy</button><button id="save">download</button>
     <span class="hint">the map undertone/register-<span id="regkind">shot</span> takes</span></div>
   <textarea id="edn" spellcheck="false"></textarea>
@@ -492,9 +492,11 @@ const cap = (s) => s[0].toUpperCase() + s.slice(1);
 const limit = (v) => v === "rel" ? (kind === "shot" ? 2 : 10) : v === "gain" ? (kind === "shot" ? 2 : 4) : v;
 
 // ---- the list of names ----
+// a palette is the bed's band, all but the lead, so the page calls it a bed palette
+const kindLabel = (k) => k === "palette" ? "bed palette" : k;
 function buildKinds() {
   for (const k of ["shot", "lead", "palette"]) {
-    const c = el("span", "chip", k === "palette" ? "bed palette" : k); c.dataset.k = k;  // a palette is the bed's band, all but the lead
+    const c = el("span", "chip", kindLabel(k)); c.dataset.k = k;
     // each kind keeps what was being edited, so switching back resumes it
     // rather than opening another copy
     c.onclick = () => { if (spec) last[kind] = { spec, track, builtin }; kind = k; last[k] ? resume(last[k]) : openFirst(); flashLoaded(); };
@@ -527,7 +529,7 @@ function buildNames() {
     $("names").append(c);
   }
   for (const c of $("kinds").children) c.classList.toggle("on", c.dataset.k === kind);
-  $("openkind").textContent = kind === "palette" ? "BED PALETTE" : kind.toUpperCase();
+  $("openkind").textContent = kindLabel(kind).toUpperCase();
 }
 // A click above loads a sound into the editor below, often out of view or
 // looking much like the last one, so the name and the units flash once.
@@ -571,6 +573,8 @@ function render() {
   $("regkind").textContent = kind;
   $("gatebox").hidden = kind === "palette";
   $("namelbl").textContent = `${kind} name`;
+  // a shot's sits beside TAKE EDN, and the two boxes take different maps
+  $("ednlab").textContent = `${kindLabel(kind).toUpperCase()} EDN`;
   if (kind === "shot") { $("gatelbl").textContent = "gate ms"; $("gate").value = spec.GateMS; $("gate").min = 1; $("gate").max = 10000; }
   if (kind === "lead") { $("gatelbl").textContent = "gate rows"; $("gate").value = spec.Gate; $("gate").min = 1; $("gate").max = 16; }
   gateToRange();

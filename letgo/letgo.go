@@ -626,7 +626,9 @@ func muteLayers(v vm.Value) (engine.Layers, error) {
 		}
 		l, ok := muteNames[name]
 		if !ok {
-			return 0, fmt.Errorf(":mute: unknown layer %v (drone fifth pad lead air pulse drums)", e)
+			// from LayerNames, so a layer added to the engine shows up here
+			names := engine.LayerNames()
+			return 0, fmt.Errorf(":mute: unknown layer %v (%s)", e, strings.Join(names[:], " "))
 		}
 		m |= l
 	}

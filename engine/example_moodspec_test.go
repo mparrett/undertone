@@ -65,6 +65,7 @@ func ExampleRegisterPalette() {
 	//  :pad :smear
 	//  :air :hiss
 	//  :pulse :grind
+	//  :bass :pluck
 	//  :kit [{:note 33 :patch :slam}
 	//        {:note 50 :patch :clank}
 	//        {:note 84 :patch :tick}]}

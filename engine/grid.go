@@ -105,7 +105,7 @@ var gridLeadGain = map[string]float64{
 }
 
 const (
-	gridBassGain  = 3.4  // pluck two octaves down: a string bass
+	gridBassGain  = 3.4  // pluck two octaves down: a string bass. A palette's own bass plays at it too, so its :out sets its level against pluck's
 	gridPulseGain = 1.1  //
 	gridBedScale  = 0.75 // the generator's drone, fifth, pad and air, under a grid
 	gridDrumGain  = 0.8  // a seeded village groove, about -22 dB: level with the bed (2026-10-12)
@@ -140,7 +140,7 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 	}
 	s.pats[trackBass][row] = trackRow{}
 	if d := g.Bass[row]; d > 0 {
-		s.pats[trackBass][row] = trackRow{degreeNote(p, bass, d), gridBassGain * dbGain(p.BassDB), 2, gridBass}
+		s.pats[trackBass][row] = trackRow{degreeNote(p, bass, d), gridBassGain * dbGain(p.BassDB), 2, p.Palette.bass()}
 	}
 	s.pats[trackPulse][row] = trackRow{}
 	if g.Pulse[row] {

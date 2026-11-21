@@ -32,12 +32,12 @@ func TestReverbTailDecays(t *testing.T) {
 
 // A synth whose patches never send to the reverb never runs it.
 func TestReverbStaysOffWithoutSends(t *testing.T) {
-	s := NewSynth(DeriveDungeon(1, 3, 0.5))
+	s := NewSynth(bare(DeriveDungeon(1, 3, 0.5)))
 	render(s, 2*SampleRate)
 	if s.verb.on {
 		t.Error("dungeon has no verb sends, yet the reverb is running")
 	}
-	p, _ := DeriveMood("rust", 1, 0, 0)
+	p, _ := bareMood("rust", 1, 0, 0)
 	s = NewSynth(p)
 	render(s, 2*SampleRate)
 	if !s.verb.on {

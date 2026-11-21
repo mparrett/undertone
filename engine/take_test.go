@@ -146,8 +146,15 @@ func goldenTakes() []struct {
 		out = append(out, struct {
 			name string
 			take Take
-		}{"bed/" + mood, Take{Params: p, MusicGain: 1, Seconds: 6}})
+		}{"bed/" + mood, Take{Params: bare(p), MusicGain: 1, Seconds: 6}})
 	}
+	// the beds above are each mood's full mix, as Studio measures a shot
+	// against; this one is what a game hears first, the opening build
+	p, _ := DeriveMood("rust", 5, 2, 0.4)
+	out = append(out, struct {
+		name string
+		take Take
+	}{"bed-arc/rust", Take{Params: p, MusicGain: 1, Seconds: 6}})
 	return out
 }
 

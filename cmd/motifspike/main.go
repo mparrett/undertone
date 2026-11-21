@@ -84,6 +84,10 @@ func main() {
 			fmt.Fprintf(os.Stderr, "unknown mood %q\n", *mood)
 			os.Exit(2)
 		}
+		// a derived mood plays its own temperament: turn off what this
+		// render isn't asking for
+		p.NoPhrasing = !*temper || !usePhrasing
+		p.NoMemory = !*temper || !useMemory
 		if *temper {
 			tm, ok := engine.TemperamentFor(*mood)
 			if !ok {

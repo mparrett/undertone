@@ -116,8 +116,8 @@ func TestPendingNoteSurvivesTheOldNoteDying(t *testing.T) {
 // A switch whose fade straddles a row step keeps fading: the row's new note
 // joins the fade, where a plain trigger would step the voice's gain.
 func TestSwitchAcrossARowKeepsFading(t *testing.T) {
-	dungeon, _ := DeriveMood("dungeon", 7, 2, 0)
-	rust, _ := DeriveMood("rust", 7, 2, 0)
+	dungeon, _ := bareMood("dungeon", 7, 2, 0)
+	rust, _ := bareMood("rust", 7, 2, 0)
 	s := NewSynth(dungeon)
 	edge := rows * s.samplesPerRow // the next pattern's first row, with its drone
 	lead := (edge - 100) / nowBlock * nowBlock

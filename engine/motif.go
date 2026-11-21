@@ -6,9 +6,10 @@ import (
 	"strings"
 )
 
-// Phrasing and motif memory: a spike, each off unless Params.Phrasing or
-// Params.Memory is set, or the host opts into the mood's own with
-// Params.UsePhrasing or UseMemory.
+// Phrasing and motif memory: a spike. A derived mood plays its own unless the
+// host turns it off with Params.NoPhrasing or NoMemory; Params.Phrasing or
+// Memory set directly win over the mood's. A Params with neither plays
+// without them.
 //
 // Without them, every pattern is drawn fresh from the seed and the params, so
 // over minutes only tension moves the music: one phrase that never ends,
@@ -41,7 +42,7 @@ import (
 // allocate nothing.
 
 // Temperament is how a mood behaves over minutes: its phrasing and its
-// memory, for a host to opt into either or both.
+// memory, which a host may turn off either or both of.
 type Temperament struct {
 	Phrasing Phrasing
 	Memory   Memory
@@ -285,8 +286,8 @@ func builtinMemory(mood string) *Memory {
 }
 
 // TemperamentFor is a built-in mood's temperament. A derive already hands
-// it on as Params.MoodPhrasing and MoodMemory, for a host to opt into with
-// UsePhrasing and UseMemory; this is for setting Phrasing or Memory
+// it on as Params.MoodPhrasing and MoodMemory, which play unless a host sets
+// NoPhrasing or NoMemory; this is for setting Phrasing or Memory
 // directly, say to vary one. Moods without one report false.
 func TemperamentFor(mood string) (Temperament, bool) {
 	t, ok := temperaments[mood]

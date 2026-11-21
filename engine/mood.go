@@ -67,7 +67,7 @@ type mood struct {
 	leadDB, padDB float64
 
 	// phrasing and memory are the mood's temperament (motif.go), which a
-	// derive hands on and a host opts into; nil is none. The built-in
+	// derive hands on and plays unless a host turns it off; nil is none. The built-in
 	// moods' come from the temperaments table.
 	phrasing *Phrasing
 	memory   *Memory

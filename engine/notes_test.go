@@ -21,7 +21,7 @@ func events(s *Synth) []NoteEvent {
 // Every note the drawn patterns hold over two patterns is reported once,
 // on its row and at the frame that row started.
 func TestNoteEventsMatchThePatterns(t *testing.T) {
-	p := DeriveDungeon(1, 2, 0.6)
+	p := bare(DeriveDungeon(1, 2, 0.6))
 	s := NewSynth(p)
 	render(s, 2*rows*s.samplesPerRow)
 	var want []noteKey

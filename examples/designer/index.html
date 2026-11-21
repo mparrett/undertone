@@ -230,7 +230,7 @@
       { int: "leadDB", label: "lead dB", min: -24, max: 12, step: 1, note: "the lead, whichever plays; a game's trim adds to it" },
       { int: "padDB",  label: "pad dB",  min: -24, max: 12, step: 1, note: "the pad; a game's trim adds to it" },
     ]},
-    { id: "arc", col: "L", hear: true, title: "PHRASE & MEMORY", note: "over minutes: how a phrase arcs and how the lines develop · heard only with hear on, as a game opts in", items: [
+    { id: "arc", col: "L", hear: true, title: "PHRASE & MEMORY", note: "over minutes: how a phrase arcs and how the lines develop · heard with hear on, as a game hears it unless it turns them off", items: [
       { now: true }, { memory: true }, { phrasing: true },
     ]},
     { id: "drum", title: "DRUMS", note: "kick, backbeat, top: the palette's kit", toggle: true, items: [
@@ -252,7 +252,10 @@
   // the engine's presets, read once the wasm is up
   let PRESETS_T = null;
   // hearing the temperament is the page's choice, as muting is: never exported
-  const hear = { phrasing: false, memory: false };
+  const hear = { phrasing: true, memory: true };
+  // what is heard: the switch, for a part the spec has. The switch keeps its
+  // own state, so a mood without a part doesn't turn it off for the next.
+  const heard = () => ({ phrasing: hear.phrasing && !!spec?.phrasing, memory: hear.memory && !!spec?.memory });
   // The layers apply() can silence, floor to sky.
   const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums"];
   const muted = new Set();
@@ -464,10 +467,10 @@
     card.append(secs, line);
     showArc = (m) => {
       // before the first boundary the trace says hold; nothing has started
-      for (const c of secs.children) c.classList.toggle("on", !!m?.Chord && hear.phrasing && c.dataset.s === m.Section);
+      for (const c of secs.children) c.classList.toggle("on", !!m?.Chord && heard().phrasing && c.dataset.s === m.Section);
       if (m && !m.Chord) { line.textContent = "starts at the next pattern"; return; }
-      if (!m) { line.textContent = hear.phrasing || hear.memory ? "play to follow the arc" : "turn on hear phrasing or hear memory to follow the arc"; return; }
-      const lines = hear.memory ? ` · lead ${m.Lead} · pad ${m.Pad}` : "";
+      if (!m) { line.textContent = heard().phrasing || heard().memory ? "play to follow the arc" : "turn on hear phrasing or hear memory to follow the arc"; return; }
+      const lines = heard().memory ? ` · lead ${m.Lead} · pad ${m.Pad}` : "";
       line.textContent = `phrase ${m.Phrase} · chord ${m.Chord}${m.Cycle ? ` · cycle ${m.Cycle}` : ""}${lines}${m.Held ? " · break held off" : ""}${m.Fill ? " · fill" : ""}`;
     };
     showArc(null);
@@ -580,14 +583,13 @@
       head.append(sw);
     }
     if (s.hear) {
-      // as a game opts in: a part the mood does not have cannot be heard
+      // a part the mood does not have cannot be heard
       for (const part of ["phrasing", "memory"]) {
         const sw = el("label", "switch", `<input type="checkbox"> hear ${part}`), box = sw.querySelector("input");
         box.onchange = () => { hear[part] = box.checked; changed(); showArc(null); };
         syncers.push(() => {
           box.disabled = !spec[part];
-          if (box.disabled) hear[part] = false;
-          box.checked = hear[part];
+          box.checked = heard()[part];
         });
         head.append(sw);
       }
@@ -621,7 +623,7 @@
     const [seed, level, tension] = audition();
     showAudition();
     for (const f of sweeps) f(level);
-    const r = JSON.parse(undertoneDesigner.apply(JSON.stringify(spec), seed, level, tension, JSON.stringify([...muted]), JSON.stringify(hear)));
+    const r = JSON.parse(undertoneDesigner.apply(JSON.stringify(spec), seed, level, tension, JSON.stringify([...muted]), JSON.stringify(heard())));
     // before the error check: the box always shows what copy would copy
     $("edn").value = undertoneDesigner.edn(JSON.stringify(spec));
     status.classList.toggle("err", !!r.error);
@@ -744,7 +746,7 @@
     });
     // the arc moves a pattern at a time, so a few looks a second follow it
     const now = performance.now();
-    if (v && (hear.phrasing || hear.memory) && now - lastTrace > 250) { lastTrace = now; showArc(JSON.parse(undertoneDesigner.trace())); }
+    if (v && (heard().phrasing || heard().memory) && now - lastTrace > 250) { lastTrace = now; showArc(JSON.parse(undertoneDesigner.trace())); }
     metering = !!v;
     if (metering) requestAnimationFrame(meters);
   }

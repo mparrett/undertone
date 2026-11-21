@@ -37,8 +37,8 @@ func (s *Synth) shotsIdle() bool {
 
 // ReadUntilSilent reads src, the output of s or of something reading through
 // it (a reader that applies calls on the way), until the sound has ended: the
-// one-shot lane is idle, more (nil for none) reports nothing still to come,
-// and the output has stayed below floorDB for the delay's period plus
+// one-shot lane is idle, no theme is still to finish, more (nil for none)
+// reports nothing still to come, and the output has stayed below floorDB for the delay's period plus
 // echoGapMS. It returns the frames up to the last one at or above floorDB plus
 // silentMarginMS, as interleaved stereo samples, reading at most capSeconds.
 //
@@ -66,7 +66,8 @@ func ReadUntilSilent(s *Synth, src io.Reader, capSeconds, floorDB float64, more 
 			}
 		}
 		hold := len(s.dl) + echoGapMS*SampleRate/1000
-		if n-(last+1) >= max(hold, margin) && s.shotsIdle() && (more == nil || !more()) {
+		// A theme's rest is quiet too, but more of it is still to play.
+		if n-(last+1) >= max(hold, margin) && s.shotsIdle() && !s.ThemePlaying() && (more == nil || !more()) {
 			break
 		}
 	}

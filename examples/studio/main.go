@@ -228,6 +228,8 @@ func main() {
 		if len(a) > 2 && a[2].Type() == js.TypeNumber {
 			g = a[2].Float() // a page measuring a shot alone passes 0
 		}
+		// Only a missing or 0 length means until silent; a negative or NaN
+		// one stays an empty render, as before.
 		secs := 0.0
 		if len(a) > 1 && a[1].Type() == js.TypeNumber {
 			secs = a[1].Float()
@@ -235,13 +237,13 @@ func main() {
 		return engine.Take{Params: cur, MusicGain: g, Shots: shots, Seconds: secs}, true
 	}
 	pcm := func(t engine.Take) []int16 {
-		if t.Seconds > 0 {
+		if t.Seconds != 0 {
 			return t.Render()
 		}
 		return t.RenderUntilSilent(engine.SilentFloorDB)
 	}
 	hash := func(t engine.Take) string {
-		if t.Seconds > 0 {
+		if t.Seconds != 0 {
 			return t.Hash()
 		}
 		return t.UntilSilentHash(engine.SilentFloorDB)

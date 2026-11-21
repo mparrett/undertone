@@ -11,10 +11,13 @@
 //
 //	moods()                  the built-in moods, as JSON
 //	spec(name)               a built-in mood's spec, as JSON (an unbounded clamp is null)
-//	apply(json, seed, level, tension, muted)
+//	apply(json, seed, level, tension, muted, hear)
 //	                         derive from a spec and play it at once, with the
-//	                         layers named in muted (a JSON array) silenced; returns
-//	                         {error} or what was derived: {bpm, key, lead, groove, gains}
+//	                         layers named in muted (a JSON array) silenced and the
+//	                         mood's phrasing and memory heard as hear says
+//	                         ({phrasing, memory}); returns {error} or what was
+//	                         derived: {bpm, key, lead, groove, gains}
+//	trace()                  where the arc is: engine.MotifState, as JSON
 //	edn(json)                the spec as an ambience/moods entry
 //	palettes(), grooves()    the names a spec can use, as JSON
 //	play() / stop()          call from the tap handler: iOS resumes audio only inside one
@@ -102,6 +105,60 @@ type specJSON struct {
 	Room   roomJSON `json:"room"`
 	LeadDB float64  `json:"leadDB"`
 	PadDB  float64  `json:"padDB"`
+	// the mood's temperament; null is none
+	Phrasing *phrasingJSON `json:"phrasing"`
+	Memory   *memoryJSON   `json:"memory"`
+}
+
+// phrasingJSON is engine.Phrasing with its layers by name. The page has no
+// colour control yet; Shade rides along so an edit keeps the mood's.
+type phrasingJSON struct {
+	PhraseMin   int             `json:"phraseMin"`
+	PhraseMax   int             `json:"phraseMax"`
+	BreakChance float64         `json:"breakChance"`
+	Drop        []string        `json:"drop"`
+	Shade       [5]engine.Shade `json:"shade"`
+}
+
+type memoryJSON struct {
+	Restlessness float64 `json:"restlessness"`
+	Leap         float64 `json:"leap"`
+	ReturnDrift  float64 `json:"returnDrift"`
+	CycleChurn   float64 `json:"cycleChurn"`
+}
+
+// layerOf is a layer's name, the inverse of layers.
+func layerOf(l engine.Layers) string {
+	for n, b := range layers {
+		if b == l {
+			return n
+		}
+	}
+	return ""
+}
+
+func toPhrasing(t *engine.Phrasing) *phrasingJSON {
+	if t == nil {
+		return nil
+	}
+	j := &phrasingJSON{PhraseMin: t.PhraseMin, PhraseMax: t.PhraseMax, BreakChance: t.BreakChance, Shade: t.Shade, Drop: []string{}}
+	for _, l := range t.Drop {
+		j.Drop = append(j.Drop, layerOf(l))
+	}
+	return j
+}
+
+func (j *phrasingJSON) phrasing() *engine.Phrasing {
+	if j == nil {
+		return nil
+	}
+	t := &engine.Phrasing{PhraseMin: j.PhraseMin, PhraseMax: j.PhraseMax, BreakChance: j.BreakChance, Shade: j.Shade}
+	for _, n := range j.Drop {
+		if l, ok := layers[n]; ok {
+			t.Drop = append(t.Drop, l)
+		}
+	}
+	return t
 }
 
 // roomJSON is engine.Room with the page's key names.
@@ -117,6 +174,7 @@ func toJSON(s engine.MoodSpec) specJSON {
 		Calm: s.Calm, LeadLift: s.LeadLift, Palette: s.Palette, Leads: s.Leads, Grooves: s.Grooves,
 		Drums: toLine(s.Drums), Busy: toLine(s.Busy), Swing: s.Swing, Tense: s.TenseDrums, Open: toLine(s.Open),
 		Room: roomJSON(s.Room), LeadDB: s.LeadDB, PadDB: s.PadDB,
+		Phrasing: toPhrasing(s.Phrasing), Memory: (*memoryJSON)(s.Memory),
 	}
 }
 
@@ -127,6 +185,7 @@ func (j specJSON) spec() engine.MoodSpec {
 		Calm: j.Calm, LeadLift: j.LeadLift, Palette: j.Palette, Leads: j.Leads, Grooves: j.Grooves,
 		Drums: j.Drums.line(), Busy: j.Busy.line(), Swing: j.Swing, TenseDrums: j.Tense, Open: j.Open.line(),
 		Room: engine.Room(j.Room), LeadDB: j.LeadDB, PadDB: j.PadDB,
+		Phrasing: j.Phrasing.phrasing(), Memory: (*engine.Memory)(j.Memory),
 	}
 }
 
@@ -201,6 +260,14 @@ func main() {
 					p.Mute |= layers[l]
 				}
 			}
+			// So is hearing the temperament: the spec carries the mood's, and
+			// the page opts in as a game would. Turning one on or off
+			// restarts the arc; changing a knob does not.
+			if len(a) > 5 {
+				var hear struct{ Phrasing, Memory bool }
+				_ = json.Unmarshal([]byte(a[5].String()), &hear)
+				p.UsePhrasing, p.UseMemory = hear.Phrasing, hear.Memory
+			}
 			syn.SetParametersNow(p)
 			return marshal(map[string]any{
 				"bpm": math.Round(p.BPM), "key": noteNames[((p.Root%12)+12)%12], "root": p.Root,
@@ -212,6 +279,9 @@ func main() {
 			})
 		}),
 		"levels": js.FuncOf(func(js.Value, []js.Value) any { return marshal(syn.LayerLevels()) }),
+		// MotifTrace reads the audio state unsynchronised; js/wasm runs one
+		// thread, so the page's poll and the audio callback never overlap.
+		"trace": js.FuncOf(func(js.Value, []js.Value) any { return marshal(syn.MotifTrace()) }),
 		"edn": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			s, ok := parse(a[0])
 			if !ok {

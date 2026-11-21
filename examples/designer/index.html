@@ -29,6 +29,19 @@
     #sections .cards { grid-template-columns: minmax(0, 1fr); }
     .top > * > :first-child { margin-top: 0; } }
   #exportbox .bar { max-width: 32em; }
+  /* EDN boxes, as the studio has them: a highlighted <pre> sits under a
+     transparent textarea. Both share one grid cell, font, padding and border,
+     and neither wraps, so their lines stay aligned; scroll is copied from
+     the textarea. */
+  .hl { display: grid; }
+  .hl > * { grid-area: 1 / 1; margin: 0; font: 12px/1.45 ui-monospace, Menlo, monospace; padding: 5px 9px;
+            border: 1px solid var(--line); border-radius: 8px; white-space: pre; overflow-wrap: normal; tab-size: 2;
+            box-sizing: border-box; width: 100%; min-width: 0; min-height: 0; }
+  .hl > pre { background: var(--panel); color: var(--fg); overflow: hidden; pointer-events: none; contain: size; }  /* the textarea sets the height */
+  .hl > textarea { background: transparent; color: transparent; caret-color: var(--fg); overflow: auto; position: relative; resize: none; }
+  .hl > textarea::selection { background: color-mix(in srgb, var(--layer) 35%, transparent); color: transparent; }
+  .e-kw { color: var(--aud); } .e-num { color: var(--layer); } .e-str { color: var(--tempo); } .e-br { color: var(--mut); }
+  .e-cm { color: var(--mut); font-style: italic; } .e-off { opacity: .6; }
   h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0 0 4px; font-weight: 600; }
   .sub { color: var(--mut); font-size: 12px; margin: 0 0 10px; }
   .lab { font-size: 12px; letter-spacing: .1em; color: var(--mut); margin: 16px 0 6px; font-weight: 600; }
@@ -167,8 +180,8 @@
  <div class="ctl" id="exportbox">
   <div class="lab">EXPORT</div>
   <div class="bar"><input id="name" type="text" aria-label="mood name"></div>
-  <div class="bar"><button id="export">show EDN</button><button id="copy">copy</button></div>
-  <textarea id="edn" readonly hidden></textarea>
+  <textarea id="edn" readonly aria-label="the mood as EDN"></textarea>
+  <div class="bar"><button id="copy">copy</button></div>
  </div>
 </main>
 
@@ -452,7 +465,7 @@
     status.textContent = playing ? "playing" : "ready: tap play";
     $("now").innerHTML = `<span class="k">now</span> ${r.bpm} bpm · ${r.key} · ${r.lead ? "lead " + r.lead : "no lead"}` +
       (r.groove ? ` · groove ${r.groove}` : ` · no drums`);
-    if (!$("edn").hidden) $("edn").value = undertoneDesigner.edn(JSON.stringify(spec));
+    $("edn").value = undertoneDesigner.edn(JSON.stringify(spec));
   }
 
   function load(name) {
@@ -504,11 +517,42 @@
     $(id).oninput = () => { $(id + "v").textContent = $(id).value; changed(); };
   }
   $("name").oninput = (e) => { spec.name = e.target.value.trim().replace(/[^\w-]/g, "") || "untitled"; changed(); };
-  $("export").onclick = () => { $("edn").hidden = false; $("edn").value = undertoneDesigner.edn(JSON.stringify(spec)); };
+  // EDN highlighting, the studio's (and the sfx board's) tokenizer.
+  // Explanatory comments dim; commented-out code keeps its colours, faded.
+  const TOK = /("(?:\\.|[^"\\])*")|(:[^\s\[\]{}()",;]+)|(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)(?![\w.])|([\[\]{}()])|([^"\[\]{}():\-\d;]+|[\s\S])/g;
+  const escH = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const tokensH = (code) => code.replace(TOK, (m, str, k, num, br) => {
+    const c = str ? "e-str" : k ? "e-kw" : num ? "e-num" : br ? "e-br" : null;
+    return c ? `<span class="${c}">${escH(m)}</span>` : escH(m);
+  });
+  function highlightEDN(block) {
+    return block.split("\n").map((line) => {
+      const m = /^(\s*;+\s?)(.*)$/.exec(line);
+      if (!m) return tokensH(line);
+      return /^\s*[\[{(:]/.test(m[2])
+        ? `<span class="e-cm">${escH(m[1])}</span><span class="e-off">${tokensH(m[2])}</span>`
+        : `<span class="e-cm">${escH(line)}</span>`;
+    }).join("\n");
+  }
+  // Wrap a textarea in the highlight layer; its value setter repaints, and
+  // copy reads the textarea, so it stays plain text. The designer's box is
+  // read-only and as tall as the mood, so it never scrolls vertically.
+  function highlightBox(ta) {
+    const wrap = el("div", "hl"), pre = el("pre"); pre.setAttribute("aria-hidden", "true");
+    ta.replaceWith(wrap); wrap.append(pre, ta); ta.wrap = "off";
+    const d = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
+    // a trailing space keeps a final empty line, and the extra lines the room a scrollbar takes
+    const paint = () => { const v = d.get.call(ta); pre.innerHTML = highlightEDN(v) + " \n\n"; ta.rows = v.split("\n").length + 1; sync(); };
+    const sync = () => { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; };
+    Object.defineProperty(ta, "value", { get() { return d.get.call(ta); }, set(v) { d.set.call(ta, v); paint(); } });
+    ta.addEventListener("scroll", sync);
+    paint();
+  }
+  highlightBox($("edn"));
   $("copy").onclick = async () => {
     const t = undertoneDesigner.edn(JSON.stringify(spec));
     try { await navigator.clipboard.writeText(t); status.textContent = "EDN copied"; }
-    catch { $("edn").hidden = false; $("edn").value = t; status.textContent = "select the EDN below to copy it"; }
+    catch { $("edn").select(); status.textContent = "select the EDN above to copy it"; }
   };
   function setPlaying(on) {
     playing = on;

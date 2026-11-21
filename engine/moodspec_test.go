@@ -115,7 +115,8 @@ func TestOpenClampExports(t *testing.T) {
 // A room exports only when it is not the default, and derives as itself.
 func TestRoomExports(t *testing.T) {
 	s, _ := MoodByName("aurora")
-	if strings.Contains(s.EDN(), ":room") {
+	// an entry key starts a line; a section's colour has a :room of its own
+	if strings.Contains(s.EDN(), "\n :room ") {
 		t.Error("a mood with the default room exports one")
 	}
 	s.Room = Room{Size: 0.5, Damp: -0.25}

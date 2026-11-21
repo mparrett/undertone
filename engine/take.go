@@ -72,10 +72,26 @@ func (t Take) Render() []int16 {
 func (t Take) Hash() string {
 	h := sha256.New()
 	// %#v writes every field, unexported ones and new ones included, with
-	// floats in their shortest exact form; nothing in these types is a
-	// pointer or a map, whose formatting would not be stable.
+	// floats in their shortest exact form. A pointer would write its address,
+	// so the temperament's pointers are written as what they point to.
 	fmt.Fprintf(h, "undertone take v%d\n", RenderVersion)
-	fmt.Fprintf(h, "frames %d\ngain %v\nparams %#v\n", t.frames(), math.Float64bits(t.MusicGain), t.Params)
+	p := t.Params
+	p.Phrasing, p.Memory, p.MoodPhrasing, p.MoodMemory = nil, nil, nil, nil
+	fmt.Fprintf(h, "frames %d\ngain %v\nparams %#v\n", t.frames(), math.Float64bits(t.MusicGain), p)
+	for _, ph := range []*Phrasing{t.Params.Phrasing, t.Params.MoodPhrasing} {
+		if ph != nil {
+			fmt.Fprintf(h, "phrasing %#v\n", *ph)
+		} else {
+			fmt.Fprintln(h, "phrasing none")
+		}
+	}
+	for _, m := range []*Memory{t.Params.Memory, t.Params.MoodMemory} {
+		if m != nil {
+			fmt.Fprintf(h, "memory %#v\n", *m)
+		} else {
+			fmt.Fprintln(h, "memory none")
+		}
+	}
 	for _, sh := range t.Shots {
 		fmt.Fprintf(h, "shot %#v\n", sh)
 		if d, ok := lookupShot(sh.Name); ok {

@@ -6,7 +6,8 @@ import (
 )
 
 // Phrasing and motif memory: a spike, each off unless Params.Phrasing or
-// Params.Memory is set.
+// Params.Memory is set, or the host opts into the mood's own with
+// Params.UsePhrasing or UseMemory.
 //
 // Without them, every pattern is drawn fresh from the seed and the params, so
 // over minutes only tension moves the music: one phrase that never ends,
@@ -67,11 +68,28 @@ type Phrasing struct {
 
 // Memory is how a mood's lines develop: each chord of a cycle keeps a lead
 // and a pad line, which at a boundary repeat, change one thing or are drawn
-// anew.
+// anew. NewMemory gives the defaults for a restlessness; a zero field means
+// what it says (a zero Leap never redraws), not "the default".
 type Memory struct {
 	// Restlessness, 0..1, is how often a line changes at a boundary; the rest
 	// of the time it repeats. At 0 the first lines play forever.
 	Restlessness float64
+	// Leap, 0..1, is the share of changes that redraw the whole line; the
+	// rest change one thing. Low evolves a theme, high keeps starting anew.
+	Leap float64
+	// ReturnDrift, 0..1, lets a return's lines change too, at that share of
+	// a hold's rate. At 0 a return restates the home lines exactly.
+	ReturnDrift float64
+	// CycleChurn, 0..1, is the chance a phrase brings a new chord cycle,
+	// raised by tension as Restlessness is; the lines carry over.
+	CycleChurn float64
+}
+
+// NewMemory is a memory with the given restlessness and the defaults for
+// the rest: a quarter of changes redraw, a return comes home exactly, and
+// the chords move on at 0.6 of the restlessness.
+func NewMemory(restlessness float64) Memory {
+	return Memory{Restlessness: restlessness, Leap: 0.25, CycleChurn: 0.6 * restlessness}
 }
 
 // phrasing reports whether p's phrasing is other than the identity.
@@ -118,7 +136,7 @@ type Shade struct {
 // often, the machine dropping out and coming back with a fill. Neither
 // drops the pulse: it carries tension, which the game owns.
 var temperaments = map[string]Temperament{
-	"dungeon": {Memory: Memory{Restlessness: 0.3}, Phrasing: Phrasing{PhraseMin: 10, PhraseMax: 16, BreakChance: 0.35,
+	"dungeon": {Memory: NewMemory(0.3), Phrasing: Phrasing{PhraseMin: 10, PhraseMax: 16, BreakChance: 0.35,
 		Drop: []Layers{LayerLead, LayerPad, LayerFifth, LayerAir},
 		Shade: [nSections]Shade{
 			secBuild:  {Dark: 0.35, Wash: 0.25}, // far off, coming into focus
@@ -127,7 +145,7 @@ var temperaments = map[string]Temperament{
 			secBreak:  {Dark: 0.6, Wash: 0.5, Room: 0.3},           // closed, a long room
 			secReturn: {Echo: -0.4, Pad: 1},                        // open, dry, full
 		}}},
-	"rust": {Memory: Memory{Restlessness: 0.55}, Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.7,
+	"rust": {Memory: NewMemory(0.55), Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.7,
 		Drop: []Layers{LayerPad, LayerLead, LayerDrums, LayerFifth},
 		Shade: [nSections]Shade{
 			secBuild:  {Open: -0.4, Wash: 0.15},
@@ -141,7 +159,7 @@ var temperaments = map[string]Temperament{
 	// dungeon's, whose measured under 1 dB against no colour at all. Each
 	// moves both Open (for patches with svf filters) and Dark (for those
 	// without), since which a mood's patches have isn't checked here.
-	"aurora": {Memory: Memory{Restlessness: 0.25}, Phrasing: Phrasing{PhraseMin: 10, PhraseMax: 16, BreakChance: 0.3, // slow, shimmering
+	"aurora": {Memory: NewMemory(0.25), Phrasing: Phrasing{PhraseMin: 10, PhraseMax: 16, BreakChance: 0.3, // slow, shimmering
 		Drop: []Layers{LayerLead, LayerFifth, LayerPad},
 		Shade: [nSections]Shade{
 			secBuild:  {Dark: 0.3, Wash: 0.35},
@@ -149,7 +167,7 @@ var temperaments = map[string]Temperament{
 			secBreak:  {Open: -0.4, Dark: 0.55, Wash: 0.6, Room: 0.5},
 			secReturn: {Open: 0.3, Wash: -0.2, Echo: -0.3, Lift: 1, Pad: 1},
 		}}},
-	"meadow": {Memory: Memory{Restlessness: 0.4}, Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.4, // light, open air
+	"meadow": {Memory: NewMemory(0.4), Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.4, // light, open air
 		Drop: []Layers{LayerLead, LayerPad, LayerDrums, LayerFifth},
 		Shade: [nSections]Shade{
 			secBuild:  {Open: -0.3, Dark: 0.25},
@@ -157,7 +175,7 @@ var temperaments = map[string]Temperament{
 			secBreak:  {Open: -0.45, Dark: 0.45, Wash: 0.35},
 			secReturn: {Open: 0.35, Wash: -0.2, Busy: 0.25, Pad: 1, Fill: true},
 		}}},
-	"forge": {Memory: Memory{Restlessness: 0.5}, Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.6, // heavy, hammering
+	"forge": {Memory: NewMemory(0.5), Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.6, // heavy, hammering
 		Drop: []Layers{LayerPad, LayerLead, LayerFifth, LayerDrums},
 		Shade: [nSections]Shade{
 			secBuild:  {Open: -0.4, Dark: 0.3},
@@ -165,7 +183,7 @@ var temperaments = map[string]Temperament{
 			secBreak:  {Open: -0.6, Grit: 0.3, Dark: 0.35, Room: 0.3},
 			secReturn: {Open: 0.35, Grit: 0.15, Wash: -0.3, Busy: 0.35, Pad: 1, Fill: true},
 		}}},
-	"void": {Memory: Memory{Restlessness: 0.2}, Phrasing: Phrasing{PhraseMin: 12, PhraseMax: 16, BreakChance: 0.5, // sparse, patient
+	"void": {Memory: NewMemory(0.2), Phrasing: Phrasing{PhraseMin: 12, PhraseMax: 16, BreakChance: 0.5, // sparse, patient
 		Drop: []Layers{LayerLead, LayerFifth, LayerPad},
 		Shade: [nSections]Shade{
 			secBuild:  {Dark: 0.45, Wash: 0.4},
@@ -173,7 +191,7 @@ var temperaments = map[string]Temperament{
 			secBreak:  {Open: -0.5, Dark: 0.7, Wash: 0.6, Room: 0.5},
 			secReturn: {Open: 0.2, Wash: -0.3, Echo: -0.3, Pad: 1},
 		}}},
-	"village": {Memory: Memory{Restlessness: 0.5}, Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.45, // lively, busy
+	"village": {Memory: NewMemory(0.5), Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.45, // lively, busy
 		Drop: []Layers{LayerPad, LayerLead, LayerDrums, LayerFifth},
 		Shade: [nSections]Shade{
 			secBuild:  {Open: -0.3, Dark: 0.2, Busy: -0.2},
@@ -181,7 +199,7 @@ var temperaments = map[string]Temperament{
 			secBreak:  {Open: -0.45, Dark: 0.4, Wash: 0.3},
 			secReturn: {Open: 0.35, Wash: -0.3, Busy: 0.35, Pad: 1, Fill: true},
 		}}},
-	"stratosphere": {Memory: Memory{Restlessness: 0.35}, Phrasing: Phrasing{PhraseMin: 10, PhraseMax: 14, BreakChance: 0.4, // high, airy
+	"stratosphere": {Memory: NewMemory(0.35), Phrasing: Phrasing{PhraseMin: 10, PhraseMax: 14, BreakChance: 0.4, // high, airy
 		Drop: []Layers{LayerLead, LayerPad, LayerFifth},
 		Shade: [nSections]Shade{
 			secBuild:  {Dark: 0.3, Wash: 0.4},
@@ -189,7 +207,7 @@ var temperaments = map[string]Temperament{
 			secBreak:  {Open: -0.4, Dark: 0.45, Wash: 0.6, Room: 0.5},
 			secReturn: {Open: 0.3, Wash: -0.2, Echo: -0.3, Pad: 1},
 		}}},
-	"overworld": {Memory: Memory{Restlessness: 0.45}, Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.5, // open, travelling
+	"overworld": {Memory: NewMemory(0.45), Phrasing: Phrasing{PhraseMin: 8, PhraseMax: 12, BreakChance: 0.5, // open, travelling
 		Drop: []Layers{LayerPad, LayerLead, LayerFifth, LayerDrums},
 		Shade: [nSections]Shade{
 			secBuild:  {Open: -0.3, Dark: 0.3},
@@ -199,9 +217,30 @@ var temperaments = map[string]Temperament{
 		}}},
 }
 
-// TemperamentFor is a mood's temperament, for a host to opt in with
-// p.Phrasing = &t.Phrasing, p.Memory = &t.Memory, or both. Moods without one
-// report false.
+// builtinPhrasing and builtinMemory give a built-in mood row its
+// temperament. They are called from the moods table's literal, not set in an
+// init, so a package-level derive (initialized before any init runs) still
+// gets them.
+func builtinPhrasing(mood string) *Phrasing {
+	t, ok := temperaments[mood]
+	if !ok {
+		return nil
+	}
+	return &t.Phrasing
+}
+
+func builtinMemory(mood string) *Memory {
+	t, ok := temperaments[mood]
+	if !ok {
+		return nil
+	}
+	return &t.Memory
+}
+
+// TemperamentFor is a built-in mood's temperament. A derive already hands
+// it on as Params.MoodPhrasing and MoodMemory, for a host to opt into with
+// UsePhrasing and UseMemory; this is for setting Phrasing or Memory
+// directly, say to vary one. Moods without one report false.
 func TemperamentFor(mood string) (Temperament, bool) {
 	t, ok := temperaments[mood]
 	return t, ok
@@ -222,9 +261,12 @@ var sectionNames = [nSections]string{"build", "hold", "thin", "break", "return"}
 
 func (s section) String() string { return sectionNames[s] }
 
+// SectionNames are the phrase's sections in Phrasing.Shade's order.
+func SectionNames() []string { return sectionNames[:] }
+
 // change scales the restlessness in each section: a build states its line, a
-// hold lets it drift, a thin frays it, a break holds still and a return
-// comes home unchanged.
+// hold lets it drift, a thin frays it and a break holds still. A return's
+// is the mood's ReturnDrift: by default it comes home unchanged.
 var change = [nSections]float64{0.3, 1, 1.6, 0, 0}
 
 // Tension coupling. Tension is read from Params.PulseGain, which a mood
@@ -461,9 +503,9 @@ func (m *motifState) advance(p *Params, pat int) {
 			case secReturn:
 				m.phrase++
 				r := m.rng(p.Seed, uint64(m.phrase), 0x7a11)
-				// a restless mood lets its theme wander between phrases: the
-				// lines stay, under a new cycle of chords
-				m.plan(p, pat, r.f() < m.restless(p)*0.6)
+				// a mood may let its theme wander between phrases: the lines
+				// stay, under a new cycle of chords
+				m.plan(p, pat, r.f() < m.churn(p))
 				continue
 			}
 			m.sec++
@@ -539,6 +581,15 @@ func (m *motifState) restless(p *Params) float64 {
 	return min(1, p.Memory.Restlessness*(1+m.tension))
 }
 
+// churn is the chance the next phrase brings a new chord cycle; without
+// memory the cycle is never played, so it never changes.
+func (m *motifState) churn(p *Params) float64 {
+	if p.Memory == nil {
+		return 0
+	}
+	return min(1, p.Memory.CycleChurn*(1+m.tension))
+}
+
 func (m *motifState) saveHome() {
 	m.homeLeads, m.homePads, m.homeHave = m.leads, m.pads, m.have
 	m.homeProg, m.homeNProg = m.prog, m.nProg
@@ -578,7 +629,11 @@ func (m *motifState) reshape(p *Params, pat int, pats *[nTracks][rows]trackRow, 
 		return
 	}
 	r := m.rng(p.Seed, uint64(pat), 0x5eed)
-	rate := m.restless(p) * change[m.sec]
+	mult := change[m.sec]
+	if m.sec == secReturn {
+		mult = p.Memory.ReturnDrift
+	}
+	rate := m.restless(p) * mult
 	k := m.slot
 	m.leads[k], m.pads[k] = m.prevLead, m.prevPad
 	switch {
@@ -591,7 +646,7 @@ func (m *motifState) reshape(p *Params, pat int, pats *[nTracks][rows]trackRow, 
 		if !m.homeHave[k] {
 			m.homeLeads[k], m.homePads[k], m.homeHave[k] = m.leads[k], m.pads[k], true
 		}
-	case m.sec == secReturn:
+	case m.sec == secReturn && rate == 0:
 		m.lastLead, m.lastPad = "home", "home"
 	default:
 		m.lastLead = m.decideLead(p, m.chord, pats, &r, rate)
@@ -808,7 +863,7 @@ func scaleLayer(l Layers, g float64, pats *[nTracks][rows]trackRow, drums *[nDru
 func (m *motifState) decideLead(p *Params, chord int, pats *[nTracks][rows]trackRow, r *rng, rate float64) string {
 	x := r.f()
 	switch {
-	case x < rate*0.25:
+	case x < rate*p.Memory.Leap:
 		m.leads[m.slot] = freshLead(p, chord, pats)
 		return "redraw"
 	case x < rate:
@@ -821,7 +876,7 @@ func (m *motifState) decidePad(p *Params, chord int, pats *[nTracks][rows]trackR
 	pad := &m.pads[m.slot]
 	x := r.f()
 	switch {
-	case x < rate*0.25:
+	case x < rate*p.Memory.Leap:
 		*pad = freshPad(p, chord, pats)
 		return "redraw"
 	case x < rate:

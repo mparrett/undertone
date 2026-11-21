@@ -358,8 +358,9 @@
     rm.onclick = () => { spec[name] = null; sync(); changed(); };
     none.append(el("span", "note", "this mood has none"), add);
     controls(body); body.append(rm);
-    // a slider's move unlights a preset chip that no longer matches
-    body.addEventListener("input", sync);
+    // a slider's move unlights a preset chip that no longer matches; only
+    // the chips, not the whole page
+    body.addEventListener("input", () => { for (const r of body.querySelectorAll(".drops")) r.light?.(); });
     card.append(body, none);
     // display, not hidden: .bar's display: flex would win over [hidden]
     syncers.push(() => { body.style.display = spec[name] ? "" : "none"; none.style.display = spec[name] ? "none" : ""; });
@@ -373,12 +374,16 @@
   function presetChips(part, keys, from) {
     const row = el("div", "drops"), presets = PRESETS_T[part];
     const vals = (p) => part === "memory" ? p.memory : p;
+    const lights = [];
     for (const p of presets) {
       const b = el("span", "chip", p.name); b.title = p.note;
       b.onclick = () => { spec[part] = from(p); sync(); changed(); };
       row.append(b);
-      syncers.push(() => b.classList.toggle("on", !!spec[part] && keys.every((k) => spec[part][k] === vals(p)[k])));
+      lights.push(() => b.classList.toggle("on", !!spec[part] && keys.every((k) => spec[part][k] === vals(p)[k])));
     }
+    const light = () => { for (const f of lights) f(); };
+    syncers.push(light);
+    row.light = light;
     return row;
   }
 

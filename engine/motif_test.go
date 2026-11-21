@@ -403,7 +403,7 @@ func knobRun(t *testing.T, set func(*Memory)) (redraws, small, returnChanges, ne
 			switch l {
 			case "redraw":
 				redraws++
-			case "shift", "drop", "add", "revoice":
+			case "shift", "drop", "add", "rotate", "invert", "octave", "revoice":
 				small++
 			}
 			if m.sec == secReturn && l != "home" && l != "fresh" {

@@ -7,7 +7,7 @@
 <style>
   :root { --bg: #0d0d10; --panel: #15151a; --line: #26262e; --fg: #d6d1c2; --mut: #8a8576; --err: #c96a5f;
           /* one hue per kind of section, shared with the grid's lanes */
-          --tempo: #e0b84f; --layer: #5fa8c9; --drum: #9cc46a; --aud: #b48ad6;
+          --tempo: #e0b84f; --layer: #5fa8c9; --drum: #9cc46a; --aud: #b48ad6; --arc: #d9896a;
           /* trims adjust layers without being one: the layers' hue, greyed */
           --trim: color-mix(in srgb, var(--layer) 50%, var(--mut)); }
   * { box-sizing: border-box; }
@@ -20,7 +20,7 @@
      phone takes one column in the order a mood is built */
   #sections { display: flex; flex-direction: column; }
   #sections > .col { display: contents; }
-  .sec.tempo { order: 1; } .sec.layer { order: 2; } .sec.trim { order: 3; } .sec.drum { order: 4; } #exportbox { order: 5; }
+  .sec.tempo { order: 1; } .sec.layer { order: 2; } .sec.trim { order: 3; } .sec.drum { order: 4; } .sec.arc { order: 5; } #exportbox { order: 6; }
   @media (min-width: 900px) { body { padding: 32px; }
     .top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
     #sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; align-items: start; }
@@ -100,7 +100,7 @@
   /* sections: a coloured rule and title per kind; cards carry the colour on their edge */
   .sec { --sec: var(--mut); margin-bottom: 26px; }
   .sec.tempo { --sec: var(--tempo); } .sec.layer { --sec: var(--layer); } .sec.drum { --sec: var(--drum); }
-  .sec.trim { --sec: var(--trim); }
+  .sec.trim { --sec: var(--trim); } .sec.arc { --sec: var(--arc); }
   .sec > header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
                   border-bottom: 1px solid color-mix(in srgb, var(--sec) 45%, transparent); padding-bottom: 6px; margin-bottom: 10px; }
   .sec > header h2 { margin: 0; font-size: 12px; letter-spacing: .14em; color: var(--sec); font-weight: 700; }
@@ -144,6 +144,20 @@
             border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px 4px 8px; align-self: center; }
   .switch input { accent-color: var(--sec); width: 16px; height: 16px; }
   main.loading section, main.loading .ctl { opacity: .35; pointer-events: none; }
+  /* phrase & memory: two hear switches, and the arc as it plays */
+  .switch + .switch { margin-left: 0; }
+  .switch:has(input:disabled) { opacity: .4; cursor: default; }
+  .card .knobs label.sl { grid-template-columns: 5.5em 1fr 5ch; }
+  .card .odds { margin: 6px 0 2px; color: var(--fg); }
+  .card button.small { font-size: 12px; padding: 2px 8px; margin-top: 6px; }
+  .arcsecs { display: flex; gap: 4px; margin: 8px 0 6px; }
+  .arcsecs span { flex: 1; text-align: center; font-size: 11px; padding: 3px 0; border-radius: 5px; color: var(--mut); background: var(--line); }
+  .arcsecs span.on { color: #15151a; font-weight: 700; }
+  .arcsecs span.on[data-s=build] { background: #5fa8c9; } .arcsecs span.on[data-s=hold] { background: #9cc46a; }
+  .arcsecs span.on[data-s=thin] { background: #e0b84f; } .arcsecs span.on[data-s=break] { background: #8a8576; }
+  .arcsecs span.on[data-s=return] { background: #b48ad6; }
+  .drops { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .drops .chip { padding: 3px 8px; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -216,6 +230,9 @@
       { int: "leadDB", label: "lead dB", min: -24, max: 12, step: 1, note: "the lead, whichever plays; a game's trim adds to it" },
       { int: "padDB",  label: "pad dB",  min: -24, max: 12, step: 1, note: "the pad; a game's trim adds to it" },
     ]},
+    { id: "arc", col: "L", hear: true, title: "PHRASE & MEMORY", note: "over minutes: how a phrase arcs and how the lines develop · heard only with hear on, as a game opts in", items: [
+      { now: true }, { memory: true }, { phrasing: true },
+    ]},
     { id: "drum", title: "DRUMS", note: "kick, backbeat, top: the palette's kit", toggle: true, items: [
       { grooves: true },
       { line: "drums", ...GAIN, note: "drum gain" },
@@ -232,6 +249,8 @@
     { name: "dread", level: 4, tension: 1 },
   ];
   let spec = null, ready = false, playing = false, stashedGrooves = null, grooveCopies = {};
+  // hearing the temperament is the page's choice, as muting is: never exported
+  const hear = { phrasing: false, memory: false };
   // The layers apply() can silence, floor to sky.
   const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums"];
   const muted = new Set();
@@ -324,6 +343,107 @@
   // meaning the control itself does not show.
   function help(card, html) {
     card.querySelector(".note").after(el("details", "help", `<summary>what is this?</summary>${html}`));
+  }
+
+  const pct = (x) => x > 0 && x < 0.005 ? "<1%" : Math.round(x * 100) + "%";
+  // A card for a part the mood may not have: the controls when it does, an
+  // add button when it does not, and remove to take it out.
+  function partCard(name, note, fresh, controls, gist) {
+    const card = el("div", "card", `<div class="hd"><b>${name}</b></div><div class="note">${note}</div>`);
+    const body = el("div", "knobs"), none = el("div", "bar");
+    const add = el("button", "", `add ${name}`), rm = el("button", "small", `remove ${name}`);
+    add.onclick = () => { spec[name] = fresh(); sync(); changed(); };
+    rm.onclick = () => { spec[name] = null; sync(); changed(); };
+    none.append(el("span", "note", "this mood has none"), add);
+    controls(body); body.append(rm);
+    card.append(body, none);
+    // display, not hidden: .bar's display: flex would win over [hidden]
+    syncers.push(() => { body.style.display = spec[name] ? "" : "none"; none.style.display = spec[name] ? "none" : ""; });
+    summary(card, () => spec[name] ? gist(spec[name]) : "none");
+    return card;
+  }
+
+  function memoryCard() {
+    const card = partCard("memory", "how the lead and pad lines develop: each chord of the cycle keeps its own, which at each pattern repeats, changes one thing or is redrawn",
+      () => ({ restlessness: 0.3, leap: 0.25, returnDrift: 0, cycleChurn: 0.18 }),
+      (body) => {
+        for (const [k, label] of [["restlessness", "restless"], ["leap", "leap"], ["returnDrift", "return"], ["cycleChurn", "churn"]])
+          body.append(slider(label, 0, 1, 0.01, () => spec.memory?.[k] ?? 0, (v) => { if (spec.memory) spec.memory[k] = v; }));
+        const odds = el("div", "note odds"); body.append(odds);
+        sweeps.push(() => {
+          const m = spec.memory; if (!m) return;
+          // A line is decided only on its own chord's turn, so an 8-pattern
+          // hold gives it 8/n turns for an n-chord cycle: 3 is the middle of
+          // the 2-4 a cycle draws. Some changes land as no-ops, so the
+          // untouched odds are a floor.
+          const t = +$("tension").value, r = Math.min(1, m.restlessness * (1 + t));
+          odds.textContent = `at tension ${t}: a line changes on up to ${pct(r)} of its turns; with a 3-chord cycle, at least ${pct((1 - r) ** (8 / 3))} get through an 8-pattern hold untouched · a phrase brings new chords ${pct(Math.min(1, m.cycleChurn * (1 + t)))}`;
+        });
+      },
+      (m) => `restless ${fmt(m.restlessness)} · leap ${fmt(m.leap)}`);
+    help(card, `<p><b>restless</b>: how often a line changes on its turn (each time the cycle reaches its chord); 0 plays the first lines forever. Tension raises it, up to double at tension 1. A hold changes at this rate, a build at 0.3 of it, a thin at 1.6, a break not at all.</p>
+      <p><b>leap</b>: of those changes, the share that redraw the whole line; the rest make one small change: to the lead, shift a note a step or two, add or drop one, move one an octave, mirror one about the note before it, or slide the whole line a row or two in time; to the pad, add, drop or revoice one strike. Low evolves a theme; high keeps starting anew.</p>
+      <p><b>return</b>: 0 restates the home lines exactly when a phrase comes back; higher lets the return drift too, at that share of a hold's rate.</p>
+      <p><b>churn</b>: the chance a phrase brings a new cycle of chords; the lines carry over.</p>`);
+    return card;
+  }
+
+  const DROPPABLE = ["lead", "pad", "fifth", "drums", "air", "drone"];
+  function phrasingCard() {
+    const card = partCard("phrasing", "how a phrase arcs: build, hold, thin, a break, return · layers leave in the order below and come back the other way",
+      () => ({ phraseMin: 10, phraseMax: 16, breakChance: 0.4, drop: ["lead", "pad", "drums", "fifth"], shade: [{}, {}, {}, {}, {}] }),
+      (body) => {
+        const ph = () => spec.phrasing;
+        body.append(
+          slider("shortest", 5, 24, 1, () => ph()?.phraseMin ?? 5, (v) => { if (ph()) { ph().phraseMin = v; if (ph().phraseMax < v) { ph().phraseMax = v; sync(); } } }),
+          slider("longest", 5, 24, 1, () => ph()?.phraseMax ?? 5, (v) => { if (ph()) { ph().phraseMax = v; if (ph().phraseMin > v) { ph().phraseMin = v; sync(); } } }),
+          slider("break", 0, 1, 0.05, () => ph()?.breakChance ?? 0, (v) => { if (ph()) ph().breakChance = v; }));
+        body.append(el("div", "note", "layers that leave, first to go first · tap to add or take out; the rest always play"));
+        const drops = el("div", "drops"); body.append(drops);
+        for (const l of DROPPABLE) {
+          const b = el("span", "chip"); b.dataset.v = l;
+          b.onclick = () => {
+            const d = ph().drop, i = d.indexOf(l);
+            i >= 0 ? d.splice(i, 1) : d.push(l); sync(); changed();
+          };
+          drops.append(b);
+        }
+        // in drop order, then the layers that stay
+        syncers.push(() => {
+          const d = ph()?.drop ?? [], chips = [...drops.children];
+          const rank = (b) => { const i = d.indexOf(b.dataset.v); return i >= 0 ? i : d.length + DROPPABLE.indexOf(b.dataset.v); };
+          for (const b of chips.sort((a, b) => rank(a) - rank(b))) {
+            const i = d.indexOf(b.dataset.v);
+            b.classList.toggle("on", i >= 0); b.textContent = i >= 0 ? `${i + 1} ${b.dataset.v}` : b.dataset.v;
+            drops.append(b);
+          }
+        });
+        body.append(el("div", "note", "each section's colour (filter, reverb, echo, the lead's register) comes with the mood; editing it comes later"));
+      },
+      (t) => `${t.phraseMin}–${t.phraseMax} patterns · break ${fmt(t.breakChance)}`);
+    help(card, `<p><b>shortest, longest</b>: a phrase's length in patterns, drawn between them; tension shortens it by up to 40%.</p>
+      <p><b>break</b>: the chance a phrase drops to the layers that always play, for a pattern or two, before it returns. Rising tension, or tension at 0.6 and up, holds the break off.</p>`);
+    return card;
+  }
+
+  // nowCard follows the arc as it plays; the meter loop feeds it.
+  const ARC = ["build", "hold", "thin", "break", "return"];
+  let showArc = () => {};
+  function nowCard() {
+    const card = el("div", "card", `<div class="hd"><b>now</b></div><div class="note">where the arc is, as you hear it · turning hear on starts it from its build</div>`);
+    const secs = el("div", "arcsecs"), line = el("div", "note odds");
+    for (const s of ARC) { const c = el("span", "", s); c.dataset.s = s; secs.append(c); }
+    card.append(secs, line);
+    showArc = (m) => {
+      // before the first boundary the trace says hold; nothing has started
+      for (const c of secs.children) c.classList.toggle("on", !!m?.Chord && hear.phrasing && c.dataset.s === m.Section);
+      if (m && !m.Chord) { line.textContent = "starts at the next pattern"; return; }
+      if (!m) { line.textContent = hear.phrasing || hear.memory ? "play to follow the arc" : "turn on hear phrasing or hear memory to follow the arc"; return; }
+      const lines = hear.memory ? ` · lead ${m.Lead} · pad ${m.Pad}` : "";
+      line.textContent = `phrase ${m.Phrase} · chord ${m.Chord}${m.Cycle ? ` · cycle ${m.Cycle}` : ""}${lines}${m.Held ? " · break held off" : ""}${m.Fill ? " · fill" : ""}`;
+    };
+    showArc(null);
+    return card;
   }
 
   function patchesCard() {
@@ -431,10 +551,24 @@
       syncers.push(() => { box.checked = spec.grooves.length > 0; sec.classList.toggle("off", !box.checked); });
       head.append(sw);
     }
+    if (s.hear) {
+      // as a game opts in: a part the mood does not have cannot be heard
+      for (const part of ["phrasing", "memory"]) {
+        const sw = el("label", "switch", `<input type="checkbox"> hear ${part}`), box = sw.querySelector("input");
+        box.onchange = () => { hear[part] = box.checked; changed(); showArc(null); };
+        syncers.push(() => {
+          box.disabled = !spec[part];
+          if (box.disabled) hear[part] = false;
+          box.checked = hear[part];
+        });
+        head.append(sw);
+      }
+    }
     const cards = el("div", "cards");
     for (const it of s.items) {
       cards.append(it.line ? lineCard(it) : it.int ? intCard(it) : it.group ? groupCard(it)
-                   : it.patches ? patchesCard() : groovesCard());
+                   : it.patches ? patchesCard() : it.now ? nowCard() : it.memory ? memoryCard()
+                   : it.phrasing ? phrasingCard() : groovesCard());
     }
     sec.append(head, cards);
     $(s.col === "L" ? "colL" : "colR").append(sec);
@@ -459,7 +593,7 @@
     const [seed, level, tension] = audition();
     showAudition();
     for (const f of sweeps) f(level);
-    const r = JSON.parse(undertoneDesigner.apply(JSON.stringify(spec), seed, level, tension, JSON.stringify([...muted])));
+    const r = JSON.parse(undertoneDesigner.apply(JSON.stringify(spec), seed, level, tension, JSON.stringify([...muted]), JSON.stringify(hear)));
     // before the error check: the box always shows what copy would copy
     $("edn").value = undertoneDesigner.edn(JSON.stringify(spec));
     status.classList.toggle("err", !!r.error);
@@ -565,7 +699,7 @@
     $("play").classList.toggle("on", playing);
     $("play").innerHTML = playing ? "&#10074;&#10074; stop" : "&#9654; play";
     status.textContent = playing ? "playing" : "stopped";
-    if (playing) startMeters();
+    if (playing) startMeters(); else showArc(null);
   }
   $("play").onclick = () => setPlaying(!playing);
 
@@ -574,12 +708,15 @@
   // root spreads the quiet layers out, as the studio's meters do.
   // The loop runs only while playing: stopped, it clears the bars and ends.
   const chips = [...document.querySelectorAll("#mix .chip")];
-  let metering = false;
+  let metering = false, lastTrace = 0;
   function meters() {
     const v = ready && playing ? JSON.parse(undertoneDesigner.levels()) : null;
     chips.forEach((c, i) => {
       c.firstElementChild.style.width = `${!v || muted.has(LAYERS[i]) ? 0 : Math.min(100, Math.sqrt(v[i]) * 140)}%`;
     });
+    // the arc moves a pattern at a time, so a few looks a second follow it
+    const now = performance.now();
+    if (v && (hear.phrasing || hear.memory) && now - lastTrace > 250) { lastTrace = now; showArc(JSON.parse(undertoneDesigner.trace())); }
     metering = !!v;
     if (metering) requestAnimationFrame(meters);
   }

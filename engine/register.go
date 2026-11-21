@@ -86,6 +86,10 @@ func (pl *Palette) tracks() []*Patch {
 // name, or none. The lead track's sound is a lead's, so a game's own is
 // registered with RegisterLead. A kit lane left zero, or marked Default,
 // plays the default kit's; a Default lane naming any other sound is refused.
+// The bass, unlike the bed's tracks, may be left empty: a theme's bass then
+// plays gridBass, the string pluck, and reads back naming it. A bass that
+// builds exactly that patch is stored as the default, so a palette
+// registered from its own spec equals the one it copies.
 //
 // A music patch is held to a one-shot's bounds but two: its release may run
 // to 10 s and its out gain to 4 (musicBounds), as the built-in beds need.

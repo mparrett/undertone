@@ -744,7 +744,8 @@ function renderAudition() {
     ? "keys <kbd>1</kbd>–<kbd>8</kbd> fire the shot on that degree of the bed's scale; every edit refires it. Paste takes in TAKE EDN and each gets a row like this one, plus <kbd>t</kbd>: the take as pasted. The keyboard plays the row marked · keys; a click selects a row"
     : kind === "lead"
       ? "keys <kbd>1</kbd>–<kbd>8</kbd> play this lead on that degree (it plays solo); ♫ plays the title theme with it. The bed also plays it in the generator's place"
-      : "keys <kbd>1</kbd>–<kbd>8</kbd> play a lead note over this palette; ♫ plays the title theme through it. <b>solo</b> hears the track being edited alone";
+      : (track === "bass" ? "keys <kbd>1</kbd>–<kbd>8</kbd> play a theme's bass note through this palette's bass, under the bed;"
+        : "keys <kbd>1</kbd>–<kbd>8</kbd> play a lead note over this palette;") + " ♫ plays the title theme through it. <b>solo</b> hears the track being edited alone";
 }
 let lastDeg = 0;
 // Shift-click a pad to fire it every LOOP_MS until clicked again, so a sound

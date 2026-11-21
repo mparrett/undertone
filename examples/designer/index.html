@@ -15,12 +15,12 @@
          font: 14px/1.45 ui-monospace, Menlo, monospace; }
   main { max-width: 1400px; margin: 0 auto; display: grid; gap: 24px; }
   /* wide: start from | playing | audition across the top; then layers over
-     trims down the left, beside tempo over drums; then export. Each column
+     trims down the left, beside tempo over drums over export. Each column
      stacks on its own, so neither leaves a gap for the other's height. A
      phone takes one column in the order a mood is built */
   #sections { display: flex; flex-direction: column; }
   #sections > .col { display: contents; }
-  .sec.tempo { order: 1; } .sec.layer { order: 2; } .sec.trim { order: 3; } .sec.drum { order: 4; }
+  .sec.tempo { order: 1; } .sec.layer { order: 2; } .sec.trim { order: 3; } .sec.drum { order: 4; } #exportbox { order: 5; }
   @media (min-width: 900px) { body { padding: 32px; }
     .top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
     #sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; align-items: start; }
@@ -420,6 +420,8 @@
     $(s.col === "L" ? "colL" : "colR").append(sec);
     foldSection(sec, s.id);
    }
+   // export closes the right column, under drums; on a phone it is last
+   $("colR").append($("exportbox"));
   }
 
   function sync() { for (const f of syncers) f(); $("name").value = spec.name; }

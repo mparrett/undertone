@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"io"
+	"math"
 	"runtime"
 	"slices"
 	"testing"
@@ -490,6 +491,48 @@ func TestTakenAwayMidPattern(t *testing.T) {
 			s.SetParametersNow(q)
 			render(s, SampleRate/4)
 			s.SetParametersNow(p)
+		}
+	}
+}
+
+// Presets are in range and in the order their docs give: memory from still
+// to restless, phrasing from long to short.
+func TestPresets(t *testing.T) {
+	seen := map[string]bool{}
+	prev := -1.0
+	for _, mp := range MemoryPresets() {
+		m := mp.Memory
+		for _, x := range []float64{m.Restlessness, m.Leap, m.ReturnDrift, m.CycleChurn} {
+			if x < 0 || x > 1 {
+				t.Errorf("%s: a knob out of 0..1: %+v", mp.Name, m)
+			}
+		}
+		if m.Restlessness <= prev {
+			t.Errorf("%s: restlessness %v not above the one before", mp.Name, m.Restlessness)
+		}
+		prev = m.Restlessness
+		if seen[mp.Name] {
+			t.Errorf("%s twice", mp.Name)
+		}
+		seen[mp.Name] = true
+	}
+	prevMax := math.MaxInt
+	for _, pp := range PhrasingPresets() {
+		if pp.PhraseMin < 5 || pp.PhraseMin > pp.PhraseMax || pp.BreakChance < 0 || pp.BreakChance > 1 {
+			t.Errorf("%s: lengths %d-%d, break %v", pp.Name, pp.PhraseMin, pp.PhraseMax, pp.BreakChance)
+		}
+		if pp.PhraseMax >= prevMax {
+			t.Errorf("%s: not shorter than the one before", pp.Name)
+		}
+		prevMax = pp.PhraseMax
+		if seen[pp.Name] {
+			t.Errorf("%s twice", pp.Name)
+		}
+		seen[pp.Name] = true
+		tm, _ := TemperamentFor("rust")
+		got := pp.Apply(tm.Phrasing)
+		if !slices.Equal(got.Drop, tm.Phrasing.Drop) || got.Shade != tm.Phrasing.Shade {
+			t.Errorf("%s: Apply changed the mood's drops or colour", pp.Name)
 		}
 	}
 }

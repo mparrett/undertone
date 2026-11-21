@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -31,11 +32,39 @@ func main() {
 	trace := flag.Bool("trace", false, "print the arc and each lane's choice per pattern")
 	parts := flag.String("parts", "all", "with -temper, what to turn on: all, phrasing or memory")
 	notesOut := flag.String("notes", "", "write every note event as TSV, to compare renders note for note")
+	memPreset := flag.String("memory-preset", "", "with -temper, a memory preset in place of the mood's (held, evolving, wandering, restless)")
+	phrPreset := flag.String("phrasing-preset", "", "with -temper, a phrasing preset's lengths and breaks on the mood's phrasing (patient, steady, breathless)")
 	flag.Parse()
 	usePhrasing, useMemory := *parts != "memory", *parts != "phrasing"
 	if *parts != "all" && *parts != "phrasing" && *parts != "memory" {
 		fmt.Fprintf(os.Stderr, "-parts wants all, phrasing or memory, not %q\n", *parts)
 		os.Exit(2)
+	}
+
+	// presets resolve once, here, and apply in params over the mood's own
+	var memP *engine.MemoryPreset
+	var phrP *engine.PhrasingPreset
+	if (*memPreset != "" || *phrPreset != "") && !*temper {
+		fmt.Fprintln(os.Stderr, "-memory-preset and -phrasing-preset need -temper")
+		os.Exit(2)
+	}
+	if *memPreset != "" {
+		ps := engine.MemoryPresets()
+		i := slices.IndexFunc(ps, func(x engine.MemoryPreset) bool { return x.Name == *memPreset })
+		if i < 0 {
+			fmt.Fprintf(os.Stderr, "no memory preset %q\n", *memPreset)
+			os.Exit(2)
+		}
+		memP = &ps[i]
+	}
+	if *phrPreset != "" {
+		ps := engine.PhrasingPresets()
+		i := slices.IndexFunc(ps, func(x engine.PhrasingPreset) bool { return x.Name == *phrPreset })
+		if i < 0 {
+			fmt.Fprintf(os.Stderr, "no phrasing preset %q\n", *phrPreset)
+			os.Exit(2)
+		}
+		phrP = &ps[i]
 	}
 
 	from, to := *tension, *tension
@@ -60,6 +89,12 @@ func main() {
 			if !ok {
 				fmt.Fprintf(os.Stderr, "mood %q has no temperament\n", *mood)
 				os.Exit(2)
+			}
+			if memP != nil {
+				tm.Memory = memP.Memory
+			}
+			if phrP != nil {
+				tm.Phrasing = phrP.Apply(tm.Phrasing)
 			}
 			if usePhrasing {
 				p.Phrasing = &tm.Phrasing

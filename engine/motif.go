@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	"slices"
 	"strings"
 )
 
@@ -90,6 +91,52 @@ type Memory struct {
 // the chords move on at 0.6 of the restlessness.
 func NewMemory(restlessness float64) Memory {
 	return Memory{Restlessness: restlessness, Leap: 0.25, CycleChurn: 0.6 * restlessness}
+}
+
+// A MemoryPreset is a named memory to start a mood's from. The Designer
+// offers them; a mood's EDN writes the values, not the name, so retuning a
+// preset changes no mood.
+type MemoryPreset struct {
+	Name, Note string
+	Memory     Memory
+}
+
+// MemoryPresets runs from still to restless.
+func MemoryPresets() []MemoryPreset { return slices.Clone(memoryPresets) }
+
+var memoryPresets = []MemoryPreset{
+	{"held", "a theme that barely moves: lines hold, the chords stay, the return is exact",
+		Memory{Restlessness: 0.08, Leap: 0.1, ReturnDrift: 0, CycleChurn: 0.05}},
+	{"evolving", "a theme that slowly varies: small changes, new chords now and then",
+		Memory{Restlessness: 0.25, Leap: 0.1, ReturnDrift: 0, CycleChurn: 0.15}},
+	{"wandering", "lines drift and sometimes start anew; the return comes home loosely",
+		Memory{Restlessness: 0.45, Leap: 0.3, ReturnDrift: 0.3, CycleChurn: 0.35}},
+	{"restless", "lines keep changing and often start anew; new chords most phrases",
+		Memory{Restlessness: 0.7, Leap: 0.6, ReturnDrift: 0.5, CycleChurn: 0.6}},
+}
+
+// A PhrasingPreset is a phrase length and break chance. Which layers leave
+// and each section's colour stay the mood's: they depend on what the mood
+// plays (only some have drums) and how it sounds.
+type PhrasingPreset struct {
+	Name, Note           string
+	PhraseMin, PhraseMax int
+	BreakChance          float64
+}
+
+// Apply is t with the preset's lengths and break chance.
+func (pp PhrasingPreset) Apply(t Phrasing) Phrasing {
+	t.PhraseMin, t.PhraseMax, t.BreakChance = pp.PhraseMin, pp.PhraseMax, pp.BreakChance
+	return t
+}
+
+// PhrasingPresets runs from long to short.
+func PhrasingPresets() []PhrasingPreset { return slices.Clone(phrasingPresets) }
+
+var phrasingPresets = []PhrasingPreset{
+	{"patient", "long phrases that seldom break", 12, 16, 0.25},
+	{"steady", "middling phrases, a break about every other one", 8, 12, 0.45},
+	{"breathless", "short phrases that break most times", 5, 8, 0.7},
 }
 
 // phrasing reports whether p's phrasing is other than the identity.

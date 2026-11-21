@@ -212,3 +212,38 @@ func TestScriptedReadAnyLength(t *testing.T) {
 		}
 	}
 }
+
+// :until-silent renders as long as the sound lasts: a script's trigger still
+// to come keeps the render going through the silence before it (2.5 s is past
+// the echo hold at this tempo, so only the script can keep it going), and the WAV
+// is a prefix of a fixed render with the same script.
+func TestRenderWAVUntilSilent(t *testing.T) {
+	c := renderLg(t, "renderuntil")
+	if _, err := c.Run(`(undertone/set-music-gain 0.0)`); err != nil {
+		t.Fatal(err)
+	}
+	const script = `[[2.5 :trigger [{:shot :footstep :gain 0.8}]]]`
+	dir := t.TempDir()
+	until, fixed := filepath.Join(dir, "until.wav"), filepath.Join(dir, "fixed.wav")
+	if _, err := c.Run(`(undertone/render-wav "` + until + `" :until-silent ` + script + `)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Run(`(undertone/render-wav "` + fixed + `" 4.0 ` + script + `)`); err != nil {
+		t.Fatal(err)
+	}
+	u, err := os.ReadFile(until)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, _ := os.ReadFile(fixed)
+	secs := float64(len(u)-44) / 4 / engine.SampleRate
+	if secs < 2.5 || secs > 2.9 {
+		t.Errorf("a footstep at 2.5 s rendered %.3f s", secs)
+	}
+	if !bytes.Equal(u[44:], f[44:len(u)]) {
+		t.Error("the until-silent render is not a prefix of the fixed one")
+	}
+	if _, err := c.Run(`(undertone/render-wav nil :until-silen)`); err == nil {
+		t.Error("a misspelt keyword rendered")
+	}
+}

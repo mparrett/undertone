@@ -218,6 +218,7 @@ func main() {
 
 	// newTake reads (take json, seconds) as an engine.Take over the bed, so a
 	// render, its measurement and its hash all describe the same thing.
+	// Seconds left out (or 0) mean until silent: pcm and hash below.
 	newTake := func(a []js.Value) (engine.Take, bool) {
 		shots, err := take(a[0].String())
 		if err != nil {
@@ -227,7 +228,23 @@ func main() {
 		if len(a) > 2 && a[2].Type() == js.TypeNumber {
 			g = a[2].Float() // a page measuring a shot alone passes 0
 		}
-		return engine.Take{Params: cur, MusicGain: g, Shots: shots, Seconds: a[1].Float()}, true
+		secs := 0.0
+		if len(a) > 1 && a[1].Type() == js.TypeNumber {
+			secs = a[1].Float()
+		}
+		return engine.Take{Params: cur, MusicGain: g, Shots: shots, Seconds: secs}, true
+	}
+	pcm := func(t engine.Take) []int16 {
+		if t.Seconds > 0 {
+			return t.Render()
+		}
+		return t.RenderUntilSilent(engine.SilentFloorDB)
+	}
+	hash := func(t engine.Take) string {
+		if t.Seconds > 0 {
+			return t.Hash()
+		}
+		return t.UntilSilentHash(engine.SilentFloorDB)
 	}
 	src := &gate{src: syn}
 
@@ -438,7 +455,7 @@ func main() {
 			if !ok {
 				return nil
 			}
-			pcm := t.Render()
+			pcm := pcm(t)
 			f := make([]byte, len(pcm)*4)
 			for i, v := range pcm {
 				binary.LittleEndian.PutUint32(f[i*4:], math.Float32bits(float32(v)/32768))
@@ -452,9 +469,9 @@ func main() {
 			if !ok {
 				return nil
 			}
-			m := engine.MeasurePCM(t.Render())
+			m := engine.MeasurePCM(pcm(t))
 			return marshal(map[string]any{
-				"hash": t.Hash(), "peak": m.Peak, "envPeak": m.EnvPeak, "envRms": m.EnvRMS,
+				"hash": hash(t), "peak": m.Peak, "envPeak": m.EnvPeak, "envRms": m.EnvRMS,
 				"envHop": float64(engine.EnvHop) / engine.SampleRate, "maxLufs": m.MaxLUFS, "length": m.Length,
 			})
 		}),
@@ -463,7 +480,7 @@ func main() {
 			if !ok {
 				return nil
 			}
-			return t.Hash()
+			return hash(t)
 		}),
 		"levels": js.FuncOf(func(js.Value, []js.Value) any { return marshal(syn.LayerLevels()) }),
 		"play": js.FuncOf(func(js.Value, []js.Value) any {

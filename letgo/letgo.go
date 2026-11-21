@@ -855,10 +855,19 @@ func installNS() {
 	// Offline render: how determinism gets checked without a sound card.
 	renderWAV, _ := vm.NativeFnType.Wrap(func(a []vm.Value) (vm.Value, error) {
 		if len(a) != 2 && len(a) != 3 {
-			return vm.NIL, fmt.Errorf("undertone/render-wav: wants a path, seconds and an optional script, got %d argument(s)", len(a))
+			return vm.NIL, fmt.Errorf("undertone/render-wav: wants a path, seconds (or :until-silent) and an optional script, got %d argument(s)", len(a))
 		}
 		if _, ok := a[0].(vm.String); !ok && a[0] != vm.NIL {
 			return vm.NIL, fmt.Errorf("undertone/render-wav: path must be a string or nil, got %s", a[0].Type().Name())
+		}
+		script := vm.Value(vm.NIL)
+		if len(a) == 3 {
+			script = a[2]
+		}
+		// :until-silent renders for as long as the sound lasts, up to a
+		// take's cap, rather than for a length the caller has to guess.
+		if a[1] == vm.Keyword("until-silent") {
+			return current.Load().renderWAV(a[0], 0, script)
 		}
 		secs, err := numArg("render-wav", "seconds", a[1])
 		if err != nil {
@@ -866,10 +875,6 @@ func installNS() {
 		}
 		if !(secs > 0 && secs <= maxRenderSeconds) { // also catches NaN
 			return vm.NIL, fmt.Errorf("undertone/render-wav: seconds must be above 0 and at most %d, got %v", maxRenderSeconds, secs)
-		}
-		script := vm.Value(vm.NIL)
-		if len(a) == 3 {
-			script = a[2]
 		}
 		return current.Load().renderWAV(a[0], secs, script)
 	})

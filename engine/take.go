@@ -69,7 +69,11 @@ func (t Take) Render() []int16 {
 // Equal hashes mean equal renders on one architecture. Across architectures a
 // render can differ in its last bits (Go fuses multiply-adds on arm64), far
 // below anything a Measurement shows.
-func (t Take) Hash() string {
+func (t Take) Hash() string { return t.hash("") }
+
+// hash is Hash with extra, when not empty, written after the take: what else
+// decides the samples (UntilSilentHash's floor).
+func (t Take) hash(extra string) string {
 	h := sha256.New()
 	// %#v writes every field, unexported ones and new ones included, with
 	// floats in their shortest exact form; nothing in these types is a
@@ -84,5 +88,10 @@ func (t Take) Hash() string {
 			fmt.Fprintln(h, "patch none")
 		}
 	}
+	if extra != "" {
+		fmt.Fprintln(h, extra)
+	}
 	return hex.EncodeToString(h.Sum(nil))
 }
+
+func formatFloat(f float64) string { return fmt.Sprintf("%v", math.Float64bits(f)) }

@@ -9,6 +9,7 @@
 package engine
 
 import (
+	"bytes"
 	"bufio"
 	"encoding/binary"
 	"errors"
@@ -2197,7 +2198,25 @@ func WriteWAV(path string, src io.Reader, seconds float64) error {
 	if !(seconds >= 0) || seconds*SampleRate*4 > maxWAVData {
 		return fmt.Errorf("undertone: WAV duration %v s: want 0 to %d s", seconds, maxWAVData/4/SampleRate)
 	}
-	size := int64(seconds*SampleRate) * 4
+	return writeWAV(path, src, int64(seconds*SampleRate))
+}
+
+// WritePCMWAV writes pcm, interleaved stereo frames as Take.Render returns
+// them, to a WAV at path. It takes the length from pcm rather than seconds,
+// which a frame count does not always survive the round trip through.
+func WritePCMWAV(path string, pcm []int16) error {
+	if int64(len(pcm))*2 > maxWAVData {
+		return fmt.Errorf("undertone: WAV of %d samples: too long", len(pcm))
+	}
+	b := make([]byte, 2*len(pcm))
+	for i, v := range pcm {
+		binary.LittleEndian.PutUint16(b[2*i:], uint16(v))
+	}
+	return writeWAV(path, bytes.NewReader(b), int64(len(pcm)/2))
+}
+
+func writeWAV(path string, src io.Reader, frames int64) error {
+	size := frames * 4
 	f, err := os.Create(path)
 	if err != nil {
 		return err

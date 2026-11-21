@@ -18,13 +18,14 @@ const DrumLanes = nDrums
 
 // Grid is a hand-written pattern the synth plays in place of its generator.
 // Melodic lanes hold a scale degree per step (1..Degrees, 0 = rest), so a
-// grid stays in key when the mood or root changes. Lead and bass replace the
-// generator's lead and fifth voices; pulse replaces its tension pulse. Drums
+// grid stays in key when the mood or root changes. Lead replaces the
+// generator's lead and pulse its tension pulse; bass plays a track of its
+// own, which generated music leaves silent. Drums
 // replace the generator's drums, one lane each for kick, clap and shaker, in
 // groove notation: 2*Steps sixteenths of X (accent), x (hit), o (ghost), g
 // (flam) or . (rest); a short lane rests for the remainder, and a lane ending
 // in | loops at its own length instead (polymetric). With Bed set, the
-// generator keeps playing drone, pad and air underneath.
+// generator keeps playing drone, fifth, pad and air underneath.
 //
 // Degree n is the scale's nth tone, wrapping into the next octave: degree 6
 // is the octave in a five-note scale, and degree 8 in a seven-note one.
@@ -37,9 +38,13 @@ type Grid struct {
 }
 
 const (
-	trackFifth = 1 // voice the bass lane takes over
+	trackFifth = 1
 	trackLead  = 3
 	trackPulse = 5
+	// The bass once took over the fifth's track, which cost nothing while a
+	// grid replaced the whole generator but dropped the fifth from the bed
+	// under every theme once Bed kept it playing.
+	trackBass = 6
 )
 
 // SetGrid makes the synth play g from the next row on; nil hands control back
@@ -102,7 +107,7 @@ var gridLeadGain = map[string]float64{
 const (
 	gridBassGain  = 3.4  // pluck two octaves down: a string bass
 	gridPulseGain = 1.1  //
-	gridBedScale  = 0.75 // the generator's drone, pad and air, under a grid
+	gridBedScale  = 0.75 // the generator's drone, fifth, pad and air, under a grid
 	gridDrumGain  = 0.8  // a seeded village groove, about -22 dB: level with the bed (2026-10-12)
 )
 
@@ -112,7 +117,7 @@ var gridBass = pluck
 func (s *Synth) applyGrid(g *Grid, row int) {
 	p := s.params
 	lead, bass := GridBases(p)
-	for _, t := range []int{0, 2, 4} {
+	for _, t := range []int{0, trackFifth, 2, 4} {
 		if g.Bed {
 			s.pats[t][row].gain *= gridBedScale
 			continue
@@ -133,9 +138,9 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 		}
 		s.pats[trackLead][row] = trackRow{degreeNote(p, lead, d), gain * trimGain(p.LeadDB, p.MoodLeadDB), p.LeadGate, p.Palette.Lead}
 	}
-	s.pats[trackFifth][row] = trackRow{}
+	s.pats[trackBass][row] = trackRow{}
 	if d := g.Bass[row]; d > 0 {
-		s.pats[trackFifth][row] = trackRow{degreeNote(p, bass, d), gridBassGain * dbGain(p.BassDB), 2, gridBass}
+		s.pats[trackBass][row] = trackRow{degreeNote(p, bass, d), gridBassGain * dbGain(p.BassDB), 2, gridBass}
 	}
 	s.pats[trackPulse][row] = trackRow{}
 	if g.Pulse[row] {

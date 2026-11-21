@@ -44,18 +44,18 @@ func TestTrimsScaleOnlyTheirLayer(t *testing.T) {
 		t.Fatalf("no lead (%v) or pad (%v) note in 8 patterns: the test checked nothing", sawLead, sawPad)
 	}
 
-	// under a theme: the grid's lead takes LeadDB, its bass (on the fifth's
-	// voice) BassDB, and the bed's pad keeps its trim under gridBedScale
+	// under a theme: the grid's lead takes LeadDB, its bass (on a track of its
+	// own) BassDB, and the bed's pad keeps its trim under gridBedScale
 	g := Grid{Bed: true}
 	g.Lead[0], g.Bass[0] = 3, 1
 	sa, sb := NewSynth(p), NewSynth(tp)
 	sa.pats, sb.pats = buildPatterns(p, 0), buildPatterns(tp, 0)
 	sa.applyGrid(&g, 0)
 	sb.applyGrid(&g, 0)
-	scale[trackFifth] = dbGain(-9)
+	scale[trackBass] = dbGain(-9)
 	check("theme row 0", sa.pats, sb.pats, scale)
-	if sa.pats[trackFifth][0].gain != gridBassGain || sa.pats[trackLead][0].gain == 0 {
-		t.Fatalf("the grid's bass or lead is not on row 0: %+v %+v", sa.pats[trackFifth][0], sa.pats[trackLead][0])
+	if sa.pats[trackBass][0].gain != gridBassGain || sa.pats[trackLead][0].gain == 0 {
+		t.Fatalf("the grid's bass or lead is not on row 0: %+v %+v", sa.pats[trackBass][0], sa.pats[trackLead][0])
 	}
 }
 

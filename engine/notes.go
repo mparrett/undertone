@@ -146,7 +146,7 @@ func (s *Synth) NoteEvents(cursor uint64, dst []NoteEvent) (evs []NoteEvent, nex
 // noteAt logs a track's note started at the frame about to render, on row
 // of pat.
 func (s *Synth) noteAt(t int, kind NoteKind, note int, gain float64, row, pat int) {
-	s.notes.add(NoteEvent{Frame: s.nframe, Layer: t, Kind: kind, Note: clampNote(note), Gain: gain, Row: row, Pattern: pat})
+	s.notes.add(NoteEvent{Frame: s.nframe, Layer: trackLayer[t], Kind: kind, Note: clampNote(note), Gain: gain, Row: row, Pattern: pat})
 }
 
 // hit strikes drum lane d and logs it. Strikes come from the row step and

@@ -49,7 +49,7 @@ func setLayers(list string) error {
 		switch {
 		case i < 0:
 			return fmt.Errorf("-layer %q: want %s", n, strings.Join(names[:], ", "))
-		case i == engine.NumLayers-1:
+		case i == engine.DrumsLayer:
 			c[drumChannel] = true
 		default:
 			c[i] = true
@@ -139,7 +139,7 @@ func allOff(out midiSink, m *noteMapper) error {
 			out.send(msg.data)
 		}
 	}
-	for ch := byte(0); ch < engine.NumLayers-1; ch++ {
+	for ch := byte(0); ch < engine.NumLayers; ch++ {
 		out.send([3]byte{0xb0 | ch, 123, 0})
 	}
 	return out.send([3]byte{0xb0 | drumChannel, 123, 0})

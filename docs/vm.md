@@ -40,7 +40,7 @@ so a patch with two such chains is two detuned layers (`drone`, `pad`).
 
 A frame runs, in order:
 
-1. the six sequencer tracks (drone, fifth, pad, lead, air, pulse), one voice each;
+1. the seven sequencer tracks (drone, fifth, pad, lead, air, pulse, and a grid's bass), one voice each;
 2. the three drum lanes;
 3. the music gain, then the one-shot pool of `nShots` voices, which sits above it;
 4. a cross-fed stereo delay, three rows long, fed by every `send`;

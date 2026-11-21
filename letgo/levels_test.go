@@ -31,7 +31,7 @@ func TestLevelsFromLg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `[("air" "drone" "drums" "fifth" "lead" "pad" "pulse") true ("high" "low-mid" "mid" "sub") true]`
+	want := `[("air" "bass" "drone" "drums" "fifth" "lead" "pad" "pulse") true ("high" "low-mid" "mid" "sub") true]`
 	if got := v.String(); got != want {
 		t.Errorf("levels = %s, want %s", got, want)
 	}

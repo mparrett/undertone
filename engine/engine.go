@@ -1209,8 +1209,9 @@ type Params struct {
 	// in dB, to balance a mix without re-authoring a patch. They are offsets,
 	// not gains, so that 0, the value of every caller that never sets one,
 	// plays exactly as before. They scale each note as it is struck rather
-	// than a voice at the mix, because the grid bass plays on the fifth's
-	// voice; SetParametersNow fades notes already sounding to the new level.
+	// than a voice at the mix, because the grid bass once played on the
+	// fifth's voice; SetParametersNow fades notes already sounding to the new
+	// level.
 	LeadDB, PadDB, BassDB float64
 
 	// MoodLeadDB and MoodPadDB are the mood's own trims, which a derive sets.
@@ -1240,13 +1241,16 @@ func trimGain(game, mood float64) float64 {
 type Layers uint8
 
 const (
-	LayerDrone Layers = 1 << iota // the tracks, in track order
+	LayerDrone Layers = 1 << iota // the first six tracks, in track order
 	LayerFifth
 	LayerPad
 	LayerLead
 	LayerAir
 	LayerPulse
 	LayerDrums
+	// LayerBass is the grid's bass, track 7. It comes after the drums so that
+	// no earlier layer's bit moves; trackLayer maps tracks to bits.
+	LayerBass
 )
 
 // leadDef is one entry in the lead-instrument library.
@@ -1406,7 +1410,13 @@ func (r *rng) f() float64  { return float64(r.next()>>11) / (1 << 53) }
 func (r *rng) n(m int) int { return int(r.next() % uint64(m)) }
 
 const rows = 16
-const nTracks = 6 // drone, fifth, pad, lead, air, pulse
+const nTracks = 7 // drone, fifth, pad, lead, air, pulse, bass
+
+// trackLayer is each track's layer: its bit in Layers, its index in
+// LayerLevels and NoteEvent.Layer. The first six match their track; the
+// bass track came after the drums had taken bit 6, so it is layer 7, and
+// nothing may assume a track's index is its layer.
+var trackLayer = [nTracks]int{0, 1, 2, 3, 4, 5, 7}
 
 type trackRow struct {
 	note     int
@@ -2063,14 +2073,14 @@ func (s *Synth) frame() (int16, int16) {
 	var mbus sends
 	for i := range s.voices {
 		if s.voices[i].active {
-			if s.params.Mute&(1<<i) != 0 {
+			if s.params.Mute&(1<<trackLayer[i]) != 0 {
 				before := ml + mr
 				s.voices[i].run(&ml, &mr, &mbus)
-				s.layers.see(i, ml+mr-before)
+				s.layers.see(trackLayer[i], ml+mr-before)
 			} else {
 				before := l + r
 				s.voices[i].run(&l, &r, &s.bus)
-				s.layers.see(i, l+r-before)
+				s.layers.see(trackLayer[i], l+r-before)
 			}
 		}
 	}

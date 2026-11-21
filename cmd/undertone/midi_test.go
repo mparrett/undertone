@@ -145,7 +145,7 @@ func TestMIDIFileReadsBack(t *testing.T) {
 		if n.ch == drumChannel && n.note != 36 && n.note != 39 && n.note != 82 {
 			t.Errorf("drum note %d is not a lane's GM note", n.note)
 		}
-		if n.ch >= engine.NumLayers-1 && n.ch != drumChannel {
+		if (n.ch == engine.DrumsLayer || n.ch >= engine.NumLayers) && n.ch != drumChannel {
 			t.Errorf("note on channel %d, which no layer uses", n.ch+1)
 		}
 	}

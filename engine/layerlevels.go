@@ -5,16 +5,19 @@ import (
 	"sync/atomic"
 )
 
-// NumLayers is how many layers there are: the six tracks and the drums, in
-// Layers bit order.
-const NumLayers = 7
+// NumLayers is how many layers there are: the seven tracks and the drums, in
+// Layers bit order. The drums are not last: the bass, added later, is.
+const NumLayers = 8
 
-const layerDrums = NumLayers - 1
+// DrumsLayer is the drums' index among the layers.
+const DrumsLayer = 6
+
+const layerDrums = DrumsLayer
 
 // LayerNames names the layers in Layers bit order: the index LayerLevels
 // uses. The fourth is the lead, whichever instrument holds the slot.
 func LayerNames() [NumLayers]string {
-	return [NumLayers]string{"drone", "fifth", "pad", "lead", "air", "pulse", "drums"}
+	return [NumLayers]string{"drone", "fifth", "pad", "lead", "air", "pulse", "drums", "bass"}
 }
 
 // layerMeter is a peak meter per layer. The frame loop takes each layer's

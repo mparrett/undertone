@@ -135,7 +135,7 @@ var noteNames = []string{"C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭"
 // layers are the names the page mutes by; pulse is tension's own layer.
 var layers = map[string]engine.Layers{
 	"drone": engine.LayerDrone, "fifth": engine.LayerFifth, "pad": engine.LayerPad, "lead": engine.LayerLead,
-	"air": engine.LayerAir, "pulse": engine.LayerPulse, "drums": engine.LayerDrums,
+	"air": engine.LayerAir, "pulse": engine.LayerPulse, "drums": engine.LayerDrums, "bass": engine.LayerBass,
 }
 
 func marshal(v any) string {

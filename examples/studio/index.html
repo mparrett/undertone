@@ -136,11 +136,11 @@
   label.sl { display: grid; grid-template-columns: 5.5em 1fr 6ch; gap: 8px; align-items: center; font-size: 13px; color: var(--mut); margin: 4px 0; }
   label.sl output { color: var(--fg); text-align: right; }
   input[type=range] { width: 100%; accent-color: var(--src); }
-  #meters { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; height: 54px; align-items: end; }
+  #meters { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; height: 54px; align-items: end; }
   #meters div[title] { cursor: default; }
   #meters div { background: var(--line); border-radius: 3px; position: relative; height: 100%; }
   #meters div i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--out); border-radius: 3px; }
-  #meterlbl { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; font-size: 10px; color: var(--mut); text-align: center; }
+  #meterlbl { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; font-size: 10px; color: var(--mut); text-align: center; }
   .head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   .head input[type=text] { width: 12em; }
   #gatebox input[type=range] { width: 130px; accent-color: var(--src); }
@@ -468,7 +468,7 @@ const compact = () => $("units").classList.contains("compact");
 const SHAPES = ["sine", "saw", "pulse", "noise"];
 const TRACKS = ["drone", "fifth", "pad", "air", "pulse"];  // a palette has no melody track: a melody sound is a registered lead
 const LANES = ["kick", "clap", "shaker"];
-const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums"];
+const LAYERS = ["drone", "fifth", "pad", "lead", "air", "pulse", "drums", "bass"];  // the engine's layer order: bass, added later, is after drums
 
 let mutedNow = [];
 const last = {};

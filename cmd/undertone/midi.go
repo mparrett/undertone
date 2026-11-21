@@ -15,8 +15,8 @@ import (
 
 // MIDI out: the engine's note events (Synth.NoteEvents) as MIDI messages, for
 // a DAW to play through its own instruments. One channel per layer, in
-// LayerNames order (drone on 1 ... pulse on 6), and the drums on 10 with a
-// General MIDI note per lane.
+// LayerNames order (drone on 1 ... pulse on 6, the grid's bass on 8), and
+// the drums on 10 with a General MIDI note per lane.
 //
 // A note event says when a note starts, not how long it lasts, so the length
 // is rebuilt from what the sequencer does: a track's voice holds a note for
@@ -47,17 +47,18 @@ type held struct {
 
 // noteMapper turns note events into note on/off messages, in frame order.
 type noteMapper struct {
-	gate [engine.NumLayers - 1]int64 // each track's gate, in frames
-	hit  int64                       // a drum strike's length, in frames
-	held [engine.NumLayers - 1 + engine.DrumLanes]held
+	gate [engine.NumLayers]int64 // each track's gate, in frames, by layer
+	hit  int64                   // a drum strike's length, in frames
+	held [engine.NumLayers + engine.DrumLanes]held
 	out  []midiMsg
 }
 
 // trackGateRows are the gates buildPatterns gives the tracks in generated
 // music, by layer; the lead's is Params.LeadGate. The engine does not report
 // them, so they are copied from buildPatterns and nothing checks the copy: a
-// gate changed there needs changing here.
-var trackGateRows = [engine.NumLayers - 1]int{16, 16, 6, 0, 10, 1}
+// gate changed there needs changing here. The bass is applyGrid's, and the
+// drums' slot is unused: a strike's length is hit.
+var trackGateRows = [engine.NumLayers]int{16, 16, 6, 0, 10, 1, 0, 2}
 
 func newNoteMapper(p engine.Params) *noteMapper {
 	spr := int64(rowFrames(p))
@@ -130,7 +131,7 @@ func (m *noteMapper) add(e engine.NoteEvent) {
 	m.advance(e.Frame)
 	var slot int
 	var h held
-	if e.Layer == engine.NumLayers-1 {
+	if e.Layer == engine.DrumsLayer {
 		slot = len(m.gate) + e.Lane
 		h = held{ch: drumChannel, note: gmDrum[e.Lane], off: e.Frame + m.hit}
 	} else {
@@ -231,7 +232,7 @@ func writeSMF(w io.Writer, p engine.Params, msgs []midiMsg) error {
 				continue
 			}
 			if t.b == nil {
-				name := names[len(names)-1]
+				name := names[engine.DrumsLayer]
 				if ch != drumChannel {
 					name = names[ch]
 				}

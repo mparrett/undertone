@@ -61,7 +61,7 @@ working vocabulary. `engine/` is the source of truth for anything in code font.
 | **thinning** | The same shot on the same note can't start again within 30 ms (`shotGapMS`), so a burst of identical triggers can't take every shot voice and cut the other sounds. Of repeats in one frame, the loudest plays. |
 | **buses** | The shared stereo delay and reverb that `send` and `verb` feed, then a `tanh` on the mix. |
 | **`io.Reader`** | `Synth.Read` fills interleaved PCM. It is the one output boundary, and every host reads through it. |
-| **layer levels** | A peak meter on each of the seven layers (the six tracks and the drums), read with `LayerLevels`, so a host can show what is sounding. |
+| **layer levels** | A peak meter on each of the eight layers (the seven tracks and the drums; the bass is last), read with `LayerLevels`, so a host can show what is sounding. |
 | **take** | A render of shots over a bed from a fresh synth, what the sfx studio and board audition (`Take`). Its samples are a function of its fields, the patches its shots resolve to, and `RenderVersion`, and `Take.Hash` digests exactly those. |
 
 ## Output

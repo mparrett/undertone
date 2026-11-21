@@ -99,7 +99,9 @@ type specJSON struct {
 	Open        lineJSON `json:"open"`
 	// The page has no room control yet; carrying the field keeps an
 	// imported room through an edit.
-	Room roomJSON `json:"room"`
+	Room   roomJSON `json:"room"`
+	LeadDB float64  `json:"leadDB"`
+	PadDB  float64  `json:"padDB"`
 }
 
 // roomJSON is engine.Room with the page's key names.
@@ -114,7 +116,7 @@ func toJSON(s engine.MoodSpec) specJSON {
 		Drone: toLine(s.Drone), Fifth: toLine(s.Fifth), Pad: toLine(s.Pad), LeadDensity: toLine(s.LeadDensity), Air: toLine(s.Air),
 		Calm: s.Calm, LeadLift: s.LeadLift, Palette: s.Palette, Leads: s.Leads, Grooves: s.Grooves,
 		Drums: toLine(s.Drums), Busy: toLine(s.Busy), Swing: s.Swing, Tense: s.TenseDrums, Open: toLine(s.Open),
-		Room: roomJSON(s.Room),
+		Room: roomJSON(s.Room), LeadDB: s.LeadDB, PadDB: s.PadDB,
 	}
 }
 
@@ -124,7 +126,7 @@ func (j specJSON) spec() engine.MoodSpec {
 		Drone: j.Drone.line(), Fifth: j.Fifth.line(), Pad: j.Pad.line(), LeadDensity: j.LeadDensity.line(), Air: j.Air.line(),
 		Calm: j.Calm, LeadLift: j.LeadLift, Palette: j.Palette, Leads: j.Leads, Grooves: j.Grooves,
 		Drums: j.Drums.line(), Busy: j.Busy.line(), Swing: j.Swing, TenseDrums: j.Tense, Open: j.Open.line(),
-		Room: engine.Room(j.Room),
+		Room: engine.Room(j.Room), LeadDB: j.LeadDB, PadDB: j.PadDB,
 	}
 }
 
@@ -198,13 +200,6 @@ func main() {
 				for _, l := range muted {
 					p.Mute |= layers[l]
 				}
-			}
-			// The trims are the audition's, like muting: dB offsets the
-			// engine sanitizes, 0 when unset.
-			if len(a) > 5 {
-				var trim struct{ Lead, Pad float64 }
-				_ = json.Unmarshal([]byte(a[5].String()), &trim)
-				p.LeadDB, p.PadDB = trim.Lead, trim.Pad
 			}
 			syn.SetParametersNow(p)
 			return marshal(map[string]any{

@@ -295,6 +295,11 @@ those layers in dB, 0 being as authored, and `:mute` silences layers by
 name (`[:lead :drums]`; `[]` unmutes). With `set-parameters-now`, notes
 already sounding fade to the new level.
 
+A mood entry can carry its own `:lead-db` and `:pad-db`, its balance as
+authored. They add to the game's: derive-spec hands them over as
+`:mood-lead-db` and `:mood-pad-db`, so a game's `:lead-db` holds across
+mood changes and each mood keeps its own correction.
+
 ```clojure
 (undertone/set-parameters-now {:lead-db -3 :bass-db 2})
 ```

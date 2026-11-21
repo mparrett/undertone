@@ -87,6 +87,9 @@ func deriveSpec(a []vm.Value) (vm.Value, error) {
 		vm.Keyword("drum-gain"), vm.Float(p.DrumGain),
 		vm.Keyword("drum-busy"), vm.Float(p.DrumBusy),
 		vm.Keyword("swing"), vm.Float(p.Swing),
+		// always present, so a mood with no trims clears the last mood's
+		vm.Keyword("mood-lead-db"), vm.Float(p.MoodLeadDB),
+		vm.Keyword("mood-pad-db"), vm.Float(p.MoodPadDB),
 		vm.Keyword("palette"), palette,
 	}), nil
 }
@@ -151,7 +154,7 @@ func moodSpec(m *vm.PersistentMap) (engine.MoodSpec, error) {
 	for _, f := range []struct {
 		k   string
 		dst *float64
-	}{{"swing", &s.Swing}, {"tense-drums", &s.TenseDrums}} {
+	}{{"swing", &s.Swing}, {"tense-drums", &s.TenseDrums}, {"lead-db", &s.LeadDB}, {"pad-db", &s.PadDB}} {
 		known[f.k] = true
 		if at(m, f.k) != vm.NIL && !flt(m, f.k, f.dst) {
 			return s, fmt.Errorf(":%s must be a number", f.k)

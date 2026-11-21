@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -69,9 +70,70 @@ func TestTrimRange(t *testing.T) {
 		t.Errorf("dbGain(-6) = %v, want 0.501187", g)
 	}
 	for _, c := range []struct{ in, want float64 }{{math.NaN(), 0}, {100, 12}, {-1000, -60}, {math.Inf(-1), -60}, {-3, -3}} {
-		p := Params{LeadDB: c.in, PadDB: c.in, BassDB: c.in}.sanitized()
-		if p.LeadDB != c.want || p.PadDB != c.want || p.BassDB != c.want {
-			t.Errorf("trim %v sanitized to %v %v %v, want %v", c.in, p.LeadDB, p.PadDB, p.BassDB, c.want)
+		p := Params{LeadDB: c.in, PadDB: c.in, BassDB: c.in, MoodLeadDB: c.in, MoodPadDB: c.in}.sanitized()
+		if p.LeadDB != c.want || p.PadDB != c.want || p.BassDB != c.want || p.MoodLeadDB != c.want || p.MoodPadDB != c.want {
+			t.Errorf("trim %v sanitized to %v %v %v, mood %v %v, want %v", c.in, p.LeadDB, p.PadDB, p.BassDB, p.MoodLeadDB, p.MoodPadDB, c.want)
+		}
+	}
+}
+
+// A mood's trims add to a game's: lead and pad notes struck under a mood
+// trim of a and a game trim of b are the notes of a single trim of a+b,
+// generated and under a theme, and the sum is held to one trim's range.
+func TestMoodTrimsAddToGameTrims(t *testing.T) {
+	p, _ := DeriveMood("village", 7, 4, 0.5)
+	p.PadDensity, p.LeadDensity = 1, 1
+	both, one := p, p
+	both.LeadDB, both.MoodLeadDB, both.PadDB, both.MoodPadDB = -3, -4, 2, 1.5
+	one.LeadDB, one.PadDB = -7, 3.5
+	same := func(what string, a, b [nTracks][rows]trackRow) {
+		t.Helper()
+		for tr := range nTracks {
+			for r := range rows {
+				x, y := a[tr][r], b[tr][r]
+				if x.note != y.note || x.gateRows != y.gateRows || fmt.Sprint(x.patch) != fmt.Sprint(y.patch) || x.gain != y.gain {
+					t.Fatalf("%s: track %d row %d: %+v under mood and game trims, %+v under their sum", what, tr, r, x, y)
+				}
+			}
+		}
+	}
+	for pat := range 8 {
+		same(fmt.Sprintf("pattern %d", pat), buildPatterns(both, pat), buildPatterns(one, pat))
+	}
+	g := Grid{Bed: true}
+	g.Lead[0] = 3
+	sa, sb := NewSynth(both), NewSynth(one)
+	sa.pats, sb.pats = buildPatterns(both, 0), buildPatterns(one, 0)
+	sa.applyGrid(&g, 0)
+	sb.applyGrid(&g, 0)
+	same("theme row 0", sa.pats, sb.pats)
+	if g := trimGain(12, 12); g != dbGain(12) {
+		t.Errorf("trimGain(12, 12) = %v, want +12 dB's %v", g, dbGain(12))
+	}
+	if g := trimGain(0, 0); g != 1 {
+		t.Errorf("trimGain(0, 0) = %v, want exactly 1", g)
+	}
+}
+
+// A spec's trims reach a derive as the mood's trims, never the game's, and
+// its EDN names them only when set, so an untrimmed entry reads as before.
+func TestMoodSpecTrims(t *testing.T) {
+	s, _ := MoodByName("village")
+	if plain := s.EDN(); strings.Contains(plain, "-db") {
+		t.Fatalf("an untrimmed mood's EDN names a trim:\n%s", plain)
+	}
+	s.LeadDB, s.PadDB = -6, 2.5
+	p, err := s.Derive(7, 3, 0.5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.MoodLeadDB != -6 || p.MoodPadDB != 2.5 || p.LeadDB != 0 || p.PadDB != 0 {
+		t.Fatalf("derived mood trims %v %v, game trims %v %v; want -6 2.5, 0 0", p.MoodLeadDB, p.MoodPadDB, p.LeadDB, p.PadDB)
+	}
+	edn := s.EDN()
+	for _, want := range []string{":lead-db   -6.0", ":pad-db    2.5"} {
+		if !strings.Contains(edn, want) {
+			t.Errorf("EDN lacks %q:\n%s", want, edn)
 		}
 	}
 }

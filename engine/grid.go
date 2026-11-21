@@ -131,7 +131,7 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 		if !ok {
 			gain = 0.55 // a voice added without measuring it
 		}
-		s.pats[trackLead][row] = trackRow{degreeNote(p, lead, d), gain * dbGain(p.LeadDB), p.LeadGate, p.Palette.Lead}
+		s.pats[trackLead][row] = trackRow{degreeNote(p, lead, d), gain * trimGain(p.LeadDB, p.MoodLeadDB), p.LeadGate, p.Palette.Lead}
 	}
 	s.pats[trackFifth][row] = trackRow{}
 	if d := g.Bass[row]; d > 0 {

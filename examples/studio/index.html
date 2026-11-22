@@ -1651,7 +1651,8 @@ function openTheme(text, note = "from the link, over the bed it set above; click
     seed = String(t.seed);
     if (!/^-?\d{1,20}$/.test(seed) || BigInt(seed) < -(2n ** 63n) || BigInt(seed) >= 2n ** 64n) return say(`theme: seed ${seed} is not a 64-bit integer`, true);
   }
-  if (t.mood != null) $("mood").value = t.mood;
+  // a mood that changes is marked on the scope as the select's own change is
+  if (t.mood != null && t.mood !== $("mood").value) { $("mood").value = t.mood; bedMark("mood", t.mood); lastDrone = -1; }
   for (const id of ["level", "tension"]) if (t[id] != null) { $(id).value = t[id]; $(id).oninput(); }
   if (seed != null) { const n = document.querySelector(".num[data-for=seed]"); n.value = seed; n.oninput(); n.onchange(); }
   layerMuted.clear(); for (const l of mute) layerMuted.add(l);
@@ -1709,8 +1710,12 @@ $("resettheme").onclick = () => {
 };
 $("gamebed").onclick = () => {
   clearTimeout(themeTimer);
-  openTheme(JSON.stringify({ name: "xsofy title", grids: XSOFY_TITLE, ...XSOFY_BED }),
-    `the xsofy title as the game plays it: ${XSOFY_BED.mood}, level ${XSOFY_BED.level}, tension ${XSOFY_BED.tension}, seed ${XSOFY_BED.seed}`);
+  // The line says what was set, not what plays: solo, without bed and a lead
+  // or palette being edited still apply, and the controls can move afterwards.
+  if (!openTheme(JSON.stringify({ grids: XSOFY_TITLE, ...XSOFY_BED }),
+    `bed set to the game's for its title screen: ${XSOFY_BED.mood}, level ${XSOFY_BED.level}, tension ${XSOFY_BED.tension}, seed ${XSOFY_BED.seed}`)) return;
+  // still the built-in notes, so reset has nothing to offer
+  TITLE = XSOFY_TITLE; themeName = "the xsofy title theme"; themeLabel = "xsofy title"; showTheme(true);
 };
 window.undertoneStudioReady = () => {
   for (const m of JSON.parse(U().names("mood"))) { const o = el("option", null, m); o.selected = m === "dungeon"; $("mood").append(o); }

@@ -11,7 +11,9 @@
     /* as wide as the screen allows, up to a size that keeps the whole grid in view */
     --cell: clamp(17px, calc((100vw - 32px - 32px - 3 * 6px) / 16), 28px);
   }
-  * { box-sizing: border-box; }
+  /* ::after too: * does not match a pseudo-element, and a cell is drawn by one.
+     Without it the square's border was added to its height and not its width. */
+  *, *::after { box-sizing: border-box; }
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
          font: 15px/1.45 ui-monospace, Menlo, monospace; }
   main { max-width: calc(32px + 16 * var(--cell) + 3 * 6px); margin: 0 auto; }
@@ -44,7 +46,7 @@
   .strip { width: 100%; min-width: 0; height: 14px; border-radius: 3px; background: var(--panel); transition: opacity .3s; }
   .strip.idle { opacity: .4; }
   /* the first step of each beat after the first is 6px wider, padded on the left: beat groups */
-  .grid { --C: calc(var(--cell) + 6px); display: grid; row-gap: 2px;
+  .grid { --C: calc(var(--cell) + 6px); display: grid; /* no gaps: a cell's own padding spaces it, the same on every side */
           grid-template-columns: 32px var(--cell) var(--cell) var(--cell) var(--cell)
             var(--C) var(--cell) var(--cell) var(--cell) var(--C) var(--cell) var(--cell) var(--cell)
             var(--C) var(--cell) var(--cell) var(--cell);
@@ -76,10 +78,12 @@
   /* wide screens: play and tempo in a bar across the top, the other controls
      in a narrow column, and the rest of the width for the grid. Cells take
      what the width gives, short of making the page scroll: 18.5 cells of
-     height (the drum rows are half ones) and 300px of everything else. */
+     height (the drum rows are half ones), and what is not cells: the body's
+     padding, the top bar and the four lane headers, 226px as measured
+     2026-11-22. */
   @media (min-width: 900px) {
     :root { --side: 210px;
-            --cell: clamp(22px, min(calc((100vw - 64px - var(--side) - 32px - 32px - 18px) / 16), calc((100dvh - 300px) / 18.5)), 36px); }
+            --cell: clamp(22px, min(calc((100vw - 64px - var(--side) - 32px - 32px - 18px) / 16), calc((100dvh - 230px) / 18.5)), 36px); }
     body { padding: 32px; }
     main { max-width: none; display: grid; grid-template-columns: var(--side) auto; gap: 20px 32px; justify-content: center; align-items: start; }
     /* min-width 0: the bar is as wide as the columns under it, and does not widen them */
@@ -94,8 +98,17 @@
     /* a pointer can hit a small cell, so the drum cells, half a step wide,
        are half as tall too: square */
     .drums .c, .drums .lbl { height: calc(var(--cell) / 2); }
+    .drums .lbl { font-size: 10px; } /* the other labels' 12px does not fit a half row at the smallest cell */
     .lbl { font-size: 12px; }
     .lane:first-child { margin-top: 0; }
+  }
+  /* Whole pixels, even ones so the drum cells' half is whole too: at a
+     fraction of a pixel, neighbouring cells snap to different sizes. */
+  @supports (width: round(down, 1px, 1px)) {
+    :root { --cell: clamp(17px, round(down, calc((100vw - 32px - 32px - 3 * 6px) / 16), 2px), 28px); }
+    @media (min-width: 900px) {
+      :root { --cell: clamp(22px, round(down, min(calc((100vw - 64px - var(--side) - 32px - 32px - 18px) / 16), calc((100dvh - 230px) / 18.5)), 2px), 36px); }
+    }
   }
 </style>
 </head>

@@ -79,3 +79,73 @@ func TestRewindRestartsAThemeFromItsFirstGrid(t *testing.T) {
 		t.Error("the rewound theme never ended")
 	}
 }
+
+// Rewind restarts a grid's polymetric lanes with it: a lane that loops at
+// its own length plays from its first step again, as on the first play.
+func TestRewindRestartsPolymetricLanes(t *testing.T) {
+	p, _ := DeriveMood("village", 3, 2, 0)
+	var g Grid
+	g.Drums[0] = "X.....|" // six sixteenths: three rows
+	s := NewSynth(p)
+	s.SetGrid(&g)
+	render(s, 20*s.samplesPerRow+77) // row 4 of the second pattern
+	s.Rewind()
+	render(s, nowBlock)
+	if s.row != 1 {
+		t.Fatalf("a block after Rewind: row %d about to step, want 1", s.row)
+	}
+	if s.runFrom != s.pat*rows {
+		t.Errorf("the lanes count from row %d, want this pattern's first, %d", s.runFrom, s.pat*rows)
+	}
+	for r := range rows {
+		if got, want := gridHit(g.Drums[0], r, s.pat*rows+r-s.runFrom), gridHit(g.Drums[0], r, r); got != want {
+			t.Errorf("row %d after Rewind: the lane plays %+v, the first play's %+v", r, got, want)
+		}
+	}
+}
+
+// A parameter change landing while a rewound row 0 is still held back for
+// its flam does not revoice from the pattern that was cut: every track keeps
+// what it was playing until row 0 steps.
+func TestParamsNowDuringARewindsFlamLeadDoesNotRevoiceTheCutPattern(t *testing.T) {
+	p, _ := DeriveMood("village", 3, 2, 0)
+	s := NewSynth(p)
+	var g Grid
+	g.Lead[0], g.Lead[5], g.Lead[14] = 3, 6, 7
+	g.Drums[0] = "g" // a flam on the first sixteenth holds row 0 back
+	g.Bed = true     // so the generator's tracks have notes to move
+	s.SetGrid(&g)
+	render(s, 5*s.samplesPerRow+77)
+	for s.nframe%nowBlock != 0 {
+		render(s, 1)
+	}
+	type held struct {
+		note int
+		gate bool
+	}
+	voices := func() (h [nTracks]held) {
+		for i, v := range s.voices {
+			h[i] = held{v.note, v.gate}
+		}
+		return h
+	}
+	was := voices()
+	faster := p
+	faster.BPM = p.BPM + 20
+	s.Rewind()
+	s.SetParametersNow(faster)
+	render(s, 1)
+	if s.row != 0 || !s.cut {
+		t.Fatalf("a frame after Rewind: row %d about to step, cut %v; want row 0 held back by its flam", s.row, s.cut)
+	}
+	if s.params.BPM != faster.BPM {
+		t.Errorf("the tempo change waited: %v bpm, want %v", s.params.BPM, faster.BPM)
+	}
+	if got := voices(); got != was {
+		t.Errorf("voices moved before row 0 stepped:\n got %v\nwant %v", got, was)
+	}
+	render(s, s.samplesPerRow)
+	if got, want := s.voices[trackLead].note, leadAt(s, 3); got != want || s.cut {
+		t.Errorf("after the held row stepped: lead %d, cut %v; want row 0's %d", got, s.cut, want)
+	}
+}

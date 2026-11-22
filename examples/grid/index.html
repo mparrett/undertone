@@ -318,6 +318,7 @@
   }
   $("play").onclick = () => setPlaying(!playing);
   function restart() {
+    if (!ready) return;
     undertoneGrid.restart();
     status.textContent = playing ? "back to the first step" : "stopped at the first step";
   }

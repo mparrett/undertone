@@ -75,7 +75,10 @@ func (s *Synth) startOver() {
 	if s.row != 0 {
 		s.pat++ // the cut pattern ends here, as in startTheme
 	}
-	s.row, s.rowLeft, s.leadIn = 0, 0, true
+	s.row, s.rowLeft, s.leadIn, s.cut = 0, 0, true, true
+	// a grid's polymetric lanes count from here too; a theme's already do,
+	// from its fresh first grid
+	s.runFrom = s.pat * rows
 }
 
 // DegreeNote is the note grid degree d (1-based) plays above base in p's

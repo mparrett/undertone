@@ -356,9 +356,11 @@
     status.textContent = on ? `playing at ${st.bpm} bpm` : "stopped";
   }
   $("play").onclick = () => setPlaying(!playing);
+  let stripRestart = () => {}; // set by the lane strips, which cannot see a restart in the rows
   function restart() {
     if (!ready) return;
     undertoneGrid.restart();
+    stripRestart();
     status.textContent = playing ? "back to the first step" : "stopped at the first step";
   }
   $("restart").onclick = restart;
@@ -430,20 +432,41 @@
     // playhead and not ahead of it.
     let q = [], cur = null, hits = [0, 0, 0, 0];
     let row = -1, rowAt = 0, at = -1, pass = 1, was = null;
+    let frac = 0, stoppedAt = 0; // where in its step the cursor stopped, and when
+    // A restart is heard once the queue ahead of it has played, and cannot be
+    // read off the rows: from the first step the row does not change, and from
+    // the last it looks like the pattern coming round. So restart says so:
+    // jumpAt is when the jump is due, or Infinity for one made while stopped.
+    let jumpAt = 0;
+    stripRestart = () => { jumpAt = was ? performance.now() + undertoneGrid.queued() : Infinity; };
     (function tick(t) {
       const on = ready && playing;
-      if (on !== was) { for (const l of L) l.cv.classList.toggle("idle", !on); was = on; q = []; }
+      if (on !== was) {
+        for (const l of L) l.cv.classList.toggle("idle", !on);
+        if (on && was !== null) {
+          // Stop froze the output with its queue, so everything resumes late
+          // by the pause: the readings still waiting, and the step under way.
+          const paused = t - stoppedAt;
+          for (const e of q) e.due += paused;
+          rowAt = t - frac * (30000 / st.bpm);
+          if (jumpAt === Infinity) jumpAt = t + undertoneGrid.queued();
+        } else if (!on) stoppedAt = t;
+        was = on;
+      }
       const r = on ? undertoneGrid.row() : -1;
       if (r >= 0) {
         if (stale()) measure();
         // due by the queue as it stood when read: it is still filling just after play
         q.push({ due: t + undertoneGrid.queued(), lv: undertoneGrid.levels(), hit: undertoneGrid.onsets() });
         while (q.length && q[0].due <= t) { cur = q.shift(); cur.hit.forEach((n, k) => { hits[k] += n; }); }
-        const wrapped = r !== row && row === STEPS - 1 && r === 0;
-        const jumped = r !== row && !wrapped && r !== row + 1; // restart, or the first frame
-        if (r !== row) { row = r; rowAt = t; }
-        const f = Math.min(1, (t - rowAt) / (30000 / st.bpm)); // a step is an eighth note
-        const x = Math.min(W - 1, Math.round(xs[r] + f * (xs[r + 1] - xs[r])));
+        // a restart lands with a row change near its time, or with none: on the first step already
+        const restarting = jumpAt && t >= jumpAt - 50 && (r !== row || t >= jumpAt + 50);
+        if (restarting) jumpAt = 0;
+        const wrapped = !restarting && r !== row && row === STEPS - 1 && r === 0;
+        const jumped = restarting || (r !== row && !wrapped && r !== row + 1); // or the first frame
+        if (r !== row || restarting) { row = r; rowAt = t; }
+        frac = Math.min(1, (t - rowAt) / (30000 / st.bpm)); // a step is an eighth note
+        const x = Math.min(W - 1, Math.round(xs[r] + frac * (xs[r + 1] - xs[r])));
         if (wrapped || jumped) pass++;
         // columns passed since the last frame: all of them up to the end, on the way round
         const spans = at < 0 || jumped ? [[x, x]] : wrapped ? [[at + 1, W - 1, pass - 1], [0, x]] : [[at + 1, x]];

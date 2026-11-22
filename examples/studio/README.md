@@ -27,6 +27,17 @@ In a game:
 (undertone/trigger {:shot :zap :degree 2})
 ```
 
+A click on a layer's name under the meters mutes that layer, and another
+brings it back.
+
+`#theme=<JSON>` links a theme in, with the bed to play it over:
+`{name, grids: [{lead, bass, drums, bed}], mood, level, tension, seed, mute}`.
+`lead` and `bass` are 16 digits each, a scale degree per step with 0 a rest;
+`mute` is a list of layer names, and a seed past 2^53 must be a decimal
+string; only `grids` is required, and a link with a bad value changes nothing. The theme gets a
+play button (once, loop, stop, as ♫ cycles) and ♫ plays it too, so it can be
+heard through a lead or palette being edited.
+
 Other pages can link a sound in: `#shot=<EDN>` (or `lead=`, `palette=`)
 imports it, and `&take=<JSON>` adds a button that plays a take, a vector of
 `undertone/trigger` maps (`shot`, `note` or `degree` and `octave`, `gain`,

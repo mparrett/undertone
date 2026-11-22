@@ -394,9 +394,10 @@
       const on = ready && playing;
       if (on !== was) { for (const l of lanes4) l.cv.classList.toggle("idle", !on); was = on; last = t; }
       if (on) {
-        const n = Math.min(N, Math.floor((t - last) / MS));
+        const due = Math.floor((t - last) / MS), n = Math.min(N, due);
         if (n > 0) {
-          last += n * MS;
+          // back from a hidden tab, the gap is longer than the strip: start again from now
+          last = due > N ? t : last + n * MS;
           const lv = undertoneGrid.levels(), hit = undertoneGrid.onsets();
           lanes4.forEach((l, k) => {
             l.hits.copyWithin(0, n); l.hits.fill(0, N - n); l.hits[N - 1] = hit[k] ? 1 : 0;

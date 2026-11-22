@@ -85,46 +85,51 @@ func (j gridJSON) grid() engine.Grid {
 // pattern's own output cannot carry it: stopped, it is suspended with the
 // pattern's last 200 ms still queued, and resuming it would play those first.
 type auditioner struct {
-	syn     *engine.Synth
-	player  atomic.Pointer[webaudio.Player]
-	opening atomic.Bool
-	gen     atomic.Int64
+	syn    *engine.Synth
+	player atomic.Pointer[webaudio.Player]
+	gen    atomic.Int64 // counts auditions: a pause is for the one that armed it
 }
 
 // auditionRing is how long the output runs after a note, for its echo; then
 // it is suspended, so an idle page renders one synth and not two.
 const auditionRing = 3 * time.Second
 
+// open starts the output, suspended. It runs at boot as the pattern's does:
+// iOS starts a context only from a gesture that comes after the context
+// exists, so one opened inside the audition's own click would stay silent
+// until some later tap.
+func (a *auditioner) open() {
+	p, err := webaudio.Open(a.syn, webaudio.Options{SampleRate: engine.SampleRate, Queue: 60 * time.Millisecond})
+	if err != nil {
+		return // the pattern's output reports a failure to open; auditions stay silent
+	}
+	a.player.Store(p)
+	// an audition made while this was opening is sounding now
+	if n := a.gen.Load(); n == 0 {
+		p.Pause()
+	} else {
+		a.rest(n)
+	}
+}
+
+// rest suspends the output once audition n has rung, unless a later one has
+// played since.
+func (a *auditioner) rest(n int64) {
+	time.AfterFunc(auditionRing, func() {
+		if p := a.player.Load(); p != nil && a.gen.Load() == n {
+			p.Pause()
+		}
+	})
+}
+
 func (a *auditioner) play(g engine.Grid) {
 	g.Bed = false
 	a.syn.PlayTheme(&engine.Theme{Grids: []engine.Grid{g}, Then: engine.ThenSilence})
 	n := a.gen.Add(1)
-	rest := func() {
-		time.AfterFunc(auditionRing, func() {
-			if p := a.player.Load(); p != nil && a.gen.Load() == n {
-				p.Pause()
-			}
-		})
-	}
 	if p := a.player.Load(); p != nil {
 		p.Resume()
-		rest()
-		return
+		a.rest(n)
 	}
-	// opened on the first audition, from inside its click: a page that never
-	// auditions never has a second AudioContext
-	if !a.opening.CompareAndSwap(false, true) {
-		return
-	}
-	go func() {
-		p, err := webaudio.Open(a.syn, webaudio.Options{SampleRate: engine.SampleRate, Queue: 60 * time.Millisecond})
-		if err != nil {
-			a.opening.Store(false)
-			return
-		}
-		a.player.Store(p)
-		rest()
-	}()
 }
 
 // extraAPI lets an optional build add to window.undertoneGrid (lg.go).
@@ -199,6 +204,7 @@ func main() {
 	syn.SetGrid(&g0)
 	src := &gate{src: syn}
 	aud := &auditioner{syn: engine.NewSynth(derive(cur))}
+	go aud.open()
 
 	var player atomic.Pointer[webaudio.Player]
 	go func() {

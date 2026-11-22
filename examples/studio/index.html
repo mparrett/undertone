@@ -799,12 +799,14 @@ let themeWatch = 0;  // clears ♫'s outline when the theme ends
 let linkedTail = 0;  // stops what a linked theme's button started, once its last notes have rung
 // Whatever is played or chosen while those notes ring is the user's, so the
 // stop is called off: play, the bed chips and every audition go through here.
-// A theme that ends in silence holds that silence until something else plays,
-// so calling the stop off also hands the bed back to the generator.
+// A theme that ended in silence holds that silence until something else
+// plays, so calling the stop off also hands the bed back to the generator.
+// It does so whatever the THEME box says now: the theme that played may have
+// been edited since, and stopping a theme that has ended costs nothing.
 const keepOn = () => {
   if (!linkedTail) return;
   clearTimeout(linkedTail); linkedTail = 0;
-  if (themeThen === "silence") U()?.theme("");
+  U()?.theme("");
 };
 let melodyTimers = [];
 // A lead or palette plays the theme itself through the engine, voiced by the
@@ -1621,7 +1623,12 @@ function openTheme(text) {
   // Everything is checked before anything is applied, so a bad link changes nothing.
   if (!t || !Array.isArray(t.grids) || !t.grids.length) return say("theme: no grids", true);
   const then = t.then ?? "generate";
-  const bad = checkTheme({ grids: t.grids, then }); if (bad) return say(`theme: ${bad}`, true);
+  if (t.grids.some((g) => !g || typeof g !== "object" || Array.isArray(g))) return say("theme: a grid is not {lead, bass, …}", true);
+  const str = (v) => typeof v === "string" ? v : "";
+  // lanes padded to the grid, as themeOf pads them: ♫ on a shot times its notes by their place in the lane
+  const grids = t.grids.map((g) => ({ lead: str(g.lead).padEnd(16, "0"), bass: str(g.bass).padEnd(16, "0"), pulse: str(g.pulse),
+                                      drums: Array.isArray(g.drums) ? g.drums : [], bed: !!g.bed }));
+  const bad = checkTheme({ grids: t.grids, then }) || checkTheme({ grids, then }); if (bad) return say(`theme: ${bad}`, true);
   if (t.mood != null && ![...$("mood").options].some((o) => o.value === t.mood)) return say(`theme: no mood ${t.mood}`, true);
   for (const id of ["level", "tension"]) {
     if (t[id] != null && !(typeof t[id] === "number" && t[id] >= +$(id).min && t[id] <= +$(id).max)) return say(`theme: ${id} ${t[id]} is not ${$(id).min} to ${$(id).max}`, true);
@@ -1642,7 +1649,7 @@ function openTheme(text) {
   if (seed != null) { const n = document.querySelector(".num[data-for=seed]"); n.value = seed; n.oninput(); n.onchange(); }
   layerMuted.clear(); for (const l of mute) layerMuted.add(l);
   showLayerMutes(); applyBed();
-  TITLE = t.grids.map((g) => ({ lead: g.lead || "", bass: g.bass || "", pulse: g.pulse || "", drums: g.drums || [], bed: !!g.bed }));
+  TITLE = grids;
   themeThen = then; themeName = t.name ? `“${t.name}”` : "the linked theme"; themeLabel = t.name || "theme";
   $("themehint").textContent = "from the link, over the bed set above; click a layer's name under the meters to mute it";
   showTheme();
@@ -1660,13 +1667,14 @@ function playLinked(again = false) {
     if (!bedOn) { bedOn = true; bedChips(); auditionBed = true; }
   }
   const err = U().theme(themeJSON()); if (err) { stopLoop(); return say(err, true); }
+  const then = themeThen;  // of the theme now playing: the box may change under it
   themeWatch = setInterval(() => {
     if (U().themePlaying()) return;
     if (btn.classList.contains("forever")) return playLinked(true);
     clearInterval(themeWatch); themeWatch = 0; btn.classList.remove("loop");
     // the last notes ring; after a theme that ends in silence, so does the
     // silence for a moment, before the generator is given the bed back
-    linkedTail = setTimeout(() => { linkedTail = 0; if (themeThen === "silence") U().theme(""); stopAudition(); }, themeThen === "silence" ? 3000 : 1500);
+    linkedTail = setTimeout(() => { linkedTail = 0; U().theme(""); stopAudition(); }, then === "silence" ? 3000 : 1500);
   }, 250);
 }
 function openFromHash() {

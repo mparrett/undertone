@@ -20,6 +20,9 @@
 //	play() / stop()  call from the tap handler: iOS resumes audio only inside one
 //	restart()        start the pattern over from its first step; while stopped, the next play starts there
 //	row()            the step being heard, or -1 while stopped
+//	levels()         [lead, bass, pulse, drums]: each lane's level, dry, as of the last block rendered
+//	onsets()         [lead, bass, pulse, drums]: how many notes each lane started since the last call
+//	audition(json)   play a grid once, alone, without touching the pattern: a cell heard before it is placed
 //	key()            the current key and the notes of each lane's rows 1 and 8, as JSON
 //	mutate(json, n)  with -tags lg only: lg's variation of a grid for seed n
 package main
@@ -75,6 +78,58 @@ func (j gridJSON) grid() engine.Grid {
 	copy(g.Pulse[:], j.Pulse)
 	copy(g.Drums[:], j.Drums)
 	return g
+}
+
+// auditioner plays a cell on a synth and an output of its own, so a note can
+// be heard in its lane's voice while the pattern is stopped, or over it. The
+// pattern's own output cannot carry it: stopped, it is suspended with the
+// pattern's last 200 ms still queued, and resuming it would play those first.
+type auditioner struct {
+	syn    *engine.Synth
+	player atomic.Pointer[webaudio.Player]
+	gen    atomic.Int64 // counts auditions: a pause is for the one that armed it
+}
+
+// auditionRing is how long the output runs after a note, for its echo; then
+// it is suspended, so an idle page renders one synth and not two.
+const auditionRing = 3 * time.Second
+
+// open starts the output, suspended. It runs at boot as the pattern's does:
+// iOS starts a context only from a gesture that comes after the context
+// exists, so one opened inside the audition's own click would stay silent
+// until some later tap.
+func (a *auditioner) open() {
+	p, err := webaudio.Open(a.syn, webaudio.Options{SampleRate: engine.SampleRate, Queue: 60 * time.Millisecond})
+	if err != nil {
+		return // the pattern's output reports a failure to open; auditions stay silent
+	}
+	a.player.Store(p)
+	// an audition made while this was opening is sounding now
+	if n := a.gen.Load(); n == 0 {
+		p.Pause()
+	} else {
+		a.rest(n)
+	}
+}
+
+// rest suspends the output once audition n has rung, unless a later one has
+// played since.
+func (a *auditioner) rest(n int64) {
+	time.AfterFunc(auditionRing, func() {
+		if p := a.player.Load(); p != nil && a.gen.Load() == n {
+			p.Pause()
+		}
+	})
+}
+
+func (a *auditioner) play(g engine.Grid) {
+	g.Bed = false
+	a.syn.PlayTheme(&engine.Theme{Grids: []engine.Grid{g}, Then: engine.ThenSilence})
+	n := a.gen.Add(1)
+	if p := a.player.Load(); p != nil {
+		p.Resume()
+		a.rest(n)
+	}
 }
 
 // extraAPI lets an optional build add to window.undertoneGrid (lg.go).
@@ -148,6 +203,8 @@ func main() {
 	g0 := engine.SeedGrid(derive(cur))
 	syn.SetGrid(&g0)
 	src := &gate{src: syn}
+	aud := &auditioner{syn: engine.NewSynth(derive(cur))}
+	go aud.open()
 
 	var player atomic.Pointer[webaudio.Player]
 	go func() {
@@ -166,6 +223,11 @@ func main() {
 	}()
 	debugoverlay.Show(syn, player.Load)
 
+	var noteCursor uint64
+	noteBuf := make([]engine.NoteEvent, 0, 256)
+	// the lanes the page draws, by LayerNames index
+	lanes := map[int]int{3: 0, 7: 1, 5: 2, engine.DrumsLayer: 3}
+
 	api := map[string]any{
 		"setGrid": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			var j gridJSON
@@ -179,6 +241,7 @@ func main() {
 		"setParams": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			if json.Unmarshal([]byte(a[0].String()), &cur) == nil {
 				syn.SetParametersNow(derive(cur))
+				aud.syn.SetParametersNow(derive(cur))
 			}
 			return nil
 		}),
@@ -215,6 +278,28 @@ func main() {
 			// what is heard now: rendered minus what is still queued
 			heard := syn.Frames() - int64(p.Queued().Seconds()*engine.SampleRate)
 			return syn.RowAt(heard)
+		}),
+		"levels": js.FuncOf(func(js.Value, []js.Value) any {
+			l := syn.LayerLevels()
+			return []any{l[3], l[7], l[5], l[engine.DrumsLayer]} // LayerNames order: lead 3, bass 7, pulse 5
+		}),
+		"onsets": js.FuncOf(func(js.Value, []js.Value) any {
+			var evs []engine.NoteEvent
+			evs, noteCursor, _ = syn.NoteEvents(noteCursor, noteBuf[:0])
+			out := []any{0, 0, 0, 0}
+			for _, e := range evs {
+				if k, ok := lanes[e.Layer]; ok {
+					out[k] = out[k].(int) + 1
+				}
+			}
+			return out
+		}),
+		"audition": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			var j gridJSON
+			if json.Unmarshal([]byte(a[0].String()), &j) == nil {
+				aud.play(j.grid())
+			}
+			return nil
 		}),
 		"key":     js.FuncOf(func(js.Value, []js.Value) any { return keyJSON(derive(cur)) }),
 		"initial": toJSON(g0),

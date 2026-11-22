@@ -8,8 +8,8 @@
   :root {
     --bg: #0d0d10; --panel: #15151a; --line: #26262e; --fg: #d6d1c2; --mut: #8a8576;
     --lead: #e0b84f; --bass: #5fa8c9; --pulse: #c96a5f; --drum: #9cc46a; --head: #ffffff14;
-    /* phones: as wide as the screen allows */
-    --cell: clamp(17px, calc((100vw - 32px - 32px - 3 * 6px) / 16), 40px);
+    /* as wide as the screen allows, up to a size that keeps the whole grid in view */
+    --cell: clamp(17px, calc((100vw - 32px - 32px - 3 * 6px) / 16), 28px);
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
@@ -35,7 +35,12 @@
   .lab { font-size: 13px; color: var(--mut); }
   #key { font-size: 13px; color: var(--fg); margin-left: 6px; }
   .lbl.ref { color: var(--fg); }
-  .lane { margin: 12px 0 4px; font-size: 12px; color: var(--mut); letter-spacing: .1em; }
+  .lane { margin: 12px 0 4px; font-size: 12px; color: var(--mut); letter-spacing: .1em;
+          display: flex; align-items: center; gap: 10px; }
+  .lane span { flex: none; width: 4.2em; }
+  /* each lane's level over the last few seconds, newest at the right, with a tick where a note starts */
+  .strip { flex: 1; min-width: 0; height: 14px; border-radius: 3px; background: var(--panel); transition: opacity .3s; }
+  .strip.idle { opacity: .4; }
   /* the first step of each beat after the first is 6px wider, padded on the left: beat groups */
   .grid { --C: calc(var(--cell) + 6px); display: grid; row-gap: 2px;
           grid-template-columns: 32px var(--cell) var(--cell) var(--cell) var(--cell)
@@ -66,10 +71,10 @@
   footer { margin: 4px 0 10px; font-size: 12px; color: var(--mut); }
   @media (max-width: 899px) { footer { order: 9; } aside { display: contents; } main { display: flex; flex-direction: column; } section { order: 5; } }
   footer a { color: var(--mut); }
-  /* wide screens: controls beside the grid, and cells sized so all 20 rows
-     fit the window's height without scrolling */
+  /* wide screens: controls beside the grid. A pointer can hit a small cell,
+     so the drum cells, half a step wide, are half as tall too: square */
   @media (min-width: 900px) {
-    :root { --cell: clamp(20px, calc((100dvh - 180px) / 20 - 2px), 46px); }
+    .drums .c, .drums .lbl { height: calc(var(--cell) / 2); }
     body { padding: 32px; }
     main { max-width: none; display: grid; grid-template-columns: 250px auto; gap: 40px; justify-content: center; align-items: start; }
     .lbl { font-size: 12px; }
@@ -89,7 +94,7 @@
     <label class="tempo">tempo <input id="bpm" type="range" min="60" max="160" step="1" value="110"><span id="bpmv">110</span></label>
   </div>
   <div class="bar" id="moods"><span class="lab">mood:</span></div>
-  <div class="bar" id="voices"></div>
+  <div class="bar" id="voices"><span class="lab">lead voice:</span></div>
   <div class="bar">
     <button id="dice" title="a new starting pattern from the next seed">&#8635; new</button>
     <button id="clear">clear</button>
@@ -100,17 +105,19 @@
   <footer>Tap a cell to place a note, tap it again to clear; drag to paint. One note per step in each lane.
     Rows are scale degrees, so the pattern stays in key when the mood changes.
     Drum cells are sixteenths: a tap cycles hit, accent, ghost, rest.
-    Space plays and stops on a keyboard, and r goes back to the first step. Edits are heard the next time the playhead passes them.</footer>
+    Alt-click or shift-click a cell to hear it without placing it.
+    Space plays and stops on a keyboard, and r goes back to the first step. Edits are heard the next time the playhead passes them.
+    The strip beside each lane's name is that lane as it plays: a tick where a note starts, over its level before the echo.</footer>
  </aside>
  <section>
 
-  <div class="lane">LEAD</div>
+  <div class="lane"><span>LEAD</span><canvas class="strip idle" data-lane="lead"></canvas></div>
   <div class="grid lead" id="lead"></div>
-  <div class="lane">BASS</div>
+  <div class="lane"><span>BASS</span><canvas class="strip idle" data-lane="bass"></canvas></div>
   <div class="grid bass" id="bass"></div>
-  <div class="lane">PULSE</div>
+  <div class="lane"><span>PULSE</span><canvas class="strip idle" data-lane="pulse"></canvas></div>
   <div class="grid pulse" id="pulse"></div>
-  <div class="lane">DRUMS</div>
+  <div class="lane"><span>DRUMS</span><canvas class="strip idle" data-lane="drums"></canvas></div>
   <div class="grid drums" id="drums"></div>
 
  </section>
@@ -238,9 +245,23 @@
     st[lane][s] = v ? d : (st[lane][s] === d ? 0 : st[lane][s]);
     return v;
   }
+  // Hear a cell without placing it: its note alone, in its lane's voice.
+  function audition(c) {
+    if (!ready) return;
+    const lane = c.dataset.lane;
+    const g = { lead: Array(STEPS).fill(0), bass: Array(STEPS).fill(0), pulse: Array(STEPS).fill(false), drums: DRUMS.map(() => ""), bed: false };
+    if (lane === "drums") {
+      const now = st.drums[c.dataset.drum][c.dataset.i];
+      g.drums[c.dataset.drum] = now === "." ? "x" : now; // a placed cell at its own level
+    } else if (lane === "pulse") g.pulse[0] = true;
+    else g[lane][0] = +c.dataset.deg;
+    undertoneGrid.audition(JSON.stringify(g));
+    status.textContent = lane === "drums" ? `heard: ${DRUMS[c.dataset.drum]}` : lane === "pulse" ? "heard: pulse" : `heard: ${lane} ${c.dataset.deg}`;
+  }
   document.addEventListener("pointerdown", (e) => {
     const c = cellAt(e); if (!c) return;
     e.preventDefault();
+    if (e.altKey || e.shiftKey) return audition(c);
     painting = { mode: toggle(c, null), lane: c.dataset.lane, last: c };
     paint(); pushGrid();
   });
@@ -341,6 +362,57 @@
     requestAnimationFrame(head);
   })();
 
+  // ---- lane strips ----
+  // A strip scrolls its lane's level, sampled 60 times a second whatever the
+  // display's rate, so it covers the same few seconds on every screen. It
+  // holds still while stopped: the engine's levels do too.
+  (function strips() {
+    const N = 240, MS = 1000 / 60; // four seconds
+    const css = getComputedStyle(document.documentElement);
+    const lanes4 = ["lead", "bass", "pulse", "drums"].map((lane) => {
+      const cv = document.querySelector(`.strip[data-lane=${lane}]`);
+      return { cv, g: cv.getContext("2d"), hist: new Float32Array(N), hits: new Uint8Array(N), color: css.getPropertyValue(lane === "drums" ? "--drum" : "--" + lane).trim() };
+    });
+    let last = 0, was = null;
+    function draw(l) {
+      const dpr = devicePixelRatio || 1, w = Math.round(l.cv.clientWidth * dpr), h = Math.round(l.cv.clientHeight * dpr);
+      if (l.cv.width !== w || l.cv.height !== h) { l.cv.width = w; l.cv.height = h; }
+      l.g.clearRect(0, 0, w, h); l.g.fillStyle = l.color;
+      const bw = w / N;
+      // the level dimmed, so the ticks read over it: the meter falls slowly,
+      // and on its own it runs one note into the next
+      l.g.globalAlpha = 0.45;
+      for (let i = 0; i < N; i++) {
+        const v = l.hist[i]; if (v <= 0.01) continue;
+        const bh = Math.max(1, v * h);
+        l.g.fillRect(i * bw, (h - bh) / 2, Math.ceil(bw), bh); // centred, as a waveform's outline is
+      }
+      l.g.globalAlpha = 1;
+      for (let i = 0; i < N; i++) if (l.hits[i]) l.g.fillRect(i * bw, 0, Math.max(dpr, bw), h);
+    }
+    (function tick(t) {
+      const on = ready && playing;
+      if (on !== was) { for (const l of lanes4) l.cv.classList.toggle("idle", !on); was = on; last = t; }
+      if (on) {
+        const due = Math.floor((t - last) / MS), n = Math.min(N, due);
+        if (n > 0) {
+          // back from a hidden tab, the gap is longer than the strip: start again from now
+          last = due > N ? t : last + n * MS;
+          const lv = undertoneGrid.levels(), hit = undertoneGrid.onsets();
+          lanes4.forEach((l, k) => {
+            l.hits.copyWithin(0, n); l.hits.fill(0, N - n); l.hits[N - 1] = hit[k] ? 1 : 0;
+            l.hist.copyWithin(0, n);
+            // levels are linear and small; the root spreads quiet notes up the strip
+            l.hist.fill(Math.min(1, Math.sqrt(lv[k] * 2.5)), N - n);
+            draw(l);
+          });
+        }
+      }
+      requestAnimationFrame(tick);
+    })(0);
+    addEventListener("resize", () => lanes4.forEach(draw));
+  })();
+
   // ---- boot ----
   window.undertoneGridFailed = (msg) => { status.textContent = "audio failed: " + msg; };
   window.undertoneGridReady = () => {
@@ -359,6 +431,15 @@
     $("mutate").hidden = !undertoneGrid.mutate;
     status.textContent = "ready: tap play";
   };
+  // An address that differs only after the # does not reload the page, so a
+  // link pasted over this one arrives here and nowhere else.
+  addEventListener("hashchange", () => {
+    if (!ready || !decode(location.hash)) return;
+    pushParams();
+    if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
+    paint(); pushGrid();
+    status.textContent = "pattern loaded from the link";
+  });
   paint();
   const go = new Go();
   WebAssembly.instantiateStreaming(fetch("main.wasm", { cache: "no-cache" }), go.importObject)

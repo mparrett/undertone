@@ -35,7 +35,9 @@
 //	notes()                  the bed's notes since the last call, flat: layer (a LayerNames
 //	                         index), MIDI note, gain for each
 //	position()               [row, pattern] the bed has rendered to, or null
-//	theme(json)              play grids through the bed's voices ({lead, bass, drums, bed}); "" stops
+//	theme(json)              play grids through the bed's voices ({lead, bass, pulse, drums, bed}),
+//	                         as a vector of them or {grids, then: generate|silence|loop}; "" stops
+//	themeCheck(json)         "" or what is wrong with that theme, without playing it
 //	themePlaying()           whether that theme is still playing
 //	levels()                 each layer's level, as JSON in LayerNames order
 //	play() / stop()          call from the tap handler: iOS resumes audio only inside one
@@ -125,20 +127,44 @@ func (s *seed) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// theme reads grids as {lead, bass, drums, bed}: lead and bass are 16
-// digits, a scale degree each (0 rests), drums up to DrumLanes groove lanes.
-// The theme hands back to the generator when it ends.
+// gridJSON is one grid of a theme: lead and bass are 16 digits, a scale
+// degree each (0 rests), pulse 16 digits with 1 for a step that sounds, drums
+// up to DrumLanes groove lanes.
+type gridJSON struct {
+	Lead, Bass, Pulse string
+	Drums             []string
+	Bed               bool
+}
+
+// theme reads a vector of grids, which hands back to the generator when it
+// ends, or {grids, then}, where then is what undertone/play-theme's :then
+// is: generate (the default), silence or loop.
 func theme(data string) (*engine.Theme, error) {
-	var gs []struct {
-		Lead, Bass string
-		Drums      []string
-		Bed        bool
+	var in struct {
+		Grids []gridJSON
+		Then  string
 	}
-	if err := json.Unmarshal([]byte(data), &gs); err != nil {
+	var err error
+	if strings.HasPrefix(strings.TrimSpace(data), "[") {
+		err = json.Unmarshal([]byte(data), &in.Grids)
+	} else {
+		err = json.Unmarshal([]byte(data), &in)
+	}
+	if err != nil {
 		return nil, err
 	}
-	t := &engine.Theme{Then: engine.ThenGenerate}
-	for i, g := range gs {
+	t := &engine.Theme{}
+	switch in.Then {
+	case "", "generate":
+		t.Then = engine.ThenGenerate
+	case "silence":
+		t.Then = engine.ThenSilence
+	case "loop":
+		t.Then = engine.ThenLoop
+	default:
+		return nil, fmt.Errorf("then is generate, silence or loop, not %q", in.Then)
+	}
+	for i, g := range in.Grids {
 		var out engine.Grid
 		for lane, src := range map[*[engine.Steps]int]string{&out.Lead: g.Lead, &out.Bass: g.Bass} {
 			if len(src) > engine.Steps {
@@ -150,6 +176,15 @@ func theme(data string) (*engine.Theme, error) {
 				}
 				lane[j] = int(c - '0')
 			}
+		}
+		if len(g.Pulse) > engine.Steps {
+			return nil, fmt.Errorf("grid %d: the pulse is %d steps, at most %d", i, len(g.Pulse), engine.Steps)
+		}
+		for j, c := range g.Pulse {
+			if c != '0' && c != '1' {
+				return nil, fmt.Errorf("grid %d: pulse %q is not 0 or 1", i, c)
+			}
+			out.Pulse[j] = c == '1'
 		}
 		if len(g.Drums) > engine.DrumLanes {
 			return nil, fmt.Errorf("grid %d: %d drum lanes, at most %d", i, len(g.Drums), engine.DrumLanes)
@@ -426,8 +461,9 @@ func main() {
 		}),
 		// theme(json) plays grids through the bed's own voices, as a game's
 		// theme does: a vector of {lead, bass: 16 digits, a degree 1-8 or 0 to
-		// rest; drums: up to three groove lanes; bed}. "" or null stops it.
-		// Returns "" or an error.
+		// rest; pulse: 16 digits, 0 or 1; drums: up to three groove lanes;
+		// bed}, or {grids, then} to say what follows the last grid. "" or
+		// null stops it. Returns "" or an error.
 		"theme": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			if len(a) == 0 || a[0].IsNull() || a[0].String() == "" {
 				syn.PlayTheme(nil)
@@ -438,6 +474,14 @@ func main() {
 				return err.Error()
 			}
 			syn.PlayTheme(t)
+			return ""
+		}),
+		// themeCheck(json) is theme's reading of a theme without playing it:
+		// "" or what is wrong with it.
+		"themeCheck": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			if _, err := theme(a[0].String()); err != nil {
+				return err.Error()
+			}
 			return ""
 		}),
 		"themePlaying": js.FuncOf(func(_ js.Value, _ []js.Value) any { return syn.ThemePlaying() }),

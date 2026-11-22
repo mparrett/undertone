@@ -216,9 +216,14 @@
   /* a layer muted by a click on its label: struck through, its meter dimmed */
   #meterlbl span.off { text-decoration: line-through; opacity: .5; }
   #meters div.off { opacity: .35; }
-  #themebox button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
-  #themebox button.forever { background: color-mix(in srgb, var(--src) 28%, var(--panel)); }
-  #themebox button.forever::after { content: " ↻"; }
+  #themesec button.loop { outline: 2px solid var(--src); outline-offset: 1px; }
+  #themesec button.forever { background: color-mix(in srgb, var(--src) 28%, var(--panel)); }
+  #themesec button.forever::after { content: " ↻"; }
+  /* TAKE EDN over the sound's EDN on the left, THEME on the right */
+  .edncol { display: grid; gap: 4px; align-content: start; }
+  #themeedn { min-height: 9em; height: 30em; resize: vertical; }
+  #themeednhint.err { color: var(--err); }
+  #themehint:empty { display: none; }
   textarea { width: 100%; min-height: 150px; font-size: 12px; }
   #takeedn { min-height: 6em; height: 9em; resize: vertical; }
   /* TAKE EDN and the shot's EDN side by side when both show and there's room; a lead's or palette's EDN alone takes the row */
@@ -401,7 +406,6 @@
   <div class="bar" id="pads"></div>
   <div id="takerows"></div>
   <div class="bar" id="takebox" hidden><button id="playtake"></button><span class="hint" id="takehint"></span></div>
-  <div class="bar" id="themebox" hidden><button id="playtheme" title="play the linked theme once; click again while it plays to loop it, again to stop"></button><span class="hint" id="themehint"></span></div>
   <label class="sl" id="gainbox">gain <input type="range" id="sgain" min="0" max="2" step="0.05" value="1"><output></output></label>
   <p class="hint" id="audhint" hidden></p>
   </div>
@@ -415,6 +419,7 @@
   <div class="bar"><select id="addop"><option value="">+ add a unit…</option></select></div>
 
   <div class="ednrow">
+  <div class="edncol">
   <div id="takeednbox">
     <div class="lab">TAKE EDN</div>
     <div class="bar"><span class="hint">key <kbd>1</kbd>'s take; paste takes or sfx-board blocks for a row each</span>
@@ -430,6 +435,17 @@
     <span class="hint">the map undertone/register-<span id="regkind">shot</span> takes</span></div>
   <textarea id="edn" spellcheck="false"></textarea>
   <p class="hint" id="ednhint">edit or paste here: it applies after a pause, and asks before it makes a new name</p>
+  </div>
+  </div>
+
+  <div id="themesec">
+  <div class="lab">THEME</div>
+  <div class="bar"><button id="playtheme" title="play the theme over the bed above, once; click again while it plays to loop it, again to stop"></button>
+    <span class="chip" id="themealone" title="play the theme's lead, bass and drums with no drone, fifth, pad or air under them, whatever each grid's :bed says">without bed</span>
+    <button id="copytheme">copy</button><button id="resettheme" hidden title="back to the xsofy title theme">reset</button></div>
+  <p class="hint" id="themehint"></p>
+  <textarea id="themeedn" spellcheck="false"></textarea>
+  <p class="hint" id="themeednhint"></p>
   </div>
   </div>
 </section>
@@ -740,8 +756,7 @@ function renderAudition() {
   }
   if (shot) { const t = el("button", null, "t"); t.disabled = true; t.title = "the take as pasted: paste takes in TAKE EDN to use it"; $("pads").append(t); }
   const mel = el("button", null, ""); mel.innerHTML = "&#9835;"; mel.id = "melody";
-  mel.title = (shot ? `play the melody of ${themeName} on this shot`
-    : `play ${themeName} through the bed's voices, with this ${kind}`) + ": once; click again while it plays to loop it, again to stop";
+  mel.title = melodyTitle();
   mel.onclick = () => melodyClick(fire, mel); $("pads").append(mel);
   const x = el("button", null, ""); x.innerHTML = "&#9632; stop"; x.title = "stop the repeat or the theme; the bed plays on (space stops it)";
   x.onclick = () => stopAudition(); $("pads").append(x);
@@ -757,6 +772,8 @@ function renderAudition() {
       : (track === "bass" ? "keys <kbd>1</kbd>–<kbd>8</kbd> play a theme's bass note through this palette's bass, under the bed;"
         : "keys <kbd>1</kbd>–<kbd>8</kbd> play a lead note over this palette;") + " ♫ plays the title theme through it. <b>solo</b> hears the track being edited alone";
 }
+const melodyTitle = () => (kind === "shot" ? `play the melody of ${themeName} on this shot`
+  : `play ${themeName} through the bed's voices, with this ${kind}`) + ": once; click again while it plays to loop it, again to stop";
 let lastDeg = 0;
 // Shift-click a pad to fire it every LOOP_MS until clicked again, so a sound
 // can be shaped while it repeats; a plain click or another kind stops it.
@@ -771,13 +788,24 @@ let TITLE = [
   { lead: "8007500060054000", bass: "6000000040000000", drums: ["X...............X..............."], bed: true },
   { lead: "5004300020001000", bass: "5000000010000000", drums: ["X..............................."], bed: true }];
 const TITLE_ROW_MS = 60000 / 67 / 2;
-// What ♫ calls the theme: a link's #theme= replaces both this and TITLE.
-let themeName = "the xsofy title theme";
+const XSOFY_TITLE = TITLE;
+// What ♫ calls the theme and the play button labels it; a link's #theme= or
+// an edit in the THEME box replaces these and TITLE. themeThen is what follows
+// the last grid, as undertone/play-theme's :then; themeAlone plays it with no
+// bed under any grid.
+let themeName = "the xsofy title theme", themeLabel = "xsofy title", themeThen = "generate", themeAlone = false;
+const themeJSON = () => JSON.stringify({ grids: themeAlone ? TITLE.map((g) => ({ ...g, bed: false })) : TITLE, then: themeThen });
 let themeWatch = 0;  // clears ♫'s outline when the theme ends
 let linkedTail = 0;  // stops what a linked theme's button started, once its last notes have rung
 // Whatever is played or chosen while those notes ring is the user's, so the
 // stop is called off: play, the bed chips and every audition go through here.
-const keepOn = () => { clearTimeout(linkedTail); linkedTail = 0; };
+// A theme that ends in silence holds that silence until something else plays,
+// so calling the stop off also hands the bed back to the generator.
+const keepOn = () => {
+  if (!linkedTail) return;
+  clearTimeout(linkedTail); linkedTail = 0;
+  if (themeThen === "silence") U()?.theme("");
+};
 let melodyTimers = [];
 // A lead or palette plays the theme itself through the engine, voiced by the
 // bed (so by the lead or palette being edited), at the mood's tempo; a shot
@@ -796,7 +824,7 @@ function melody(fireFn = fire, btn = $("melody"), again = false) {
     // only the first play turns the bed on: a loop's restart keeps whatever
     // mute or solo the user set meanwhile
     if (!again) audible();
-    const err = U().theme(JSON.stringify(TITLE)); if (err) return say(err, true);
+    const err = U().theme(themeJSON()); if (err) return say(err, true);
     themeWatch = setInterval(() => { if (!U().themePlaying()) end(); }, 250);
     return;
   }
@@ -807,7 +835,7 @@ function stopLoop() {
   if (themeWatch || themeNote) { clearInterval(themeWatch); themeWatch = 0; themeNote = false; U()?.theme(""); }
   melodyTimers.forEach(clearTimeout); melodyTimers = []; clearInterval(loopTimer); loopDeg = -1;
   keepOn();
-  for (const b of document.querySelectorAll("#pads .loop, #takerows .loop, #themebox .loop")) b.classList.remove("loop", "forever"); }
+  for (const b of document.querySelectorAll("#pads .loop, #takerows .loop, #themesec .loop")) b.classList.remove("loop", "forever"); }
 function loop(d, fireFn = fire, btn = $("pads").children[d]) {
   const again = loopDeg === d && btn.classList.contains("loop"); stopLoop(); if (again) return;
   loopDeg = d; btn.classList.add("loop"); fireFn(d);
@@ -1217,7 +1245,7 @@ function highlightBox(ta) {
   ta.addEventListener("input", paint); ta.addEventListener("scroll", sync);
   paint();
 }
-highlightBox($("edn")); highlightBox($("takeedn"));
+highlightBox($("edn")); highlightBox($("takeedn")); highlightBox($("themeedn"));
 
 // ---- help line ----
 // The browser's tooltips cover the controls they describe, so each title
@@ -1523,14 +1551,77 @@ $("guide").addEventListener("toggle", () => { if (!$("guide").open) showGuide(fa
 // and &take=<JSON> (a vector of undertone/trigger maps) adds a button that
 // plays it. Other pages (an sfx board) link a card here this way.
 // #theme=<JSON> brings a theme and the bed to play it over: {name, grids:
-// [{lead, bass, drums, bed}], mood, level, tension, seed, mute: [layer]}.
-// Only grids is required. It gets a play button, and ♫ plays it too.
+// [{lead, bass, pulse, drums, bed}], then, mood, level, tension, seed, mute:
+// [layer]}. Only grids is required. It lands in the THEME box.
 let take = null;
+const digits = (s) => [...s].map(Number);
+// The theme as the map undertone/play-theme takes, a grid to a line.
+function themeEDN() {
+  const g1 = (g) => `{:lead [${digits(g.lead.padEnd(16, "0")).join(" ")}]\n          :bass [${digits(g.bass.padEnd(16, "0")).join(" ")}]`
+    + (g.pulse && g.pulse.includes("1") ? `\n          :pulse [${[...g.pulse.padEnd(16, "0")].map((c) => c === "1").join(" ")}]` : "")
+    + (g.drums && g.drums.length ? `\n          :drums [${g.drums.map((d) => JSON.stringify(d)).join(" ")}]` : "")
+    + `\n          :bed ${!!g.bed}}`;
+  return `{:grids [${TITLE.map(g1).join("\n         ")}]\n :then :${themeThen}}`;
+}
+// Read a theme: the map play-theme takes, a bare vector of grids, or a form
+// that ends in one, so a (def title-theme "…" {…}) pasted from a game's
+// source works. Throws with what is wrong, in the lg binding's words.
+function themeOf(text) {
+  let m = readEDN(text);
+  if (Array.isArray(m) && m.length && !Array.isArray(m[m.length - 1]) && typeof m[m.length - 1] === "object" && m[m.length - 1] && ":grids" in m[m.length - 1]) m = m[m.length - 1];
+  if (Array.isArray(m)) m = { ":grids": m };
+  if (!m || typeof m !== "object" || !Array.isArray(m[":grids"]) || !m[":grids"].length) throw new Error("EDN: a theme is {:grids [{:lead […] :bass […]} …] :then :generate}");
+  const then = kw(m[":then"] ?? ":generate");
+  if (!["generate", "silence", "loop"].includes(then)) throw new Error(`EDN: :then must be :generate, :silence or :loop, got ${m[":then"]}`);
+  const grids = m[":grids"].map((g, n) => {
+    if (!g || typeof g !== "object" || Array.isArray(g)) throw new Error(`EDN: grid ${n} is not a map`);
+    const lane = (k) => {
+      const v = g[k] ?? [];
+      if (!Array.isArray(v) || v.length > 16) throw new Error(`EDN: grid ${n} ${k} must be a vector of at most 16 degrees`);
+      v.forEach((d, i) => { if (!Number.isInteger(d) || d < 0 || d > 8) throw new Error(`EDN: grid ${n} ${k} step ${i} is ${d}, outside 0..8`); });
+      return v.join("").padEnd(16, "0");
+    };
+    const pulse = g[":pulse"] ?? [], drums = g[":drums"] ?? [];
+    if (!Array.isArray(pulse) || pulse.length > 16) throw new Error(`EDN: grid ${n} :pulse must be a vector of at most 16 booleans`);
+    if (!Array.isArray(drums) || drums.length > 3) throw new Error(`EDN: grid ${n} :drums must be a vector of at most 3 lanes`);
+    drums.forEach((d, i) => { if (typeof d !== "string" || d[0] === ":") throw new Error(`EDN: grid ${n} :drums lane ${i} must be a string`); });
+    // as lg reads :bed, where only nil and false are not true
+    return { lead: lane(":lead"), bass: lane(":bass"), pulse: pulse.map((p) => p != null && p !== false ? "1" : "0").join(""), drums, bed: g[":bed"] != null && g[":bed"] !== false };
+  });
+  return { grids, then };
+}
+// Show the theme: the play button's label, ♫'s tooltip, and the box unless
+// the user is typing in it.
+function showTheme(keepBox) {
+  const n = TITLE.length;
+  $("playtheme").textContent = `▶ play ${themeLabel} (${n} grid${n === 1 ? "" : "s"})`;
+  $("themealone").classList.toggle("on", themeAlone);
+  $("resettheme").hidden = TITLE === XSOFY_TITLE;
+  if ($("melody")) $("melody").title = melodyTitle();
+  if (!keepBox) { $("themeedn").value = themeEDN(); themeSay("the map undertone/play-theme takes: edit or paste here, a def from a game's source too; it applies after a pause"); }
+}
+const themeSay = (t, err) => { $("themeednhint").textContent = t; $("themeednhint").classList.toggle("err", !!err); };
+// Take the box's text as the theme, once typing pauses. What is playing
+// plays on; the next play is the new theme.
+let themeTimer = 0;
+function installTheme() {
+  let t;
+  try { t = themeOf($("themeedn").value); } catch (e) { return themeSay(e.message, true); }
+  const err = checkTheme(t); if (err) return themeSay(err, true);
+  TITLE = t.grids; themeThen = t.then; themeName = "the theme in the THEME box"; themeLabel = "theme";
+  $("themehint").textContent = "";
+  showTheme(true); themeSay(`${t.grids.length} grid${t.grids.length === 1 ? "" : "s"}, then :${t.then}`);
+}
+// The studio's Go side reads a theme the same way whether it plays it or
+// not, so this is what play would say.
+const checkTheme = (t) => { try { return U().themeCheck(JSON.stringify({ grids: t.grids, then: t.then })); } catch (e) { return String(e); } };
 function openTheme(text) {
   let t;
   try { t = JSON.parse(text); } catch { return say("theme: not JSON", true); }
   // Everything is checked before anything is applied, so a bad link changes nothing.
   if (!t || !Array.isArray(t.grids) || !t.grids.length) return say("theme: no grids", true);
+  const then = t.then ?? "generate";
+  const bad = checkTheme({ grids: t.grids, then }); if (bad) return say(`theme: ${bad}`, true);
   if (t.mood != null && ![...$("mood").options].some((o) => o.value === t.mood)) return say(`theme: no mood ${t.mood}`, true);
   for (const id of ["level", "tension"]) {
     if (t[id] != null && !(typeof t[id] === "number" && t[id] >= +$(id).min && t[id] <= +$(id).max)) return say(`theme: ${id} ${t[id]} is not ${$(id).min} to ${$(id).max}`, true);
@@ -1551,14 +1642,13 @@ function openTheme(text) {
   if (seed != null) { const n = document.querySelector(".num[data-for=seed]"); n.value = seed; n.oninput(); n.onchange(); }
   layerMuted.clear(); for (const l of mute) layerMuted.add(l);
   showLayerMutes(); applyBed();
-  TITLE = t.grids; themeName = t.name ? `“${t.name}”` : "the linked theme";
-  const n = TITLE.length;
-  $("themebox").hidden = false; $("playtheme").textContent = `▶ play ${t.name || "theme"} (${n} grid${n === 1 ? "" : "s"})`;
+  TITLE = t.grids.map((g) => ({ lead: g.lead || "", bass: g.bass || "", pulse: g.pulse || "", drums: g.drums || [], bed: !!g.bed }));
+  themeThen = then; themeName = t.name ? `“${t.name}”` : "the linked theme"; themeLabel = t.name || "theme";
   $("themehint").textContent = "from the link, over the bed set above; click a layer's name under the meters to mute it";
-  renderAudition();
+  showTheme();
 }
-// The linked theme through the bed as it is: the mood's own voices, or the
-// lead or palette being edited. Its clicks cycle as ♫'s do: once, loop, stop.
+// The theme through the bed as it is: the mood's own voices, or the lead or
+// palette being edited. Its clicks cycle as ♫'s do: once, loop, stop.
 function playLinked(again = false) {
   const btn = $("playtheme");
   if (again) clearInterval(themeWatch);
@@ -1569,12 +1659,14 @@ function playLinked(again = false) {
     if (!playing) { setPlaying(true); auditionPlaying = true; }
     if (!bedOn) { bedOn = true; bedChips(); auditionBed = true; }
   }
-  const err = U().theme(JSON.stringify(TITLE)); if (err) { stopLoop(); return say(err, true); }
+  const err = U().theme(themeJSON()); if (err) { stopLoop(); return say(err, true); }
   themeWatch = setInterval(() => {
     if (U().themePlaying()) return;
     if (btn.classList.contains("forever")) return playLinked(true);
     clearInterval(themeWatch); themeWatch = 0; btn.classList.remove("loop");
-    linkedTail = setTimeout(stopAudition, 1500);
+    // the last notes ring; after a theme that ends in silence, so does the
+    // silence for a moment, before the generator is given the bed back
+    linkedTail = setTimeout(() => { linkedTail = 0; if (themeThen === "silence") U().theme(""); stopAudition(); }, themeThen === "silence" ? 3000 : 1500);
   }, 250);
 }
 function openFromHash() {
@@ -1590,9 +1682,17 @@ function openFromHash() {
 }
 $("playtake").onclick = () => { keepOn(); if (!playing) setPlaying(true); U().trigger(JSON.stringify(take)); };
 $("playtheme").onclick = () => playLinked();
+$("themealone").onclick = () => { themeAlone = !themeAlone; showTheme(true); };
+$("themeedn").addEventListener("input", () => { clearTimeout(themeTimer); themeTimer = setTimeout(installTheme, 400); });
+$("copytheme").onclick = async () => { try { await navigator.clipboard.writeText($("themeedn").value); say("theme copied"); } catch { $("themeedn").select(); say("select-all done: copy with the keyboard"); } };
+$("resettheme").onclick = () => {
+  clearTimeout(themeTimer);
+  TITLE = XSOFY_TITLE; themeThen = "generate"; themeName = "the xsofy title theme"; themeLabel = "xsofy title";
+  $("themehint").textContent = ""; showTheme();
+};
 window.undertoneStudioReady = () => {
   for (const m of JSON.parse(U().names("mood"))) { const o = el("option", null, m); o.selected = m === "dungeon"; $("mood").append(o); }
-  buildKinds(); openFirst(); measureNames();
+  buildKinds(); openFirst(); measureNames(); showTheme();
   $("play").disabled = false; setPlaying(false);
   document.querySelector("main").classList.remove("loading");
   requestAnimationFrame(meters);

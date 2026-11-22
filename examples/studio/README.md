@@ -30,13 +30,21 @@ In a game:
 A click on a layer's name under the meters mutes that layer, and another
 brings it back.
 
-`#theme=<JSON>` links a theme in, with the bed to play it over:
-`{name, grids: [{lead, bass, drums, bed}], mood, level, tension, seed, mute}`.
-`lead` and `bass` are 16 digits each, a scale degree per step with 0 a rest;
-`mute` is a list of layer names, and a seed past 2^53 must be a decimal
-string; only `grids` is required, and a link with a bad value changes nothing. The theme gets a
-play button (once, loop, stop, as ♫ cycles) and ♫ plays it too, so it can be
-heard through a lead or palette being edited.
+The THEME section holds an authored theme as the map `undertone/play-theme`
+takes, `{:grids [{:lead [...] :bass [...] :pulse [...] :drums [...] :bed true}]
+:then :generate}`. It opens on the xsofy title theme. Edit it or paste one in,
+a `(def ...)` from a game's source too, and it applies after a pause; copy takes
+it back out. Its play button cycles once, loop, stop, as ♫ does, and plays over
+the bed as it is, so through a lead or palette being edited. **without bed**
+plays the theme's lead, bass and drums alone. A theme whose `:then` is
+`:silence` ends in that silence for a moment before the bed returns.
+
+`#theme=<JSON>` links a theme into that section, with the bed to play it over:
+`{name, grids: [{lead, bass, pulse, drums, bed}], then, mood, level, tension,
+seed, mute}`. `lead` and `bass` are 16 digits each, a scale degree per step
+with 0 a rest; `pulse` is 16 digits, 0 or 1; `mute` is a list of layer names,
+and a seed past 2^53 must be a decimal string. Only `grids` is required, and a
+link with a bad value changes nothing.
 
 Other pages can link a sound in: `#shot=<EDN>` (or `lead=`, `palette=`)
 imports it, and `&take=<JSON>` adds a button that plays a take, a vector of

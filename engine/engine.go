@@ -1558,6 +1558,12 @@ type Synth struct {
 
 	// hand-written pattern (grid.go): nil plays the generator alone
 	grid atomic.Pointer[Grid]
+	// staged by Rewind, for the audio thread to take at the next block
+	rewind atomic.Bool
+	// cut is set from a theme start or a Rewind until the row it restarts
+	// on steps. Flams can hold that row back, and until it steps the row
+	// counters name a row that never sounded.
+	cut bool
 
 	// authored themes (theme.go): themeCmd is staged by PlayTheme; the rest
 	// belongs to the audio thread, except the two counters ThemePlaying reads
@@ -1956,6 +1962,11 @@ func (s *Synth) applyNow(c *paramCmd) {
 	s.apply(c)
 	s.rowLeft = max(1, s.rowLeft*s.samplesPerRow/old)
 	s.rescaleDrums(old)
+	if s.cut {
+		// the cut pattern's remaining rows never sounded, so there is no
+		// row to revoice as of; the pending row 0 redraws the pattern
+		return
+	}
 	pat, row := s.pat, s.row-1
 	if row < 0 {
 		pat, row = pat-1, rows-1
@@ -2001,6 +2012,7 @@ func (s *Synth) revoice(t, pat, row int) {
 
 func (s *Synth) step() {
 	_, s.owner, s.runFrom = s.nextOwner()
+	s.cut = false
 	if s.row == 0 {
 		s.advanceTheme()
 		if c := s.next.Swap(nil); c != nil && s.landsAtBoundary(c) {
@@ -2054,6 +2066,11 @@ func (s *Synth) frame() (int16, int16) {
 	if s.nframe%nowBlock == 0 {
 		if c := s.themeCmd.Swap(nil); c != nil {
 			s.startTheme(c)
+		}
+		// after a theme staged in the same block, so that one starts from
+		// its first grid either way
+		if s.rewind.Swap(false) {
+			s.startOver()
 		}
 	}
 	if s.leadIn {

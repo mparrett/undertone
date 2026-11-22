@@ -66,7 +66,7 @@ func (s *Synth) startTheme(c *themeCmd) {
 	if s.row != 0 {
 		s.pat++ // the cut pattern ends here; the bed draws a fresh one
 	}
-	s.row, s.rowLeft, s.leadIn = 0, 0, true
+	s.row, s.rowLeft, s.leadIn, s.cut = 0, 0, true, true
 }
 
 // playingGrid is the grid that owns this pattern: the theme's, the silence

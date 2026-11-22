@@ -106,6 +106,9 @@ to the generator, `ThenSilence` rests until the next theme, and `ThenLoop`
 repeats it. `ThemePlaying` reports whether it has still to finish. A theme is
 written in scale degrees, so it plays in the key and tempo the params set.
 
+`Synth.Rewind` starts what is playing over from the top: a grid or the
+generator from the first row of a new pattern, a theme from its first grid.
+
 One-shots run beside the sequencer in an 8-voice pool that the sequencer never
 sees, so a trigger cannot change the music's random streams. Patches:
 `footstep`, `hit`, `thud`, `creak`, `cry`, `sink`, `lift`, `thunk`, `snap`,

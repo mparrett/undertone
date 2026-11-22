@@ -85,6 +85,7 @@
 
   <div class="bar">
     <button id="play" disabled>loading…</button>
+    <button id="restart" title="back to the first step (r): the pattern starts over, or will when you press play">&#9198;&#xFE0E; restart</button>
     <label class="tempo">tempo <input id="bpm" type="range" min="60" max="160" step="1" value="110"><span id="bpmv">110</span></label>
   </div>
   <div class="bar" id="moods"><span class="lab">mood:</span></div>
@@ -99,7 +100,7 @@
   <footer>Tap a cell to place a note, tap it again to clear; drag to paint. One note per step in each lane.
     Rows are scale degrees, so the pattern stays in key when the mood changes.
     Drum cells are sixteenths: a tap cycles hit, accent, ghost, rest.
-    Space plays and stops on a keyboard. Edits are heard the next time the playhead passes them.</footer>
+    Space plays and stops on a keyboard, and r goes back to the first step. Edits are heard the next time the playhead passes them.</footer>
  </aside>
  <section>
 
@@ -316,8 +317,16 @@
     status.textContent = on ? `playing at ${st.bpm} bpm` : "stopped";
   }
   $("play").onclick = () => setPlaying(!playing);
+  function restart() {
+    if (!ready) return;
+    undertoneGrid.restart();
+    status.textContent = playing ? "back to the first step" : "stopped at the first step";
+  }
+  $("restart").onclick = restart;
   addEventListener("keydown", (e) => {
-    if (e.code === "Space" && ready && e.target.tagName !== "INPUT") { e.preventDefault(); setPlaying(!playing); }
+    if (!ready || e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
+    if (e.key === "r") restart();
   });
 
   // ---- playhead ----

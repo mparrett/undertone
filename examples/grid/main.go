@@ -22,6 +22,7 @@
 //	row()            the step being heard, or -1 while stopped
 //	levels()         [lead, bass, pulse, drums]: each lane's level, dry, as of the last block rendered
 //	onsets()         [lead, bass, pulse, drums]: how many notes each lane started since the last call
+//	queued()         milliseconds of audio rendered but not yet heard: how far levels and onsets lead the ear
 //	audition(json)   play a grid once, alone, without touching the pattern: a cell heard before it is placed
 //	key()            the current key and the notes of each lane's rows 1 and 8, as JSON
 //	mutate(json, n)  with -tags lg only: lg's variation of a grid for seed n
@@ -293,6 +294,12 @@ func main() {
 				}
 			}
 			return out
+		}),
+		"queued": js.FuncOf(func(js.Value, []js.Value) any {
+			if p := player.Load(); p != nil {
+				return float64(p.Queued()) / float64(time.Millisecond)
+			}
+			return 0
 		}),
 		"audition": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			var j gridJSON

@@ -35,11 +35,13 @@
   .lab { font-size: 13px; color: var(--mut); }
   #key { font-size: 13px; color: var(--fg); margin-left: 6px; }
   .lbl.ref { color: var(--fg); }
-  .lane { margin: 12px 0 4px; font-size: 12px; color: var(--mut); letter-spacing: .1em;
-          display: flex; align-items: center; gap: 10px; }
-  .lane span { flex: none; width: 4.2em; }
-  /* each lane's level over the last few seconds, newest at the right, with a tick where a note starts */
-  .strip { flex: 1; min-width: 0; height: 14px; border-radius: 3px; background: var(--panel); transition: opacity .3s; }
+  /* a lane's name sits in the row labels' column, and its strip over the cells */
+  .lane { margin: 12px 0 4px; font-size: 10px; color: var(--mut); display: grid; align-items: center;
+          grid-template-columns: 32px calc(16 * var(--cell) + 3 * 6px); /* the strip is as wide as the cells under it */ }
+  .lane span { text-align: right; padding-right: 5px; white-space: nowrap; direction: rtl; /* a long name overflows to the left, off the strip */ }
+  /* the lane as it plays: a cursor under the playhead draws the lane's level
+     and a tick where a note starts, and leaves the last pass behind it */
+  .strip { width: 100%; min-width: 0; height: 14px; border-radius: 3px; background: var(--panel); transition: opacity .3s; }
   .strip.idle { opacity: .4; }
   /* the first step of each beat after the first is 6px wider, padded on the left: beat groups */
   .grid { --C: calc(var(--cell) + 6px); display: grid; row-gap: 2px;
@@ -69,14 +71,29 @@
   main.loading .grid, main.loading .lane, main.loading .bar .chip, main.loading .bar button:not(#play),
   main.loading .bar label { opacity: .35; pointer-events: none; transition: opacity .3s; }
   footer { margin: 4px 0 10px; font-size: 12px; color: var(--mut); }
-  @media (max-width: 899px) { footer { order: 9; } aside { display: contents; } main { display: flex; flex-direction: column; } section { order: 5; } }
+  @media (max-width: 899px) { footer { order: 9; } aside, header { display: contents; } main { display: flex; flex-direction: column; } section { order: 5; } }
   footer a { color: var(--mut); }
-  /* wide screens: controls beside the grid. A pointer can hit a small cell,
-     so the drum cells, half a step wide, are half as tall too: square */
+  /* wide screens: play and tempo in a bar across the top, the other controls
+     in a narrow column, and the rest of the width for the grid. Cells take
+     what the width gives, short of making the page scroll: 18.5 cells of
+     height (the drum rows are half ones) and 300px of everything else. */
   @media (min-width: 900px) {
-    .drums .c, .drums .lbl { height: calc(var(--cell) / 2); }
+    :root { --side: 210px;
+            --cell: clamp(22px, min(calc((100vw - 64px - var(--side) - 32px - 32px - 18px) / 16), calc((100dvh - 300px) / 18.5)), 36px); }
     body { padding: 32px; }
-    main { max-width: none; display: grid; grid-template-columns: 250px auto; gap: 40px; justify-content: center; align-items: start; }
+    main { max-width: none; display: grid; grid-template-columns: var(--side) auto; gap: 20px 32px; justify-content: center; align-items: start; }
+    /* min-width 0: the bar is as wide as the columns under it, and does not widen them */
+    header { grid-column: 1 / -1; min-width: 0; display: flex; align-items: center; gap: 16px; }
+    header h1, header .bar, header #status { margin: 0; }
+    header h1 { width: var(--side); flex: none; margin-right: 16px; }
+    header .bar { flex: none; flex-wrap: nowrap; }
+    header #status { order: 3; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    header button { padding: 5px 12px; font-size: 14px; }
+    #play { font-size: 14px; }
+    label.tempo { flex: none; width: 200px; min-width: 0; }
+    /* a pointer can hit a small cell, so the drum cells, half a step wide,
+       are half as tall too: square */
+    .drums .c, .drums .lbl { height: calc(var(--cell) / 2); }
     .lbl { font-size: 12px; }
     .lane:first-child { margin-top: 0; }
   }
@@ -84,15 +101,16 @@
 </head>
 <body>
 <main class="loading">
- <aside>
+ <header>
   <h1>UNDERTONE · GRID</h1>
   <div id="status">loading the engine…</div>
-
-  <div class="bar">
+  <div class="bar" id="transport">
     <button id="play" disabled>loading…</button>
     <button id="restart" title="back to the first step (r): the pattern starts over, or will when you press play">&#9198;&#xFE0E; restart</button>
     <label class="tempo">tempo <input id="bpm" type="range" min="60" max="160" step="1" value="110"><span id="bpmv">110</span></label>
   </div>
+ </header>
+ <aside>
   <div class="bar" id="moods"><span class="lab">mood:</span></div>
   <div class="bar" id="voices"><span class="lab">lead voice:</span></div>
   <div class="bar">
@@ -107,7 +125,7 @@
     Drum cells are sixteenths: a tap cycles hit, accent, ghost, rest.
     Alt-click or shift-click a cell to hear it without placing it.
     Space plays and stops on a keyboard, and r goes back to the first step. Edits are heard the next time the playhead passes them.
-    The strip beside each lane's name is that lane as it plays: a tick where a note starts, over its level before the echo.</footer>
+    The strip over each lane follows the playhead: a tick where a note starts, over the lane's level before the echo, with the last pass left dim behind it.</footer>
  </aside>
  <section>
 
@@ -338,9 +356,11 @@
     status.textContent = on ? `playing at ${st.bpm} bpm` : "stopped";
   }
   $("play").onclick = () => setPlaying(!playing);
+  let stripRestart = () => {}; // set by the lane strips, which cannot see a restart in the rows
   function restart() {
     if (!ready) return;
     undertoneGrid.restart();
+    stripRestart();
     status.textContent = playing ? "back to the first step" : "stopped at the first step";
   }
   $("restart").onclick = restart;
@@ -363,54 +383,107 @@
   })();
 
   // ---- lane strips ----
-  // A strip scrolls its lane's level, sampled 60 times a second whatever the
-  // display's rate, so it covers the same few seconds on every screen. It
-  // holds still while stopped: the engine's levels do too.
+  // Each strip lies over its lane's sixteen columns. A cursor moves with the
+  // playhead and writes the lane's level and note starts under itself, as a
+  // scope's does, so a pass stays where it was heard: bright until the
+  // pattern comes round, then dim until the cursor reaches it again.
   (function strips() {
-    const N = 240, MS = 1000 / 60; // four seconds
     const css = getComputedStyle(document.documentElement);
-    const lanes4 = ["lead", "bass", "pulse", "drums"].map((lane) => {
+    const L = ["lead", "bass", "pulse", "drums"].map((lane) => {
       const cv = document.querySelector(`.strip[data-lane=${lane}]`);
-      return { cv, g: cv.getContext("2d"), hist: new Float32Array(N), hits: new Uint8Array(N), color: css.getPropertyValue(lane === "drums" ? "--drum" : "--" + lane).trim() };
+      return { cv, g: cv.getContext("2d"), color: css.getPropertyValue(lane === "drums" ? "--drum" : "--" + lane).trim() };
     });
-    let last = 0, was = null;
-    function draw(l) {
-      const dpr = devicePixelRatio || 1, w = Math.round(l.cv.clientWidth * dpr), h = Math.round(l.cv.clientHeight * dpr);
-      if (l.cv.width !== w || l.cv.height !== h) { l.cv.width = w; l.cv.height = h; }
-      l.g.clearRect(0, 0, w, h); l.g.fillStyle = l.color;
-      const bw = w / N;
-      // the level dimmed, so the ticks read over it: the meter falls slowly,
-      // and on its own it runs one note into the next
-      l.g.globalAlpha = 0.45;
-      for (let i = 0; i < N; i++) {
-        const v = l.hist[i]; if (v <= 0.01) continue;
-        const bh = Math.max(1, v * h);
-        l.g.fillRect(i * bw, (h - bh) / 2, Math.ceil(bw), bh); // centred, as a waveform's outline is
+    const GAP = 5; // css px cleared ahead of the cursor
+    let xs = [], W = 0, H = 0, dpr = 1; // in device pixels: each step's left edge, then the last one's right
+    function measure() {
+      dpr = devicePixelRatio || 1;
+      const box = L[0].cv.getBoundingClientRect(), row = [...document.querySelectorAll("#lead .c[data-deg='1']")];
+      const cell = row[0].getBoundingClientRect().width;
+      // a beat's first cell is wider on its left, so a step starts a cell's width before its right edge
+      xs = row.map((c) => (c.getBoundingClientRect().right - cell - box.left) * dpr);
+      xs.push((row[STEPS - 1].getBoundingClientRect().right - box.left) * dpr);
+      W = Math.round(box.width * dpr); H = Math.round(box.height * dpr);
+      for (const l of L) {
+        l.cv.width = W; l.cv.height = H;
+        l.lv = new Float32Array(W); l.hit = new Uint8Array(W); l.pass = new Uint32Array(W); // pass 0: never written
       }
-      l.g.globalAlpha = 1;
-      for (let i = 0; i < N; i++) if (l.hits[i]) l.g.fillRect(i * bw, 0, Math.max(dpr, bw), h);
+      at = -1;
     }
+    function draw(l, x) {
+      const g = l.g, gap = GAP * dpr;
+      g.clearRect(0, 0, W, H);
+      for (const [fresh, a, tick] of [[false, 0.2, 0.3], [true, 0.5, 1]]) {
+        g.fillStyle = l.color;
+        for (let c = 0; c < W; c++) {
+          if (!l.pass[c] || (l.pass[c] === pass) !== fresh) continue;
+          if (!fresh && x >= 0 && c > x && c <= x + gap) continue; // the cursor clears a little way ahead
+          const h = l.hit[c] ? H : l.lv[c] > 0.01 ? Math.max(1, l.lv[c] * H) : 0;
+          if (!h) continue;
+          g.globalAlpha = l.hit[c] ? tick : a;
+          g.fillRect(c, (H - h) / 2, l.hit[c] ? Math.max(1, dpr) : 1, h);
+        }
+      }
+      g.globalAlpha = 0.9; g.fillStyle = css.getPropertyValue("--fg").trim();
+      if (x >= 0) g.fillRect(x, 0, Math.max(1, dpr), H);
+      g.globalAlpha = 1;
+    }
+    // The engine reports what it has rendered, which the ear gets queued()
+    // later: readings wait here that long, so a tick lands under the
+    // playhead and not ahead of it.
+    let q = [], cur = null, hits = [0, 0, 0, 0];
+    let row = -1, rowAt = 0, at = -1, pass = 1, was = null;
+    let frac = 0, stoppedAt = 0; // where in its step the cursor stopped, and when
+    // A restart is heard once the queue ahead of it has played, and cannot be
+    // read off the rows: from the first step the row does not change, and from
+    // the last it looks like the pattern coming round. So restart says so:
+    // jumpAt is when the jump is due, or Infinity for one made while stopped.
+    let jumpAt = 0;
+    stripRestart = () => { jumpAt = was ? performance.now() + undertoneGrid.queued() : Infinity; };
     (function tick(t) {
       const on = ready && playing;
-      if (on !== was) { for (const l of lanes4) l.cv.classList.toggle("idle", !on); was = on; last = t; }
-      if (on) {
-        const due = Math.floor((t - last) / MS), n = Math.min(N, due);
-        if (n > 0) {
-          // back from a hidden tab, the gap is longer than the strip: start again from now
-          last = due > N ? t : last + n * MS;
-          const lv = undertoneGrid.levels(), hit = undertoneGrid.onsets();
-          lanes4.forEach((l, k) => {
-            l.hits.copyWithin(0, n); l.hits.fill(0, N - n); l.hits[N - 1] = hit[k] ? 1 : 0;
-            l.hist.copyWithin(0, n);
-            // levels are linear and small; the root spreads quiet notes up the strip
-            l.hist.fill(Math.min(1, Math.sqrt(lv[k] * 2.5)), N - n);
-            draw(l);
-          });
-        }
+      if (on !== was) {
+        for (const l of L) l.cv.classList.toggle("idle", !on);
+        if (on && was !== null) {
+          // Stop froze the output with its queue, so everything resumes late
+          // by the pause: the readings still waiting, and the step under way.
+          const paused = t - stoppedAt;
+          for (const e of q) e.due += paused;
+          rowAt = t - frac * (30000 / st.bpm);
+          if (jumpAt === Infinity) jumpAt = t + undertoneGrid.queued();
+        } else if (!on) stoppedAt = t;
+        was = on;
+      }
+      const r = on ? undertoneGrid.row() : -1;
+      if (r >= 0) {
+        if (stale()) measure();
+        // due by the queue as it stood when read: it is still filling just after play
+        q.push({ due: t + undertoneGrid.queued(), lv: undertoneGrid.levels(), hit: undertoneGrid.onsets() });
+        while (q.length && q[0].due <= t) { cur = q.shift(); cur.hit.forEach((n, k) => { hits[k] += n; }); }
+        // a restart lands with a row change near its time, or with none: on the first step already
+        const restarting = jumpAt && t >= jumpAt - 50 && (r !== row || t >= jumpAt + 50);
+        if (restarting) jumpAt = 0;
+        const wrapped = !restarting && r !== row && row === STEPS - 1 && r === 0;
+        const jumped = restarting || (r !== row && !wrapped && r !== row + 1); // or the first frame
+        if (r !== row || restarting) { row = r; rowAt = t; }
+        frac = Math.min(1, (t - rowAt) / (30000 / st.bpm)); // a step is an eighth note
+        const x = Math.min(W - 1, Math.round(xs[r] + frac * (xs[r + 1] - xs[r])));
+        if (wrapped || jumped) pass++;
+        // columns passed since the last frame: all of them up to the end, on the way round
+        const spans = at < 0 || jumped ? [[x, x]] : wrapped ? [[at + 1, W - 1, pass - 1], [0, x]] : [[at + 1, x]];
+        L.forEach((l, k) => {
+          const v = cur ? Math.min(1, Math.sqrt(cur.lv[k] * 2.5)) : 0; // levels are linear and small; the root lifts quiet notes
+          for (const [a, b, p] of spans) for (let c = a; c <= b; c++) { l.lv[c] = v; l.hit[c] = 0; l.pass[c] = p || pass; }
+          if (hits[k]) { l.hit[x] = 1; hits[k] = 0; }
+          draw(l, x);
+        });
+        at = x;
       }
       requestAnimationFrame(tick);
     })(0);
-    addEventListener("resize", () => lanes4.forEach(draw));
+    // a new width or zoom moves the columns, and what was drawn no longer lies over them
+    const stale = () => Math.round(L[0].cv.getBoundingClientRect().width * (devicePixelRatio || 1)) !== W;
+    addEventListener("resize", () => { if (stale()) { measure(); for (const l of L) draw(l, -1); } });
+    measure();
   })();
 
   // ---- boot ----

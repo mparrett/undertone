@@ -32,7 +32,10 @@ brings it back.
 
 The THEME section holds an authored theme as the map `undertone/play-theme`
 takes, `{:grids [{:lead [...] :bass [...] :pulse [...] :drums [...] :bed true}]
-:then :generate}`. It opens on the xsofy title theme. Edit it or paste one in,
+:then :generate}`. It opens on the xsofy title's notes, over whatever bed is
+set; **load xsofy title with its game bed** also sets the mood, level, tension
+and seed the game stages for its title screen, which fix the tempo, key and
+lead instrument. Edit it or paste one in,
 a `(def ...)` from a game's source too, and it applies after a pause; copy takes
 it back out. Its play button cycles once, loop, stop, as ♫ does, and plays over
 the bed as it is, so through a lead or palette being edited. **without bed**
@@ -44,7 +47,7 @@ plays the theme's lead, bass and drums alone. A theme whose `:then` is
 seed, mute}`. `lead` and `bass` are 16 digits each, a scale degree per step
 with 0 a rest; `pulse` is 16 digits, 0 or 1; `mute` is a list of layer names,
 and a seed past 2^53 must be a decimal string. Only `grids` is required, and a
-link with a bad value changes nothing.
+link with a bad value changes nothing. A theme link scrolls to the section.
 
 Other pages can link a sound in: `#shot=<EDN>` (or `lead=`, `palette=`)
 imports it, and `&take=<JSON>` adds a button that plays a take, a vector of

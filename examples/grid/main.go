@@ -18,6 +18,7 @@
 //	setParams(json)  {bpm, mood: "village"|"aurora"|"meadow"|"overworld"|"ruins"|"dungeon", voice, seed}
 //	seedGrid(seed)   a starting grid derived from the current params, as JSON
 //	play() / stop()  call from the tap handler: iOS resumes audio only inside one
+//	restart()        start the pattern over from its first step; while stopped, the next play starts there
 //	row()            the step being heard, or -1 while stopped
 //	key()            the current key and the notes of each lane's rows 1 and 8, as JSON
 //	mutate(json, n)  with -tags lg only: lg's variation of a grid for seed n
@@ -198,6 +199,12 @@ func main() {
 			if p := player.Load(); p != nil {
 				p.Pause()
 			}
+			return nil
+		}),
+		"restart": js.FuncOf(func(js.Value, []js.Value) any {
+			// While stopped the gate holds the synth still, so this waits
+			// for the next play; what the output had queued is heard first.
+			syn.Rewind()
 			return nil
 		}),
 		"row": js.FuncOf(func(js.Value, []js.Value) any {

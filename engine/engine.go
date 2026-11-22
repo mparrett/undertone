@@ -1558,6 +1558,8 @@ type Synth struct {
 
 	// hand-written pattern (grid.go): nil plays the generator alone
 	grid atomic.Pointer[Grid]
+	// staged by Rewind, for the audio thread to take at the next block
+	rewind atomic.Bool
 
 	// authored themes (theme.go): themeCmd is staged by PlayTheme; the rest
 	// belongs to the audio thread, except the two counters ThemePlaying reads
@@ -2054,6 +2056,11 @@ func (s *Synth) frame() (int16, int16) {
 	if s.nframe%nowBlock == 0 {
 		if c := s.themeCmd.Swap(nil); c != nil {
 			s.startTheme(c)
+		}
+		// after a theme staged in the same block, so that one starts from
+		// its first grid either way
+		if s.rewind.Swap(false) {
+			s.startOver()
 		}
 	}
 	if s.leadIn {

@@ -59,6 +59,25 @@ func (s *Synth) SetGrid(g *Grid) {
 	s.grid.Store(g)
 }
 
+// Rewind starts what is playing over within one block: the grid set with
+// SetGrid or the generator from the first row of a new pattern, a theme from
+// its first grid. The pattern that was playing is cut, as PlayTheme cuts one,
+// and notes already sounding ring out. For a host's "from the top" button.
+// Safe to call from any goroutine.
+func (s *Synth) Rewind() { s.rewind.Store(true) }
+
+// startOver runs on the audio thread at a block boundary, before the row
+// step, so the first row steps on this frame.
+func (s *Synth) startOver() {
+	if s.theme != nil {
+		s.themeAt, s.themeFresh = 0, true
+	}
+	if s.row != 0 {
+		s.pat++ // the cut pattern ends here, as in startTheme
+	}
+	s.row, s.rowLeft, s.leadIn = 0, 0, true
+}
+
 // DegreeNote is the note grid degree d (1-based) plays above base in p's
 // scale, for a host that labels a grid's rows; GridBases gives the bases.
 func DegreeNote(p Params, base, d int) int { return degreeNote(p, base, d) }

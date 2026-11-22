@@ -6,8 +6,8 @@ import "math"
 type Position struct {
 	Row int // 0 to 15
 	// Pattern counts patterns since the synth started. A theme starting
-	// mid-pattern cuts that pattern short and starts the next; a change
-	// made with SetParametersNow keeps the count.
+	// mid-pattern, or a Rewind there, cuts that pattern short and starts
+	// the next; a change made with SetParametersNow keeps the count.
 	Pattern int
 	Frame   int64 // the frame the row started on
 	// Pending is a SetParameters staged for the next pattern boundary, and

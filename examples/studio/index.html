@@ -775,6 +775,9 @@ const TITLE_ROW_MS = 60000 / 67 / 2;
 let themeName = "the xsofy title theme";
 let themeWatch = 0;  // clears ♫'s outline when the theme ends
 let linkedTail = 0;  // stops what a linked theme's button started, once its last notes have rung
+// Whatever is played or chosen while those notes ring is the user's, so the
+// stop is called off: play, the bed chips and every audition go through here.
+const keepOn = () => { clearTimeout(linkedTail); linkedTail = 0; };
 let melodyTimers = [];
 // A lead or palette plays the theme itself through the engine, voiced by the
 // bed (so by the lead or palette being edited), at the mood's tempo; a shot
@@ -803,7 +806,7 @@ function melody(fireFn = fire, btn = $("melody"), again = false) {
 function stopLoop() {
   if (themeWatch || themeNote) { clearInterval(themeWatch); themeWatch = 0; themeNote = false; U()?.theme(""); }
   melodyTimers.forEach(clearTimeout); melodyTimers = []; clearInterval(loopTimer); loopDeg = -1;
-  clearTimeout(linkedTail); linkedTail = 0;
+  keepOn();
   for (const b of document.querySelectorAll("#pads .loop, #takerows .loop, #themebox .loop")) b.classList.remove("loop", "forever"); }
 function loop(d, fireFn = fire, btn = $("pads").children[d]) {
   const again = loopDeg === d && btn.classList.contains("loop"); stopLoop(); if (again) return;
@@ -831,7 +834,7 @@ function stopAudition() {
   if (auditionPlaying) setPlaying(false);
 }
 function fire(d) {
-  lastDeg = d;
+  lastDeg = d; keepOn();
   if (kind !== "shot") {
     audible(); themeNote = true;
     // the bass plays only under a theme, so its pad plays a theme's bass note
@@ -892,7 +895,7 @@ function applyBed() {
 
 const quietCue = () => $("mood").classList.toggle("quiet", playing && !bedOn);
 function setPlaying(on) {
-  playing = on; quietCue(); auditionPlaying = false;
+  playing = on; quietCue(); auditionPlaying = false; keepOn();
   playing ? U().play() : U().stop();
   $("play").classList.toggle("on", playing);
   $("play").innerHTML = playing ? "&#10074;&#10074; stop" : "&#9654; play";
@@ -1156,6 +1159,7 @@ function padNotes() {
 }
 function fireTakeRow(i, d) {
   const tk = takes[i]; if (!tk) return;
+  keepOn();
   if (!playing) { setPlaying(true); auditionPlaying = true; }
   const g = +$("sgain").value, first = tk.trs.find((t) => t.degree != null);
   const shift = d === TAKE || !first ? 0 : d - first.degree;
@@ -1274,7 +1278,7 @@ for (const o of Object.keys(OPS)) $("addop").append(el("option", null, o));
 $("play").onclick = () => { setPlaying(!playing); if (playing) applyBed(); };
 // solo and none contradict each other (only this layer vs no bed at all), so
 // at most one is on: turning one on turns the other off.
-const bedChips = () => { auditionBed = false; $("solo").classList.toggle("on", solo); $("silent").classList.toggle("on", !bedOn); quietCue(); applyBed(); };
+const bedChips = () => { auditionBed = false; keepOn(); $("solo").classList.toggle("on", solo); $("silent").classList.toggle("on", !bedOn); quietCue(); applyBed(); };
 $("solo").onclick = () => { solo = !solo; if (solo) bedOn = true; bedChips(); };
 // No bed: every layer muted. The engine keeps running, so a shot's degree is
 // still read in the mood's scale; shots sit above the mute.
@@ -1524,15 +1528,27 @@ let take = null;
 function openTheme(text) {
   let t;
   try { t = JSON.parse(text); } catch { return say("theme: not JSON", true); }
-  if (!Array.isArray(t.grids) || !t.grids.length) return say("theme: no grids", true);
-  if (t.mood != null) {
-    if (![...$("mood").options].some((o) => o.value === t.mood)) return say(`theme: no mood ${t.mood}`, true);
-    $("mood").value = t.mood;
+  // Everything is checked before anything is applied, so a bad link changes nothing.
+  if (!t || !Array.isArray(t.grids) || !t.grids.length) return say("theme: no grids", true);
+  if (t.mood != null && ![...$("mood").options].some((o) => o.value === t.mood)) return say(`theme: no mood ${t.mood}`, true);
+  for (const id of ["level", "tension"]) {
+    if (t[id] != null && !(typeof t[id] === "number" && t[id] >= +$(id).min && t[id] <= +$(id).max)) return say(`theme: ${id} ${t[id]} is not ${$(id).min} to ${$(id).max}`, true);
   }
+  const mute = t.mute ?? [];
+  if (!Array.isArray(mute)) return say("theme: mute is not a list of layers", true);
+  for (const l of mute) if (!LAYERS.includes(l)) return say(`theme: no layer ${l}`, true);
+  // A number past 2^53 was already rounded by JSON.parse, so it would play
+  // another bed than the game's: such a seed has to be a decimal string.
+  let seed = null;
+  if (t.seed != null) {
+    if (typeof t.seed === "number" && !Number.isSafeInteger(t.seed)) return say("theme: write a seed this large as a string, or it is rounded", true);
+    seed = String(t.seed);
+    if (!/^-?\d{1,20}$/.test(seed) || BigInt(seed) < -(2n ** 63n) || BigInt(seed) >= 2n ** 64n) return say(`theme: seed ${seed} is not a 64-bit integer`, true);
+  }
+  if (t.mood != null) $("mood").value = t.mood;
   for (const id of ["level", "tension"]) if (t[id] != null) { $(id).value = t[id]; $(id).oninput(); }
-  if (t.seed != null) { const n = document.querySelector(".num[data-for=seed]"); n.value = String(t.seed); n.oninput(); n.onchange(); }
-  layerMuted.clear();
-  for (const l of t.mute || []) { if (!LAYERS.includes(l)) return say(`theme: no layer ${l}`, true); layerMuted.add(l); }
+  if (seed != null) { const n = document.querySelector(".num[data-for=seed]"); n.value = seed; n.oninput(); n.onchange(); }
+  layerMuted.clear(); for (const l of mute) layerMuted.add(l);
   showLayerMutes(); applyBed();
   TITLE = t.grids; themeName = t.name ? `“${t.name}”` : "the linked theme";
   const n = TITLE.length;
@@ -1571,7 +1587,7 @@ function openFromHash() {
     $("takehint").textContent = "from the link: each shot with its own note or degree, gain, pan, delay and seed";
   }
 }
-$("playtake").onclick = () => { if (!playing) setPlaying(true); U().trigger(JSON.stringify(take)); };
+$("playtake").onclick = () => { keepOn(); if (!playing) setPlaying(true); U().trigger(JSON.stringify(take)); };
 $("playtheme").onclick = () => playLinked();
 window.undertoneStudioReady = () => {
   for (const m of JSON.parse(U().names("mood"))) { const o = el("option", null, m); o.selected = m === "dungeon"; $("mood").append(o); }

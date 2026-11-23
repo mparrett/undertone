@@ -38,10 +38,25 @@
   /* air between the groups of controls: the mood, each voice, the buttons, the help.
      Padding, not margin: in the wide layout's column a margin would collapse into the row above's.
      7px is what that column can take and stay shorter than the grid at its smallest cells, help closed (2026-11-22). */
-  #voices, #basses, #pattern, .pair, #help { padding-top: 7px; }
+  #voices, #basses, #pattern, .pair { padding-top: 7px; }
   /* a group's heading: a line of its own, in the lane headings' small capitals */
   .lab { flex-basis: 100%; margin-bottom: -3px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mut); }
-  .pair { display: flex; gap: 28px; }
+  .pair { display: flex; gap: 10px; align-items: flex-start; }
+  /* the first as wide as its heading, the second what is left: its three buttons share a row in the 210px column */
+  .pair > .bar:first-child { flex: 0 0 58px; } .pair > .bar:last-child { flex: 1; gap: 6px; }
+  button { white-space: nowrap; }
+  /* the pattern and the settings as EDN, under the grid; off until the edn button turns it on */
+  #ednsec { display: none; margin-top: 18px; gap: 14px 24px; flex-wrap: wrap; max-width: calc(32px + 16 * var(--cell) + 3 * 6px); /* a lane's width */ }
+  :root.edn #ednsec { display: flex; }
+  .ednbox { flex: 1 1 190px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .ednbox:first-child { flex: 2.2 1 300px; } /* the pattern: a lane's 16 values on a line */
+  .ednbox .lab { flex-basis: auto; margin: 0; }
+  #patedn, #setedn { font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+                     border-radius: 8px; padding: 8px 10px; margin: 0; width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #patedn { resize: vertical; }
+  #patedn.bad { border-color: var(--pulse); }
+  .hint { font-size: 12px; color: var(--mut); min-height: 1.4em; }
+  .hint.bad { color: var(--pulse); }
   #key { font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--fg); margin-left: 10px; } /* on the mood's heading line */
   /* a voice row wears its lane's colour, and so does the lane's heading: which chips go with which cells */
   #voices { --lane: var(--lead); } #basses { --lane: var(--bass); }
@@ -97,13 +112,15 @@
   main.loading .bar label { opacity: .35; pointer-events: none; transition: opacity .3s; }
   footer { margin: 4px 0 10px; font-size: 12px; color: var(--mut); }
   /* the instructions fold away: open, they are taller than the controls above them */
-  #help summary { font-size: 12px; color: var(--mut); cursor: pointer; margin: 4px 0; }
+  /* how it works: under the grid at a lane's width, off until the ? button turns it on. In the side column it was a long thin strip. */
+  #helpsec { display: none; margin: 18px 0 0; line-height: 1.6; max-width: calc(32px + 16 * var(--cell) + 3 * 6px); }
+  :root.help #helpsec { display: block; }
   /* In a window tall enough for the grid at its smallest cells (633px, as measured 2026-11-22) the
      column never makes the page scroll: shorter than its controls, it scrolls itself. Shorter than
      that the page scrolls anyway, and the column goes with it. The column starts 85px down (the
      body's 32px, the top bar, a 20px gap; 2026-11-22), less its 12px margin, and ends 20px from the bottom. */
   @media (min-width: 900px) and (min-height: 634px) { aside { max-height: calc(100dvh - 73px - 20px); overflow-y: auto; } }
-  @media (max-width: 899px) { #help { order: 9; } aside, header { display: contents; } main { display: flex; flex-direction: column; } section { order: 5; } }
+  @media (max-width: 899px) { aside, header { display: contents; } main { display: flex; flex-direction: column; } section { order: 5; } }
   footer a { color: var(--mut); }
   /* wide screens: play and tempo in a bar across the top, the other controls
      in a narrow column, and the rest of the width for the grid. Cells take
@@ -172,17 +189,10 @@
     <div class="bar"><span class="lab">backing</span>
       <button class="bed" id="bed" title="the generator's drone, pad and air, playing under the notes; saved in the link">bed</button></div>
     <div class="bar"><span class="lab">view</span>
-      <button class="bed" id="mixbtn" title="show a strip of all four lanes over one another, their colours added; not saved in the link">mix strip</button></div>
+      <button class="bed" id="mixbtn" title="show a strip of all four lanes over one another, their colours added; not saved in the link">mix</button>
+      <button class="bed" id="ednbtn" title="show the pattern and the settings as EDN under the grid; not saved in the link">edn</button>
+      <button class="bed" id="helpbtn" title="how it works, under the grid" aria-label="how it works">?</button></div>
   </div>
-  <details id="help"><summary>how it works</summary>
-  <footer>Tap a cell to place a note, tap it again to clear; drag to paint. One note per step in each lane.
-    Rows are scale degrees, so the pattern stays in key when the mood changes.
-    Drum cells are sixteenths: a tap cycles hit, accent, ghost, rest.
-    Alt-click or shift-click a cell to hear it without placing it.
-    Space plays and stops on a keyboard, and r goes back to the first step. Edits are heard the next time the playhead passes them.
-    Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim. The mix strip shows all four on one, their colours added.
-    A bass voice plays at the level of the pluck it replaces.</footer>
-  </details>
  </aside>
  <section>
 
@@ -196,6 +206,22 @@
   <div class="lane of-drums"><span>DRUMS</span><canvas class="strip idle" data-lane="drums"></canvas></div>
   <div class="grid drums" id="drums"></div>
 
+  <footer id="helpsec">Tap a cell to place a note, tap it again to clear; drag to paint. One note per step in each lane.
+    Rows are scale degrees, so the pattern stays in key when the mood changes.
+    Drum cells are sixteenths: a tap cycles hit, accent, ghost, rest.
+    Alt-click or shift-click a cell to hear it without placing it.
+    Space plays and stops on a keyboard, and r goes back to the first step. Edits are heard the next time the playhead passes them.
+    Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim. Under VIEW, mix shows all four on one strip, their colours added.
+    A bass voice plays at the level of the pluck it replaces.
+    Under VIEW, edn shows the pattern as EDN: a theme's grid, which can be edited or pasted over.</footer>
+  <div id="ednsec">
+    <div class="ednbox"><label class="lab" for="patedn">pattern, as a theme's grid</label>
+      <textarea id="patedn" rows="10" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+      <div class="hint" id="patednhint"></div></div>
+    <div class="ednbox"><span class="lab">settings</span>
+      <pre id="setedn"></pre>
+      <div class="hint">What the controls are set to. To look at: it is not read back.</div></div>
+  </div>
  </section>
 </main>
 
@@ -296,7 +322,126 @@
     for (const b of document.querySelectorAll("#basses .chip")) b.classList.toggle("on", b.dataset.v === st.bassVoice);
     $("bed").classList.toggle("on", st.bed);
     $("bpm").value = st.bpm; $("bpmv").textContent = st.bpm;
+    showEDN();
   }
+
+  // ---- the pattern and the settings as EDN ----
+  // The pattern is one grid of a theme, the map undertone/play-theme takes in
+  // :grids, so it pastes into a theme or the studio's THEME box as it is. The
+  // settings are not part of a grid, and get a map of their own to look at.
+  const PAT_HINT = "Edit it, or paste a grid in; the cells follow after a pause.";
+  const patternEDN = () => {
+    const v = (a) => `[${a.join(" ")}]`;
+    return `{:lead  ${v(st.lead)}\n :bass  ${v(st.bass)}\n :pulse ${v(st.pulse)}\n` +
+           ` :drums [${drumStrings().map((d) => JSON.stringify(d)).join("\n         ")}]\n :bed   ${st.bed}}`;
+  };
+  const settingsEDN = () =>
+    `{:mood       :${st.mood}\n :bpm        ${st.bpm}\n :seed       ${st.seed}\n :lead-voice :${st.voice}\n :bass-voice :${st.bassVoice || "pluck"}}`;
+  function showEDN() {
+    if (!document.documentElement.classList.contains("edn")) return;
+    $("setedn").textContent = settingsEDN();
+    // Not over text being typed: a rewrite would move the cursor and undo what is half there.
+    // A box that only has the cursor is rewritten: a cell painted meanwhile must show in it.
+    if (!ednDirty && !ednApplying) { $("patedn").value = patternEDN(); patHint(""); }
+  }
+  function patHint(err) {
+    $("patedn").classList.toggle("bad", !!err); $("patednhint").classList.toggle("bad", !!err);
+    $("patednhint").textContent = err || PAT_HINT;
+  }
+  // A small EDN reader: maps, vectors, lists, strings, keywords, numbers, booleans, nil, and ; comments.
+  function readEDN(src) {
+    let i = 0;
+    const ws = () => { while (i < src.length) { if (/[\s,]/.test(src[i])) i++; else if (src[i] === ";") { while (i < src.length && src[i] !== "\n") i++; } else break; } };
+    const val = () => {
+      ws(); const c = src[i];
+      if (c === "{") { i++; const m = {}; for (;;) { ws(); if (src[i] === "}") { i++; return m; } const k = val(); m[k] = val(); } }
+      if (c === "[" || c === "(") { const end = c === "[" ? "]" : ")"; i++; const v = []; for (;;) { ws(); if (src[i] === end) { i++; return v; } v.push(val()); } }
+      if (c === '"') {
+        let str = "", j = i + 1;
+        for (; j < src.length && src[j] !== '"'; j++) str += src[j] === "\\" && j + 1 < src.length ? src[++j] : src[j];
+        if (j >= src.length) throw new Error("a string never closes");
+        i = j + 1; return str;
+      }
+      const m = /^[^\s,{}\[\]()";]+/.exec(src.slice(i)); if (!m) throw new Error(c === undefined ? "it ends early: a bracket is not closed" : `unexpected ${c}`);
+      i += m[0].length; const t = m[0];
+      if (t[0] === ":") return t;
+      if (!isNaN(+t)) return +t;
+      if (t === "true" || t === "false") return t === "true";
+      if (t === "nil") return null;
+      return t;
+    };
+    const v = val(); ws();
+    if (i < src.length) throw new Error(`unexpected ${src[i]} after the end`);
+    return v;
+  }
+  // One grid out of what was typed: a grid map, or the first grid of a theme
+  // ({:grids [...]}, a vector of grids, or a (def name ...) around either).
+  // Throws saying what is wrong; nothing is applied unless all of it reads.
+  function gridOf(text) {
+    if (!text.trim()) throw new Error("the box is empty: a grid is a map like {:lead [...] :bass [...]}");
+    let m = readEDN(text);
+    const isMap = (x) => x && typeof x === "object" && !Array.isArray(x);
+    for (let n = 0; n < 4 && !(isMap(m) && !(":grids" in m)); n++) {
+      if (isMap(m)) m = m[":grids"];
+      else if (Array.isArray(m) && m.length) m = m[0] === "def" ? m[m.length - 1] : m[0];
+      else break;
+    }
+    if (!isMap(m)) throw new Error("no grid here: it should be a map like {:lead [...] :bass [...]}");
+    const known = [":lead", ":bass", ":pulse", ":drums", ":bed"];
+    for (const k of Object.keys(m)) if (!known.includes(k)) throw new Error(`${k} is not part of a grid; the keys are ${known.join(" ")}`);
+    const g = { bed: m[":bed"] === true };
+    for (const lane of ["lead", "bass"]) {
+      const a = m[":" + lane] ?? [];
+      if (!Array.isArray(a) || a.length > STEPS) throw new Error(`:${lane} should be a vector of at most ${STEPS} degrees`);
+      a.forEach((d, n) => { if (!Number.isInteger(d) || d < 0 || d > DEG) throw new Error(`:${lane} step ${n + 1} is ${d}; a degree is 0 to ${DEG}, 0 a rest`); });
+      g[lane] = [...a, ...Array(STEPS - a.length).fill(0)];
+    }
+    const p = m[":pulse"] ?? [];
+    if (!Array.isArray(p) || p.length > STEPS || p.some((x) => typeof x !== "boolean")) throw new Error(`:pulse should be a vector of at most ${STEPS} of true and false`);
+    g.pulse = [...p, ...Array(STEPS - p.length).fill(false)];
+    const d = m[":drums"] ?? [];
+    if (!Array.isArray(d) || d.length > DRUMS.length) throw new Error(`:drums should be a vector of at most ${DRUMS.length} lanes: ${DRUMS.join(", ")}`);
+    d.forEach((l, n) => {
+      if (typeof l !== "string") throw new Error(`:drums lane ${n + 1} should be a string like "X...x..."`);
+      // the engine also takes g, a flam, and a lane ending in |, which loops; the cells have no way to show either
+      if (l.length > SIXTEENTHS || /[^.xXo]/.test(l)) throw new Error(`:drums lane ${n + 1} should be at most ${SIXTEENTHS} of . x X o`);
+    });
+    g.drums = d;
+    return g;
+  }
+  // ednDirty: the box holds typing not yet applied, so it is the box that is right and not the
+  // cells. Only then is it read; a box merely clicked into must not overwrite cells painted since.
+  let ednTimer = 0, ednDirty = false, ednApplying = false;
+  function applyEDN() {
+    let g;
+    try { g = gridOf($("patedn").value); } catch (e) { patHint(e.message); return; }
+    patHint(""); ednDirty = false;
+    const drums = lanes(g.drums);
+    // an edit to the drum lanes is a choice of them; one to the notes leaves a mood free to bring its groove
+    if (drums.map((a) => a.join("")).join() !== drumStrings().join()) drumsChosen = true;
+    st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = drums; st.bed = g.bed;
+    ednApplying = true; // the text stays as typed while the cursor is in it
+    try { paint(); pushGrid(); } finally { ednApplying = false; }
+  }
+  $("patedn").oninput = () => { ednDirty = true; clearTimeout(ednTimer); ednTimer = setTimeout(applyEDN, 600); };
+  // leaving the box: typing not yet applied is applied at once, and if it read, written back tidy
+  $("patedn").onblur = () => { clearTimeout(ednTimer); if (ednDirty) applyEDN(); if (!ednDirty) { $("patedn").value = patternEDN(); patHint(""); } };
+  // Like the MIX strip, a way of looking: out of the link, remembered by this browser.
+  function showEDNBox(on) {
+    document.documentElement.classList.toggle("edn", on);
+    $("ednbtn").classList.toggle("on", on);
+    try { localStorage.setItem("undertone-grid-edn", on ? "1" : ""); } catch {}
+    showEDN();
+  }
+  $("ednbtn").onclick = () => showEDNBox(!document.documentElement.classList.contains("edn"));
+  $("helpbtn").onclick = () => {
+    const on = document.documentElement.classList.toggle("help");
+    $("helpbtn").classList.toggle("on", on);
+    if (on) $("helpsec").scrollIntoView({ block: "nearest", behavior: "smooth" }); // it opens under the grid, maybe off screen
+  };
+  { let saved = false;
+    try { saved = !!localStorage.getItem("undertone-grid-edn"); } catch {} // storage may be blocked
+    if (saved) showEDNBox(true); }
 
   const pushGrid = () => {
     if (ready) undertoneGrid.setGrid(JSON.stringify({ lead: st.lead, bass: st.bass, pulse: st.pulse, drums: drumStrings(), bed: st.bed }));
@@ -392,7 +537,7 @@
     }
     shownKey = k.key;
   }
-  $("bpm").oninput = (e) => { st.bpm = +e.target.value; $("bpmv").textContent = st.bpm; pushParams(); };
+  $("bpm").oninput = (e) => { st.bpm = +e.target.value; $("bpmv").textContent = st.bpm; pushParams(); showEDN(); };
   $("bed").onclick = () => { st.bed = !st.bed; paint(); pushGrid(); };
   // The MIX strip is a way of looking, not part of the pattern: it stays out
   // of the link and is remembered by this browser, where storage allows.
@@ -447,7 +592,7 @@
   }
   $("restart").onclick = restart;
   addEventListener("keydown", (e) => {
-    if (!ready || e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!ready || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
     if (e.key === "r") restart();
   });

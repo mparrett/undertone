@@ -29,7 +29,7 @@
   #play:disabled { border-color: var(--line); background: var(--panel); color: var(--mut); }
   #play.on { border-color: var(--lead); background: #2a2414; }
   .chip { padding: 5px 10px; font-size: 13px; color: var(--mut); }
-  aside button { padding: 5px 10px; font-size: 13px; } /* a chip's size: on a phone or in the narrow column the five fit a row or two */
+  aside button { padding: 5px 10px; font-size: 13px; } /* a chip's size, so a group's buttons fit one row on a phone */
   .chip.on { color: var(--fg); border-color: var(--mut); background: #22222a; }
   label.tempo { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; font-size: 13px; color: var(--mut); }
   label.tempo input { flex: 1; accent-color: var(--lead); }
@@ -98,6 +98,11 @@
   footer { margin: 4px 0 10px; font-size: 12px; color: var(--mut); }
   /* the instructions fold away: open, they are taller than the controls above them */
   #help summary { font-size: 12px; color: var(--mut); cursor: pointer; margin: 4px 0; }
+  /* In a window tall enough for the grid at its smallest cells (633px, as measured 2026-11-22) the
+     column never makes the page scroll: shorter than its controls, it scrolls itself. Shorter than
+     that the page scrolls anyway, and the column goes with it. The column starts 85px down (the
+     body's 32px, the top bar, a 20px gap; 2026-11-22), less its 12px margin, and ends 20px from the bottom. */
+  @media (min-width: 900px) and (min-height: 634px) { aside { max-height: calc(100dvh - 73px - 20px); overflow-y: auto; } }
   @media (max-width: 899px) { #help { order: 9; } aside, header { display: contents; } main { display: flex; flex-direction: column; } section { order: 5; } }
   footer a { color: var(--mut); }
   /* wide screens: play and tempo in a bar across the top, the other controls
@@ -127,9 +132,9 @@
     .lbl { font-size: 12px; }
     :root.mix { --other: 264px; }
     .lane:first-child, :root:not(.mix) #mixlane + .lane { margin-top: 0; }
-    /* the column never makes the page scroll: in a window shorter than its controls it scrolls itself.
-       85px is where it starts, the body's 32px under it. */
-    aside { align-self: start; max-height: calc(100dvh - 85px - 32px); overflow-y: auto; }
+    /* 12px of room around the column's contents, taken back by the margin, for what is drawn
+       outside them: the key's glow, a focus ring. A scrolling box would cut those off. */
+    aside { align-self: start; padding: 12px; margin: -12px; }
   }
   /* Whole pixels, even ones so the drum cells' half is whole too: at a
      fraction of a pixel, neighbouring cells snap to different sizes. */

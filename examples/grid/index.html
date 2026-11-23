@@ -29,13 +29,20 @@
   #play:disabled { border-color: var(--line); background: var(--panel); color: var(--mut); }
   #play.on { border-color: var(--lead); background: #2a2414; }
   .chip { padding: 5px 10px; font-size: 13px; color: var(--mut); }
+  aside button { padding: 5px 10px; font-size: 13px; } /* a chip's size: on a phone or in the narrow column the five fit a row or two */
   .chip.on { color: var(--fg); border-color: var(--mut); background: #22222a; }
   label.tempo { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; font-size: 13px; color: var(--mut); }
   label.tempo input { flex: 1; accent-color: var(--lead); }
   #bpmv { color: var(--fg); min-width: 3ch; text-align: right; }
 
   .lab { font-size: 13px; color: var(--mut); }
-  #key { font-size: 13px; color: var(--fg); margin-left: 6px; }
+  #key { font-size: 13px; color: var(--fg); }
+  /* a voice row wears its lane's colour, and so does the lane's heading: which chips go with which cells */
+  #voices { --lane: var(--lead); } #basses { --lane: var(--bass); }
+  #voices .lab, #basses .lab, #voices .chip.on, #basses .chip.on { color: var(--lane); }
+  #voices .chip.on, #basses .chip.on { border-color: var(--lane); }
+  .lane:has([data-lane=lead]) span { color: var(--lead); } .lane:has([data-lane=bass]) span { color: var(--bass); }
+  .lane:has([data-lane=pulse]) span { color: var(--pulse); } .lane:has([data-lane=drums]) span { color: var(--drum); }
   .lbl.ref { color: var(--fg); }
   /* a lane's name sits in the row labels' column, and its strip over the cells */
   .lane { margin: 12px 0 4px; font-size: 10px; color: var(--mut); display: grid; align-items: center;
@@ -100,7 +107,6 @@
     header .bar { flex: none; flex-wrap: nowrap; }
     header #status { order: 3; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     header button { padding: 5px 12px; font-size: 14px; }
-    aside button { padding: 5px 10px; font-size: 13px; } /* the column is narrow: these fit a row or two, not three */
     #play { font-size: 14px; }
     label.tempo { flex: none; width: 200px; min-width: 0; }
     /* a pointer can hit a small cell, so the drum cells, half a step wide,

@@ -35,6 +35,10 @@
   label.tempo input { flex: 1; accent-color: var(--lead); }
   #bpmv { color: var(--fg); min-width: 3ch; text-align: right; }
 
+  /* air between the groups of controls: the mood, each voice, the buttons, the help.
+     Padding, not margin: in the wide layout's column a margin would collapse into the row above's.
+     7px is what that column can take and stay shorter than the grid at its smallest cells, help closed (2026-11-22). */
+  #voices, #basses, #basses + .bar, #help { padding-top: 7px; }
   .lab { font-size: 13px; color: var(--mut); }
   #key { font-size: 13px; color: var(--fg); }
   /* a voice row wears its lane's colour, and so does the lane's heading: which chips go with which cells */

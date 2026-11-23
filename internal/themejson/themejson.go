@@ -5,6 +5,7 @@ package themejson
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -28,14 +29,21 @@ func Parse(data string) (*engine.Theme, error) {
 		Grids []gridJSON
 		Then  string
 	}
+	// A key that is not a theme's is an error: a misspelled lane would
+	// otherwise play as a rest, and a misspelled then as generate.
+	dec := json.NewDecoder(strings.NewReader(data))
+	dec.DisallowUnknownFields()
 	var err error
 	if strings.HasPrefix(strings.TrimSpace(data), "[") {
-		err = json.Unmarshal([]byte(data), &in.Grids)
+		err = dec.Decode(&in.Grids)
 	} else {
-		err = json.Unmarshal([]byte(data), &in)
+		err = dec.Decode(&in)
 	}
 	if err != nil {
 		return nil, err
+	}
+	if dec.More() {
+		return nil, errors.New("more after the theme")
 	}
 	t := &engine.Theme{}
 	switch in.Then {

@@ -108,6 +108,9 @@ func TestSeedFlag(t *testing.T) {
 		"1":                    1,
 		"18446744073709551615": 1<<64 - 1,
 		"-1":                   1<<64 - 1,
+		"0xDEADBEEF":           0xDEADBEEF,
+		"010":                  8, // base 0, as flag.Uint64 read it
+		"-0x10":                1<<64 - 16,
 		"-2288356883509901239": 16158387190199650377,
 	} {
 		s := seedFlag(7)

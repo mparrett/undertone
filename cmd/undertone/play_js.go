@@ -43,7 +43,7 @@ func exposeScenes(syn *engine.Synth) {
 		}
 		depth, _ := strconv.Atoi(q.Get("depth"))
 		mood, level := signedDepth(q.Get("mood"), depth)
-		seed, err := strconv.ParseUint(q.Get("seed"), 10, 64)
+		seed, err := parseSeed(q.Get("seed"))
 		if err != nil {
 			seed = 1
 		}

@@ -83,6 +83,9 @@ func TestParseErrors(t *testing.T) {
 		`[{"pulse": "2"}]`:                  "not 0 or 1",
 		`[{"pulse": "` + long + `"}]`:       "at most",
 		`[{"drums": ["x", "x", "x", "x"]}]`: "drum lanes",
+		`[{"leed": "1"}]`:                   "leed",
+		`{"grids": [{}], "than": "loop"}`:   "than",
+		`[{}] [{}]`:                         "more after",
 		`{"grids": 3}`:                      "",
 		`nope`:                              "",
 	} {

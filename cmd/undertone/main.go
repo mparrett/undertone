@@ -135,16 +135,26 @@ type seedFlag uint64
 func (s *seedFlag) String() string { return strconv.FormatUint(uint64(*s), 10) }
 
 func (s *seedFlag) Set(v string) error {
-	if u, err := strconv.ParseUint(v, 10, 64); err == nil {
-		*s = seedFlag(u)
-		return nil
-	}
-	i, err := strconv.ParseInt(v, 10, 64)
+	u, err := parseSeed(v)
 	if err != nil {
-		return fmt.Errorf("want an integer from %d to %d", int64(-1<<63), uint64(1<<64-1))
+		return err
 	}
-	*s = seedFlag(i)
+	*s = seedFlag(u)
 	return nil
+}
+
+// parseSeed reads a seed as -seed and the browser's scene switch take it.
+// Base 0, as flag.Uint64 read -seed before it took negatives: 0x and 0o
+// prefixes and underscores still work.
+func parseSeed(v string) (uint64, error) {
+	if u, err := strconv.ParseUint(v, 0, 64); err == nil {
+		return u, nil
+	}
+	i, err := strconv.ParseInt(v, 0, 64)
+	if err != nil {
+		return 0, fmt.Errorf("want an integer from %d to %d", int64(-1<<63), uint64(1<<64-1))
+	}
+	return uint64(i), nil
 }
 
 // layerList is the layers -layer takes, as setLayers reads them.

@@ -1318,6 +1318,15 @@ func ApplyLead(p *Params, name string) {
 	}
 }
 
+// ApplyBass gives the bass lane of a grid or theme a lead instrument's patch,
+// as ApplyLead gives the lead one. An unknown name changes nothing, and the
+// bass stays the palette's own, or the string every bass was before.
+func ApplyBass(p *Params, name string) {
+	if d, ok := lookupLead(name); ok {
+		p.Palette.Bass = d.patch
+	}
+}
+
 // Palette is a mood's patch bank: mood = patches + a point in parameter space.
 type Palette struct {
 	Drone, Fifth, Pad, Lead, Air, Pulse Patch

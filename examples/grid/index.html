@@ -110,6 +110,7 @@
   .drums .c.v1::after { opacity: .4; }
   .drums .c.v2::after { opacity: .75; }
   .c.on.head::after { filter: brightness(1.35); }
+  .grid.silent .c.on::after { opacity: .35; } /* the lane's voice is none: its notes are there, and unheard */
   /* a lane's voice just changed: its lit cells flare in the lane's colour and settle, so the eye lands on what will sound different */
   @keyframes voiced { 0%, 20% { filter: brightness(1.6); box-shadow: 0 0 10px 1px var(--glow); } 100% { box-shadow: 0 0 10px 1px transparent; } }
   /* not the cell under the playhead: the flare would hide its highlight, and it is about to sound anyway */
@@ -249,6 +250,7 @@
   const lanes = (ds) => DRUMS.map((_, d) => [...((ds && ds[d]) || "").padEnd(SIXTEENTHS, ".").slice(0, SIXTEENTHS)]);
   const MOODS = ["village", "aurora", "meadow", "overworld", "ruins", "dungeon"];
   const VOICES = ["kalimba", "bell", "chime", "pluck", "reed", "clang"];
+  const NONE = "none"; // the voice that silences a lane: its notes stay on the grid, unheard
   const $ = (id) => document.getElementById(id);
   const status = $("status");
 
@@ -284,7 +286,7 @@
     st = { ...st, lead: L, bass: B, pulse: [...Array(STEPS)].map((_, i) => !!(p & (1 << i))),
            drums: lanes(linkHasDrums ? D : null),
            bpm: Math.min(160, Math.max(60, +kv.t || 110)), mood: MOODS.find((m) => m[0] === kv.m) || "overworld",
-           voice: VOICES.includes(kv.v) ? kv.v : "kalimba", bassVoice: VOICES.includes(kv.bv) && kv.bv !== "pluck" ? kv.bv : "", seed: Math.min(MAXSEED, Math.max(1, Math.round(+kv.s) || 1)), bed: kv.bed !== "0" };
+           voice: VOICES.includes(kv.v) || kv.v === NONE ? kv.v : "kalimba", bassVoice: (VOICES.includes(kv.bv) && kv.bv !== "pluck") || kv.bv === NONE ? kv.bv : "", seed: Math.min(MAXSEED, Math.max(1, Math.round(+kv.s) || 1)), bed: kv.bed !== "0" };
     return true;
   }
 
@@ -335,6 +337,7 @@
     for (const b of document.querySelectorAll("#moods .chip")) b.classList.toggle("on", b.dataset.v === st.mood);
     for (const b of document.querySelectorAll("#voices .chip")) b.classList.toggle("on", b.dataset.v === st.voice);
     for (const b of document.querySelectorAll("#basses .chip")) b.classList.toggle("on", b.dataset.v === st.bassVoice);
+    $("lead").classList.toggle("silent", st.voice === NONE); $("bass").classList.toggle("silent", st.bassVoice === NONE);
     $("bed").classList.toggle("on", st.bed);
     $("bpm").value = st.bpm; $("bpmv").textContent = st.bpm;
     if (!seedDirty) $("seed").value = st.seed; // not over a seed half typed
@@ -489,6 +492,10 @@
   function audition(c) {
     if (!ready) return;
     const lane = c.dataset.lane;
+    // a silenced lane has no voice to hear a note in; say so, and do not claim it was heard
+    if ((lane === "lead" && st.voice === NONE) || (lane === "bass" && st.bassVoice === NONE)) {
+      status.textContent = `${lane} voice is none: choose a voice to hear it`; return;
+    }
     const g = { lead: Array(STEPS).fill(0), bass: Array(STEPS).fill(0), pulse: Array(STEPS).fill(false), drums: DRUMS.map(() => ""), bed: false };
     if (lane === "drums") {
       const now = st.drums[c.dataset.drum][c.dataset.i];
@@ -524,14 +531,15 @@
     for (const c of grid.querySelectorAll(".c.on")) c.classList.add("flare");
     clearTimeout(grid.flareTimer); grid.flareTimer = setTimeout(off, 1100);
   }
-  for (const [box, list, key] of [["moods", MOODS, "mood"], ["voices", VOICES, "voice"], ["basses", ["", ...VOICES.filter((v) => v !== "pluck")], "bassVoice"]]) {
+  for (const [box, list, key] of [["moods", MOODS, "mood"], ["voices", [...VOICES, NONE], "voice"], ["basses", ["", ...VOICES.filter((v) => v !== "pluck"), NONE], "bassVoice"]]) {
     for (const v of list) {
       const b = document.createElement("span"); b.className = "chip"; b.textContent = v || "pluck"; b.dataset.v = v; // the bass the engine plays unasked is the pluck, so it is not offered twice
       if (!v) b.title = "the bass as it is unless chosen: a plucked string";
+      if (v === NONE) b.title = "silence this lane; its notes stay on the grid";
       b.onclick = () => {
         const was = st[key];
         st[key] = v; pushParams();
-        if (was !== v && key !== "mood") flare($(key === "voice" ? "lead" : "bass"));
+        if (was !== v && key !== "mood" && v !== NONE) flare($(key === "voice" ? "lead" : "bass"));
         if (key === "mood" && ready && !drumsChosen) {
           st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums); pushGrid();
         }

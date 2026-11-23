@@ -44,6 +44,11 @@
   .lane.of-lead span { color: var(--lead); } .lane.of-bass span { color: var(--bass); }
   .lane.of-pulse span { color: var(--pulse); } .lane.of-drums span { color: var(--drum); }
   .lbl.ref { color: var(--fg); }
+  /* the key, or a row's note name, just changed: a glow in its lane's colour that fades, so a change of mood shows what moved */
+  @keyframes changed { 0%, 25% { color: var(--glow); text-shadow: 0 0 10px var(--glow); } 100% { text-shadow: 0 0 10px transparent; } }
+  .changed { animation: changed 1.6s ease-out; }
+  #key { --glow: #fff; } #lead .lbl { --glow: var(--lead); } #bass .lbl { --glow: var(--bass); }
+  @media (prefers-reduced-motion: reduce) { .changed { animation-timing-function: steps(1, end); } } /* held, then gone: no fade */
   /* a lane's name sits in the row labels' column, and its strip over the cells */
   .lane { margin: 12px 0 4px; font-size: 10px; color: var(--mut); display: grid; align-items: center;
           grid-template-columns: 32px calc(16 * var(--cell) + 3 * 6px); /* the strip is as wide as the cells under it */ }
@@ -347,15 +352,26 @@
   const keyEl = document.createElement("span"); keyEl.id = "key"; $("moods").appendChild(keyEl);
   // Name the key, and label each melodic lane's rows 1 and 8 with their notes;
   // the rows between keep their degree numbers.
+  let shownKey; // undefined until a key has been shown
   function showKey() {
     if (!ready) return;
     const k = JSON.parse(undertoneGrid.key());
-    keyEl.textContent = "key: " + k.key;
+    // Text that changed glows; the first key shown at load has nothing to differ from.
+    const set = (el, text, was) => {
+      if (el.textContent === text) return;
+      el.textContent = text;
+      if (was === undefined) return;
+      el.classList.remove("changed"); void el.offsetWidth; el.classList.add("changed"); // reflow: restart one already running
+      el.onanimationend = () => el.classList.remove("changed"); // or it would replay whenever the element was hidden and shown
+    };
+    set(keyEl, "key: " + k.key, shownKey);
     for (const lane of ["lead", "bass"]) {
       const labels = $(lane).querySelectorAll(".lbl");
-      labels[0].textContent = k[lane + "8"]; labels[0].classList.add("ref");   // row 8 is drawn first
-      labels[7].textContent = k[lane]; labels[7].classList.add("ref");
+      labels[0].classList.add("ref"); labels[7].classList.add("ref");
+      set(labels[0], k[lane + "8"], shownKey);   // row 8 is drawn first
+      set(labels[7], k[lane], shownKey);
     }
+    shownKey = k.key;
   }
   $("bpm").oninput = (e) => { st.bpm = +e.target.value; $("bpmv").textContent = st.bpm; pushParams(); };
   $("bed").onclick = () => { st.bed = !st.bed; paint(); pushGrid(); };

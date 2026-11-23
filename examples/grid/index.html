@@ -41,8 +41,8 @@
   #voices { --lane: var(--lead); } #basses { --lane: var(--bass); }
   #voices .lab, #basses .lab, #voices .chip.on, #basses .chip.on { color: var(--lane); }
   #voices .chip.on, #basses .chip.on { border-color: var(--lane); }
-  .lane:has([data-lane=lead]) span { color: var(--lead); } .lane:has([data-lane=bass]) span { color: var(--bass); }
-  .lane:has([data-lane=pulse]) span { color: var(--pulse); } .lane:has([data-lane=drums]) span { color: var(--drum); }
+  .lane.of-lead span { color: var(--lead); } .lane.of-bass span { color: var(--bass); }
+  .lane.of-pulse span { color: var(--pulse); } .lane.of-drums span { color: var(--drum); }
   .lbl.ref { color: var(--fg); }
   /* a lane's name sits in the row labels' column, and its strip over the cells */
   .lane { margin: 12px 0 4px; font-size: 10px; color: var(--mut); display: grid; align-items: center;
@@ -163,13 +163,13 @@
  <section>
 
   <div class="lane" id="mixlane"><span>MIX</span><canvas class="strip mix idle" id="mixstrip"></canvas></div>
-  <div class="lane"><span>LEAD</span><canvas class="strip idle" data-lane="lead"></canvas></div>
+  <div class="lane of-lead"><span>LEAD</span><canvas class="strip idle" data-lane="lead"></canvas></div>
   <div class="grid lead" id="lead"></div>
-  <div class="lane"><span>BASS</span><canvas class="strip idle" data-lane="bass"></canvas></div>
+  <div class="lane of-bass"><span>BASS</span><canvas class="strip idle" data-lane="bass"></canvas></div>
   <div class="grid bass" id="bass"></div>
-  <div class="lane"><span>PULSE</span><canvas class="strip idle" data-lane="pulse"></canvas></div>
+  <div class="lane of-pulse"><span>PULSE</span><canvas class="strip idle" data-lane="pulse"></canvas></div>
   <div class="grid pulse" id="pulse"></div>
-  <div class="lane"><span>DRUMS</span><canvas class="strip idle" data-lane="drums"></canvas></div>
+  <div class="lane of-drums"><span>DRUMS</span><canvas class="strip idle" data-lane="drums"></canvas></div>
   <div class="grid drums" id="drums"></div>
 
  </section>

@@ -107,9 +107,10 @@
   .c.on.head::after { filter: brightness(1.35); }
   /* a lane's voice just changed: its lit cells flare in the lane's colour and settle, so the eye lands on what will sound different */
   @keyframes voiced { 0%, 20% { filter: brightness(1.6); box-shadow: 0 0 10px 1px var(--glow); } 100% { box-shadow: 0 0 10px 1px transparent; } }
-  .grid.voiced .c.on::after { animation: voiced 1s ease-out; }
+  /* not the cell under the playhead: the flare would hide its highlight, and it is about to sound anyway */
+  .c.flare.on:not(.head)::after { animation: voiced 1s ease-out; }
   #lead { --glow: var(--lead); } #bass { --glow: var(--bass); }
-  @media (prefers-reduced-motion: reduce) { .grid.voiced .c.on::after { animation-timing-function: steps(1, end); } }
+  @media (prefers-reduced-motion: reduce) { .c.flare.on::after { animation-timing-function: steps(1, end); } }
   .lead .tonic::after, .bass .tonic::after { border-color: #3a3a46; }
 
   /* until the engine is ready, everything but the play button is dimmed and inert */
@@ -504,11 +505,14 @@
   addEventListener("pointercancel", () => { painting = null; });
 
   // ---- controls ----
-  // Restart the lit cells' flare in one lane. The class comes off by a timer: the animation runs on
-  // the cells' ::after, one per lit cell, so there is no single end to listen for.
+  // Flare the cells of one lane that are lit now, restarting any still going. The class goes on
+  // those cells and not the lane, so one lit a moment later does not flare too. It comes off by a
+  // timer: the animation runs on each cell's ::after, so there is no single end to listen for.
   function flare(grid) {
-    grid.classList.remove("voiced"); void grid.offsetWidth; grid.classList.add("voiced");
-    clearTimeout(grid.flareTimer); grid.flareTimer = setTimeout(() => grid.classList.remove("voiced"), 1100);
+    const off = () => { for (const c of grid.querySelectorAll(".c.flare")) c.classList.remove("flare"); };
+    off(); void grid.offsetWidth;
+    for (const c of grid.querySelectorAll(".c.on")) c.classList.add("flare");
+    clearTimeout(grid.flareTimer); grid.flareTimer = setTimeout(off, 1100);
   }
   for (const [box, list, key] of [["moods", MOODS, "mood"], ["voices", VOICES, "voice"], ["basses", ["", ...VOICES.filter((v) => v !== "pluck")], "bassVoice"]]) {
     for (const v of list) {

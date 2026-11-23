@@ -428,7 +428,7 @@
       at = -1;
     }
     // One lane's passes onto g, h tall: the last pass dim, this one over it.
-    function paint(g, l, x, h, dim, bright) {
+    function paint(g, l, x, h, dim, bright, tickW) {
       const gap = GAP * dpr;
       g.fillStyle = l.color;
       for (const [fresh, a, tick] of [[false, dim, 0.3], [true, bright, 1]]) {
@@ -438,7 +438,7 @@
           const bh = l.hit[c] ? h : l.lv[c] > 0.01 ? Math.max(1, l.lv[c] * h) : 0;
           if (!bh) continue;
           g.globalAlpha = l.hit[c] ? tick : a;
-          g.fillRect(c, (h - bh) / 2, l.hit[c] ? Math.max(1, dpr) : 1, bh);
+          g.fillRect(c, (h - bh) / 2, l.hit[c] ? tickW : 1, bh);
         }
       }
       g.globalAlpha = 1;
@@ -451,7 +451,7 @@
     }
     function draw(l, x) {
       l.g.clearRect(0, 0, W, H);
-      paint(l.g, l, x, H, 0.2, 0.5);
+      paint(l.g, l, x, H, 0.2, 0.5, Math.max(1, dpr));
       cursor(l.g, x, H);
     }
     // The lanes over one another, adding: lead on bass comes out pale, and a
@@ -459,7 +459,8 @@
     function drawMix(x) {
       mg.clearRect(0, 0, W, HM);
       mg.globalCompositeOperation = "lighter";
-      for (const l of L) paint(mg, l, x, HM, 0.22, 0.55);
+      // ticks a column wide: a wider one would add to the level beside it, and read as two lanes
+      for (const l of L) paint(mg, l, x, HM, 0.22, 0.55, 1);
       mg.globalCompositeOperation = "source-over";
       cursor(mg, x, HM);
     }

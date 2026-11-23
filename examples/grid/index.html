@@ -434,13 +434,21 @@
       // a beat's first cell is wider on its left, so a step starts a cell's width before its right edge
       xs = row.map((c) => (c.getBoundingClientRect().right - cell - box.left) * dpr);
       xs.push((row[STEPS - 1].getBoundingClientRect().right - box.left) * dpr);
+      const was = W;
       W = Math.round(box.width * dpr); H = Math.round(box.height * dpr);
       HM = -1; // the mix strip takes its size when next drawn
       for (const l of L) {
         l.cv.width = W; l.cv.height = H;
-        l.lv = new Float32Array(W); l.hit = new Uint8Array(W); l.pass = new Uint32Array(W); // pass 0: never written
+        const lv = new Float32Array(W), hit = new Uint8Array(W), pass = new Uint32Array(W); // pass 0: never written
+        // What was drawn comes along, stretched to the new width: the mix
+        // button changes the cells' size, and should not wipe the strips.
+        if (was && l.lv) {
+          for (let c = 0; c < W; c++) { const o = Math.min(was - 1, Math.floor(c * was / W)); lv[c] = l.lv[o]; pass[c] = l.pass[o]; }
+          for (let o = 0; o < was; o++) if (l.hit[o]) hit[Math.min(W - 1, Math.round(o * W / was))] = 1;
+        }
+        l.lv = lv; l.hit = hit; l.pass = pass;
       }
-      at = -1;
+      at = was && at >= 0 ? Math.min(W - 1, Math.round(at * W / was)) : -1;
     }
     // One lane's passes onto g, h tall: the last pass dim, this one over it.
     function paint(g, l, x, h, dim, bright, tickW) {
@@ -538,9 +546,11 @@
     })(0);
     // a new width or zoom moves the columns, and what was drawn no longer lies over them
     const stale = () => Math.round(L[0].cv.getBoundingClientRect().width * (devicePixelRatio || 1)) !== W;
-    addEventListener("resize", () => { if (stale()) { measure(); for (const l of L) draw(l, -1); } drawMix(at); });
+    addEventListener("resize", () => { if (stale()) { measure(); for (const l of L) draw(l, at); } drawMix(at); });
     measure();
-    try { if (localStorage.getItem("undertone-grid-mix")) showMix(true); } catch {}
+    let saved = false;
+    try { saved = !!localStorage.getItem("undertone-grid-mix"); } catch {} // storage may be blocked; nothing else is guarded here
+    if (saved) showMix(true);
   })();
 
   // ---- boot ----

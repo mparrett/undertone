@@ -26,12 +26,15 @@
 //	go run ./cmd/undertone -wav out.wav -depth 4 -lead pluck  # deterministic render
 //	go run ./cmd/undertone -midi-file out.mid -mood forge -dur 60  # the notes, one channel per layer
 //	go run ./cmd/undertone -midi-live -mood village       # a virtual MIDI source "undertone" (macOS)
+//	go run ./cmd/undertone -midi-file out.mid -theme title.json  # an authored theme, as its notes
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/mparrett/undertone/engine"
@@ -42,9 +45,11 @@ func main() {
 	wav := flag.String("wav", "", "render to WAV file")
 	midiFile := flag.String("midi-file", "", "render the notes to a Standard MIDI File (with -wav, the same render)")
 	midiLive := flag.Bool("midi-live", false, "play the notes live to a virtual MIDI source named undertone, without audio (macOS)")
-	layer := flag.String("layer", "", "with -midi-live, send only these layers, comma-separated: drone, fifth, pad, lead, air, pulse, drums")
+	layer := flag.String("layer", "", "with -midi-live, send only these layers, comma-separated: "+layerList())
 	dur := flag.Float64("dur", 48, "WAV or MIDI file duration seconds")
-	seed := flag.Uint64("seed", 1, "level seed")
+	seed := seedFlag(1)
+	flag.Var(&seed, "seed", "level seed; a negative one is read as a signed 64-bit seed's bits, as a game passes it")
+	themeFile := flag.String("theme", "", "play an authored theme from a JSON `file`: a vector of grids, or {grids, then}; without -dur, a render is the theme's length")
 	depth := flag.Int("depth", 0, "level within the mood (for dungeon, negative = overworld elevation)")
 	mood := flag.String("mood", "dungeon", strings.Join(engine.MoodNames(), " | ")+" (level = depth)")
 	lead := flag.String("lead", "", "lead instrument: bell|chime|clang|kalimba|reed|pluck (default: seed picks)")
@@ -62,15 +67,30 @@ func main() {
 	}
 	m, level := signedDepth(*mood, *depth)
 	*mood = m
-	p := deriveParams(*mood, *seed, level, *tension, *lead)
+	p := deriveParams(*mood, uint64(seed), level, *tension, *lead)
 	s := engine.NewSynth(p)
 	leadName := p.LeadName
 	if leadName == "" {
 		leadName = "none"
 	}
-	desc := fmt.Sprintf("mood=%s seed=%d level=%d tension=%.2f lead=%s bpm=%.0f root=%d", *mood, *seed, level, *tension, leadName, p.BPM, p.Root)
+	desc := fmt.Sprintf("mood=%s seed=%d level=%d tension=%.2f lead=%s bpm=%.0f root=%d", *mood, uint64(seed), level, *tension, leadName, p.BPM, p.Root)
 	if p.Groove != "" {
 		desc += " groove=" + p.Groove
+	}
+	if *themeFile != "" {
+		t, err := loadTheme(*themeFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "-theme %s: %v\n", *themeFile, err)
+			os.Exit(2)
+		}
+		// Before the first frame is rendered, so the theme's first grid starts at frame 0.
+		s.PlayTheme(t)
+		desc += fmt.Sprintf(" theme=%s (%d grids)", filepath.Base(*themeFile), len(t.Grids))
+		durSet := false
+		flag.Visit(func(f *flag.Flag) { durSet = durSet || f.Name == "dur" })
+		if !durSet {
+			*dur = themeSeconds(t, p, *dur)
+		}
 	}
 	switch {
 	case *midiFile != "":
@@ -105,6 +125,56 @@ func main() {
 	default:
 		flag.Usage()
 	}
+}
+
+// seedFlag is -seed: an unsigned seed, or a negative number kept as its
+// bits. A game's seeds are signed 64-bit, and one of those has to be
+// playable here as the game gave it.
+type seedFlag uint64
+
+func (s *seedFlag) String() string { return strconv.FormatUint(uint64(*s), 10) }
+
+func (s *seedFlag) Set(v string) error {
+	u, err := parseSeed(v)
+	if err != nil {
+		return err
+	}
+	*s = seedFlag(u)
+	return nil
+}
+
+// parseSeed reads a seed as -seed and the browser's scene switch take it.
+// Base 0, as flag.Uint64 read -seed before it took negatives: 0x and 0o
+// prefixes and underscores still work.
+func parseSeed(v string) (uint64, error) {
+	if u, err := strconv.ParseUint(v, 0, 64); err == nil {
+		return u, nil
+	}
+	i, err := strconv.ParseInt(v, 0, 64)
+	if err != nil {
+		return 0, fmt.Errorf("want an integer from %d to %d", int64(-1<<63), uint64(1<<64-1))
+	}
+	return uint64(i), nil
+}
+
+// layerList is the layers -layer takes, as setLayers reads them.
+func layerList() string {
+	n := engine.LayerNames()
+	return strings.Join(n[:], ", ")
+}
+
+// themeTail is how long a render runs past a theme's last grid, for its last
+// notes and the room to ring out.
+const themeTail = 4.0
+
+// themeSeconds is how long a render of t lasts when -dur was not given: the
+// theme and its tail. A looping theme has no end, so it keeps def.
+func themeSeconds(t *engine.Theme, p engine.Params, def float64) float64 {
+	if t.Then == engine.ThenLoop {
+		return def
+	}
+	grid := float64(engine.Steps*rowFrames(p)) / engine.SampleRate
+	return float64(len(t.Grids))*grid + themeTail
 }
 
 // signedDepth applies the signed-depth sugar, where dungeon depth -3 means

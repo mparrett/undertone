@@ -211,11 +211,22 @@ undertone -play -vu compact                # meters: bars | compact | tall
 undertone -wav out.wav -depth 4 -lead pluck -dur 30
 undertone -midi-file out.mid -mood forge -dur 60     # add -wav out.wav for both, aligned
 undertone -midi-live -mood village                   # macOS: a MIDI source named "undertone"
+undertone -midi-file title.mid -theme title.json     # an authored theme; also with -wav, -play, -midi-live
 ```
+
+`-theme` plays an authored theme from a JSON file, in the mood, seed and lead
+the other flags set. The file is a vector of grids, or `{"grids": [...],
+"then": "generate" | "silence" | "loop"}`, and a grid is `{"lead":
+"1030500080000000", "bass": "1000500010005000", "pulse": "1000100010001000",
+"drums": ["x...x...", "", ""], "bed": false}`: a digit a step, a scale degree
+for the lead and bass (0 rests) and 1 for a pulse step that sounds. Every key
+is optional. Without `-dur`, a render lasts the theme and four seconds more
+for it to ring out; a looping theme renders `-dur`'s default. `-seed` takes a
+negative number as a signed 64-bit seed, as a game passes one.
 
 The MIDI output is the notes the sequencer starts, for a DAW to play through
 its own instruments: one channel per layer (drone 1, fifth 2, pad 3, lead 4,
-air 5, pulse 6) and the drums on 10 as General MIDI kick 36, clap 39 and
+air 5, pulse 6, a theme's bass 8) and the drums on 10 as General MIDI kick 36, clap 39 and
 shaker 82. Velocity is the note's gain × 127. A track note lasts its gate
 (drone and fifth 16 rows, pad 6, air 10, pulse 1, the lead its instrument's
 gate), or until the track's next note cuts it, as its single voice does; a

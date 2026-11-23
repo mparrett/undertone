@@ -35,6 +35,8 @@
   label.tempo input { flex: 1; accent-color: var(--lead); }
   #bpmv { color: var(--fg); min-width: 3ch; text-align: right; }
 
+  /* air between the groups of controls: the mood, each voice, the buttons, the help */
+  #voices, #basses, #basses + .bar, #help { margin-top: 12px; }
   .lab { font-size: 13px; color: var(--mut); }
   #key { font-size: 13px; color: var(--fg); }
   /* a voice row wears its lane's colour, and so does the lane's heading: which chips go with which cells */

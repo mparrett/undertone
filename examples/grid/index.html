@@ -47,6 +47,9 @@
   .strip.idle { opacity: .4; }
   /* all four lanes on one strip, their colours added where they sound together */
   .strip.mix { height: 22px; }
+  /* off until the mix button turns it on */
+  #mixlane { display: none; }
+  :root.mix #mixlane { display: grid; }
   /* the first step of each beat after the first is 6px wider, padded on the left: beat groups */
   .grid { --C: calc(var(--cell) + 6px); display: grid; /* no gaps: a cell's own padding spaces it, the same on every side */
           grid-template-columns: 32px var(--cell) var(--cell) var(--cell) var(--cell)
@@ -81,11 +84,11 @@
      in a narrow column, and the rest of the width for the grid. Cells take
      what the width gives, short of making the page scroll: 18.5 cells of
      height (the drum rows are half ones), and what is not cells: the body's
-     padding, the top bar, the MIX strip and the four lane headers, 260px as
-     measured 2026-11-22. */
+     padding, the top bar and the four lane headers, 226px as measured
+     2026-11-22, and 34px more while the MIX strip shows. */
   @media (min-width: 900px) {
-    :root { --side: 210px;
-            --cell: clamp(22px, min(calc((100vw - 64px - var(--side) - 32px - 32px - 18px) / 16), calc((100dvh - 264px) / 18.5)), 36px); }
+    :root { --side: 210px; --other: 230px;
+            --cell: clamp(22px, min(calc((100vw - 64px - var(--side) - 32px - 32px - 18px) / 16), calc((100dvh - var(--other)) / 18.5)), 36px); }
     body { padding: 32px; }
     main { max-width: none; display: grid; grid-template-columns: var(--side) auto; gap: 20px 32px; justify-content: center; align-items: start; }
     /* min-width 0: the bar is as wide as the columns under it, and does not widen them */
@@ -95,6 +98,7 @@
     header .bar { flex: none; flex-wrap: nowrap; }
     header #status { order: 3; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     header button { padding: 5px 12px; font-size: 14px; }
+    aside button { padding: 5px 10px; font-size: 13px; } /* the column is narrow: these fit a row or two, not three */
     #play { font-size: 14px; }
     label.tempo { flex: none; width: 200px; min-width: 0; }
     /* a pointer can hit a small cell, so the drum cells, half a step wide,
@@ -102,14 +106,15 @@
     .drums .c, .drums .lbl { height: calc(var(--cell) / 2); }
     .drums .lbl { font-size: 10px; } /* the other labels' 12px does not fit a half row at the smallest cell */
     .lbl { font-size: 12px; }
-    .lane:first-child { margin-top: 0; }
+    :root.mix { --other: 264px; }
+    .lane:first-child, :root:not(.mix) #mixlane + .lane { margin-top: 0; }
   }
   /* Whole pixels, even ones so the drum cells' half is whole too: at a
      fraction of a pixel, neighbouring cells snap to different sizes. */
   @supports (width: round(down, 1px, 1px)) {
     :root { --cell: clamp(17px, round(down, calc((100vw - 32px - 32px - 3 * 6px) / 16), 2px), 28px); }
     @media (min-width: 900px) {
-      :root { --cell: clamp(22px, round(down, min(calc((100vw - 64px - var(--side) - 32px - 32px - 18px) / 16), calc((100dvh - 264px) / 18.5)), 2px), 36px); }
+      :root { --cell: clamp(22px, round(down, min(calc((100vw - 64px - var(--side) - 32px - 32px - 18px) / 16), calc((100dvh - var(--other)) / 18.5)), 2px), 36px); }
     }
   }
 </style>
@@ -132,6 +137,7 @@
     <button id="dice" title="a new starting pattern from the next seed">&#8635; new</button>
     <button id="clear">clear</button>
     <button class="bed" id="bed" title="the generator's drone, pad and air under the grid">bed</button>
+    <button class="bed" id="mixbtn" title="show a strip of all four lanes over one another, their colours added">mix</button>
     <button id="share">copy link</button>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
@@ -140,11 +146,11 @@
     Drum cells are sixteenths: a tap cycles hit, accent, ghost, rest.
     Alt-click or shift-click a cell to hear it without placing it.
     Space plays and stops on a keyboard, and r goes back to the first step. Edits are heard the next time the playhead passes them.
-    Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim. MIX adds all four.</footer>
+    Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim. The mix button shows all four on one strip, their colours added.</footer>
  </aside>
  <section>
 
-  <div class="lane"><span>MIX</span><canvas class="strip mix idle" id="mixstrip"></canvas></div>
+  <div class="lane" id="mixlane"><span>MIX</span><canvas class="strip mix idle" id="mixstrip"></canvas></div>
   <div class="lane"><span>LEAD</span><canvas class="strip idle" data-lane="lead"></canvas></div>
   <div class="grid lead" id="lead"></div>
   <div class="lane"><span>BASS</span><canvas class="strip idle" data-lane="bass"></canvas></div>
@@ -337,6 +343,15 @@
   }
   $("bpm").oninput = (e) => { st.bpm = +e.target.value; $("bpmv").textContent = st.bpm; pushParams(); };
   $("bed").onclick = () => { st.bed = !st.bed; paint(); pushGrid(); };
+  // The MIX strip is a way of looking, not part of the pattern: it stays out
+  // of the link and is remembered by this browser, where storage allows.
+  function showMix(on) {
+    document.documentElement.classList.toggle("mix", on);
+    $("mixbtn").classList.toggle("on", on);
+    try { localStorage.setItem("undertone-grid-mix", on ? "1" : ""); } catch {}
+    dispatchEvent(new Event("resize")); // the cells may have changed size, and the strips with them
+  }
+  $("mixbtn").onclick = () => showMix(!document.documentElement.classList.contains("mix"));
   $("clear").onclick = () => { st.lead.fill(0); st.bass.fill(0); st.pulse.fill(false); st.drums = lanes(); drumsChosen = true; paint(); pushGrid(); };
   $("dice").onclick = () => {
     if (!ready) return;
@@ -419,13 +434,21 @@
       // a beat's first cell is wider on its left, so a step starts a cell's width before its right edge
       xs = row.map((c) => (c.getBoundingClientRect().right - cell - box.left) * dpr);
       xs.push((row[STEPS - 1].getBoundingClientRect().right - box.left) * dpr);
+      const was = W;
       W = Math.round(box.width * dpr); H = Math.round(box.height * dpr);
-      HM = Math.round(mix.getBoundingClientRect().height * dpr); mix.width = W; mix.height = HM;
+      HM = -1; // the mix strip takes its size when next drawn
       for (const l of L) {
         l.cv.width = W; l.cv.height = H;
-        l.lv = new Float32Array(W); l.hit = new Uint8Array(W); l.pass = new Uint32Array(W); // pass 0: never written
+        const lv = new Float32Array(W), hit = new Uint8Array(W), pass = new Uint32Array(W); // pass 0: never written
+        // What was drawn comes along, stretched to the new width: the mix
+        // button changes the cells' size, and should not wipe the strips.
+        if (was && l.lv) {
+          for (let c = 0; c < W; c++) { const o = Math.min(was - 1, Math.floor(c * was / W)); lv[c] = l.lv[o]; pass[c] = l.pass[o]; }
+          for (let o = 0; o < was; o++) if (l.hit[o]) hit[Math.min(W - 1, Math.round(o * W / was))] = 1;
+        }
+        l.lv = lv; l.hit = hit; l.pass = pass;
       }
-      at = -1;
+      at = was && at >= 0 ? Math.min(W - 1, Math.round(at * W / was)) : -1;
     }
     // One lane's passes onto g, h tall: the last pass dim, this one over it.
     function paint(g, l, x, h, dim, bright, tickW) {
@@ -457,6 +480,9 @@
     // The lanes over one another, adding: lead on bass comes out pale, and a
     // step where everything lands, near white.
     function drawMix(x) {
+      const h = Math.round(mix.getBoundingClientRect().height * dpr); // 0 while hidden
+      if (h !== HM) { HM = h; mix.width = W; mix.height = h; }
+      if (!HM) return;
       mg.clearRect(0, 0, W, HM);
       mg.globalCompositeOperation = "lighter";
       // ticks a column wide: a wider one would add to the level beside it, and read as two lanes
@@ -520,8 +546,11 @@
     })(0);
     // a new width or zoom moves the columns, and what was drawn no longer lies over them
     const stale = () => Math.round(L[0].cv.getBoundingClientRect().width * (devicePixelRatio || 1)) !== W;
-    addEventListener("resize", () => { if (stale()) { measure(); for (const l of L) draw(l, -1); drawMix(-1); } });
+    addEventListener("resize", () => { if (stale()) { measure(); for (const l of L) draw(l, at); } drawMix(at); });
     measure();
+    let saved = false;
+    try { saved = !!localStorage.getItem("undertone-grid-mix"); } catch {} // storage may be blocked; nothing else is guarded here
+    if (saved) showMix(true);
   })();
 
   // ---- boot ----

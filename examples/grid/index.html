@@ -151,7 +151,7 @@
     Alt-click or shift-click a cell to hear it without placing it.
     Space plays and stops on a keyboard, and r goes back to the first step. Edits are heard the next time the playhead passes them.
     Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim. The mix button shows all four on one strip, their colours added.
-    The bass plays a string unless a bass voice is chosen.</footer>
+    A bass voice plays at the level of the pluck it replaces.</footer>
   </details>
  </aside>
  <section>
@@ -213,7 +213,7 @@
     st = { ...st, lead: L, bass: B, pulse: [...Array(STEPS)].map((_, i) => !!(p & (1 << i))),
            drums: lanes(linkHasDrums ? D : null),
            bpm: Math.min(160, Math.max(60, +kv.t || 110)), mood: MOODS.find((m) => m[0] === kv.m) || "overworld",
-           voice: VOICES.includes(kv.v) ? kv.v : "kalimba", bassVoice: VOICES.includes(kv.bv) ? kv.bv : "", seed: +kv.s || 1, bed: kv.bed !== "0" };
+           voice: VOICES.includes(kv.v) ? kv.v : "kalimba", bassVoice: VOICES.includes(kv.bv) && kv.bv !== "pluck" ? kv.bv : "", seed: +kv.s || 1, bed: kv.bed !== "0" };
     return true;
   }
 
@@ -324,10 +324,10 @@
   addEventListener("pointercancel", () => { painting = null; });
 
   // ---- controls ----
-  for (const [box, list, key] of [["moods", MOODS, "mood"], ["voices", VOICES, "voice"], ["basses", ["", ...VOICES], "bassVoice"]]) {
+  for (const [box, list, key] of [["moods", MOODS, "mood"], ["voices", VOICES, "voice"], ["basses", ["", ...VOICES.filter((v) => v !== "pluck")], "bassVoice"]]) {
     for (const v of list) {
-      const b = document.createElement("span"); b.className = "chip"; b.textContent = v || "default"; b.dataset.v = v;
-      if (!v) b.title = "the mood's own bass: a plucked string";
+      const b = document.createElement("span"); b.className = "chip"; b.textContent = v || "pluck"; b.dataset.v = v; // the bass the engine plays unasked is the pluck, so it is not offered twice
+      if (!v) b.title = "the bass as it is unless chosen: a plucked string";
       b.onclick = () => {
         st[key] = v; pushParams();
         if (key === "mood" && ready && !drumsChosen) {

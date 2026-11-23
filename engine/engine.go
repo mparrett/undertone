@@ -1214,6 +1214,9 @@ type Params struct {
 	// fifth's voice; SetParametersNow fades notes already sounding to the new
 	// level.
 	LeadDB, PadDB, BassDB float64
+	// bassGain is the bass lane's gain when ApplyBass chose its voice; zero
+	// plays gridBassGain.
+	bassGain float64
 
 	// MoodLeadDB and MoodPadDB are the mood's own trims, which a derive sets.
 	// They add to LeadDB and PadDB rather than sharing them, so a mood's
@@ -1319,11 +1322,14 @@ func ApplyLead(p *Params, name string) {
 }
 
 // ApplyBass gives the bass lane of a grid or theme a lead instrument's patch,
-// as ApplyLead gives the lead one. An unknown name changes nothing, and the
-// bass stays the palette's own, or the string every bass was before.
+// as ApplyLead gives the lead one, at a gain that puts it level with the
+// string it replaces. An unknown name changes nothing, and the bass stays the
+// palette's own, or the string every bass was before. The lane keeps its own
+// two-row gate whatever the instrument: a bass note is held, not struck.
 func ApplyBass(p *Params, name string) {
 	if d, ok := lookupLead(name); ok {
 		p.Palette.Bass = d.patch
+		p.bassGain = gridBassVoiceGain[d.name]
 	}
 }
 

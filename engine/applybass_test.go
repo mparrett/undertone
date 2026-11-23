@@ -2,8 +2,44 @@ package engine
 
 import (
 	"bytes"
+	"math"
 	"testing"
 )
+
+// Each voice ApplyBass can name plays the bass lane about as loud as the
+// string it replaces: at the string's gain the louder ones drown the lead.
+func TestApplyBassLevel(t *testing.T) {
+	level := func(name string) float64 {
+		p := DeriveOverworld(1, 2, 0)
+		p.BPM = 110
+		if name != "" {
+			ApplyBass(&p, name)
+		}
+		s := NewSynth(p)
+		s.SetGrid(&Grid{Bass: [Steps]int{1, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 5}})
+		buf := make([]byte, 4*SampleRate*8)
+		s.Read(buf)
+		var sum float64
+		var n int
+		for i := 0; i+1 < len(buf); i += 2 {
+			v := float64(int16(uint16(buf[i])|uint16(buf[i+1])<<8)) / 32768
+			if math.Abs(v) > 0.001 { // while sounding
+				sum += v * v
+				n++
+			}
+		}
+		return 10 * math.Log10(sum/float64(n))
+	}
+	want := level("")
+	for _, d := range leadLib {
+		if _, ok := gridBassVoiceGain[d.name]; !ok {
+			t.Errorf("%s: no bass gain measured; it plays at the string's", d.name)
+		}
+		if got := level(d.name); math.Abs(got-want) > 1.5 {
+			t.Errorf("%s as the bass: %.1f dB, the string is %.1f", d.name, got, want)
+		}
+	}
+}
 
 // A grid's bass lane plays the instrument ApplyBass names, and the lead and
 // everything else are left as they were.

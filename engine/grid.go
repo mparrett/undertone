@@ -135,6 +135,15 @@ const (
 
 var gridBass = pluck
 
+// gridBassVoiceGain is the bass lane's gain for each lead instrument
+// ApplyBass can put there, measured to match the string's level (rms while
+// sounding, bass lane alone, as of 2026-11-22): at the string's gain a bell is
+// 15 dB hotter. TestApplyBassLevel holds them to it. One left out plays at
+// gridBassGain.
+var gridBassVoiceGain = map[string]float64{
+	"bell": 0.52, "chime": 0.59, "clang": 1.14, "kalimba": 1.28, "reed": 1.08, "pluck": gridBassGain,
+}
+
 // applyGrid overwrites this row of the generated pattern with the grid's.
 func (s *Synth) applyGrid(g *Grid, row int) {
 	p := s.params
@@ -162,7 +171,11 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 	}
 	s.pats[trackBass][row] = trackRow{}
 	if d := g.Bass[row]; d > 0 {
-		s.pats[trackBass][row] = trackRow{degreeNote(p, bass, d), gridBassGain * dbGain(p.BassDB), 2, p.Palette.bass()}
+		gain := p.bassGain
+		if gain == 0 {
+			gain = gridBassGain
+		}
+		s.pats[trackBass][row] = trackRow{degreeNote(p, bass, d), gain * dbGain(p.BassDB), 2, p.Palette.bass()}
 	}
 	s.pats[trackPulse][row] = trackRow{}
 	if g.Pulse[row] {

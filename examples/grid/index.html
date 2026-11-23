@@ -362,6 +362,7 @@
       el.textContent = text;
       if (was === undefined) return;
       el.classList.remove("changed"); void el.offsetWidth; el.classList.add("changed"); // reflow: restart one already running
+      el.onanimationend = () => el.classList.remove("changed"); // or it would replay whenever the element was hidden and shown
     };
     set(keyEl, "key: " + k.key, shownKey);
     for (const lane of ["lead", "bass"]) {

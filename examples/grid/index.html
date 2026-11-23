@@ -33,6 +33,11 @@
   .chip.on { color: var(--fg); border-color: var(--mut); background: #22222a; }
   label.tempo { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; font-size: 13px; color: var(--mut); }
   label.tempo input { flex: 1; accent-color: var(--lead); }
+  #pattern { gap: 8px 6px; } /* four controls: at 8px the last wraps alone on a 390px phone */
+  label.seed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--mut); }
+  #seed { font: inherit; width: 40px; padding: 5px 2px; text-align: center; color: var(--fg); background: var(--panel);
+          border: 1px solid var(--line); border-radius: 8px; appearance: textfield; -moz-appearance: textfield; }
+  #seed::-webkit-inner-spin-button, #seed::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; } /* no room for the arrows; random steps it */
   #bpmv { color: var(--fg); min-width: 3ch; text-align: right; }
 
   /* air between the groups of controls: the mood, each voice, the buttons, the help.
@@ -186,6 +191,8 @@
   <div class="bar" id="basses"><span class="lab">bass voice</span></div>
   <div class="bar" id="pattern"><span class="lab">pattern</span>
     <button id="dice" title="fill the grid with a new random pattern; it takes the next seed, so the key may move">&#8635; random</button>
+    <label class="seed" title="the seed: each gives its own pattern, and may move the key. Type one to go to it.">seed
+      <input id="seed" type="number" inputmode="numeric" min="1" max="9999" step="1" value="1"></label>
     <button id="clear" title="empty the grid">clear</button>
     <button id="share" title="copy a link that opens this pattern">copy link</button>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
@@ -328,6 +335,7 @@
     for (const b of document.querySelectorAll("#basses .chip")) b.classList.toggle("on", b.dataset.v === st.bassVoice);
     $("bed").classList.toggle("on", st.bed);
     $("bpm").value = st.bpm; $("bpmv").textContent = st.bpm;
+    if (document.activeElement !== $("seed")) $("seed").value = st.seed;
     showEDN();
   }
 
@@ -566,16 +574,26 @@
   }
   $("mixbtn").onclick = () => showMix(!document.documentElement.classList.contains("mix"));
   $("clear").onclick = () => { st.lead.fill(0); st.bass.fill(0); st.pulse.fill(false); st.drums = lanes(); drumsChosen = true; paint(); pushGrid(); };
-  $("dice").onclick = () => {
+  // Go to a seed: its pattern replaces the grid's, as random's does.
+  const MAXSEED = 9999;
+  function takeSeed(n) {
     if (!ready) return;
-    st.seed = (st.seed % 999) + 1;
+    st.seed = n;
     pushParams(); // the seed also picks the bed's patterns
     const g = JSON.parse(undertoneGrid.seedGrid(st.seed));
     st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = lanes(g.drums);
     drumsChosen = false; // a fresh start: the next mood brings its groove
     paint(); pushGrid();
     status.textContent = `seed ${st.seed}`;
+  }
+  $("dice").onclick = () => takeSeed((st.seed % MAXSEED) + 1);
+  // on change, not on input: each digit typed would otherwise replace the pattern on the way
+  $("seed").onchange = () => {
+    const n = Math.round(+$("seed").value);
+    if (n >= 1 && n <= MAXSEED && n !== st.seed) takeSeed(n);
+    else $("seed").value = st.seed; // not a seed, or the one already here: show what is
   };
+  $("seed").onkeydown = (e) => { if (e.key === "Enter") $("seed").blur(); };
   let mutations = 0;
   $("mutate").onclick = () => {
     const out = undertoneGrid.mutate(JSON.stringify({ lead: st.lead, bass: st.bass, pulse: st.pulse, drums: drumStrings(), bed: st.bed }), ++mutations);

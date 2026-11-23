@@ -16,7 +16,8 @@
 //	setGrid(json)    {lead:[16], bass:[16], pulse:[16], drums:[3], bed}: degrees 1..8, 0 = rest;
 //	                 drums are kick, clap, shaker as 32 sixteenths of X x o .
 //	setParams(json)  {bpm, mood: "village"|"aurora"|"meadow"|"overworld"|"ruins"|"dungeon", voice, bass, seed}:
-//	                 voice and bass name a lead instrument for the lead and bass lanes; "" keeps the mood's
+//	                 voice and bass name a lead instrument for the lead and bass lanes; "" keeps the mood's,
+//	                 and "none" silences the lane: its notes stay, unheard
 //	seedGrid(seed)   a starting grid derived from the current params, as JSON
 //	play() / stop()  call from the tap handler: iOS resumes audio only inside one
 //	restart()        start the pattern over from its first step; while stopped, the next play starts there
@@ -138,6 +139,9 @@ func (a *auditioner) play(g engine.Grid) {
 // extraAPI lets an optional build add to window.undertoneGrid (lg.go).
 var extraAPI func(api map[string]any)
 
+// voiceNone is the voice that silences a lane.
+const voiceNone = "none"
+
 func derive(c paramsJSON) engine.Params {
 	mood, level := c.Mood, 0
 	switch mood {
@@ -152,10 +156,20 @@ func derive(c paramsJSON) engine.Params {
 	if !ok {
 		p = engine.DeriveOverworld(c.Seed, 2, 0)
 	}
-	if c.Voice != "" {
+	// "none" mutes the lane at the mix: it still plays, unheard, so nothing
+	// else about the pattern or the bed moves.
+	switch c.Voice {
+	case "":
+	case voiceNone:
+		p.Mute |= engine.LayerLead
+	default:
 		engine.ApplyLead(&p, c.Voice)
 	}
-	if c.Bass != "" {
+	switch c.Bass {
+	case "":
+	case voiceNone:
+		p.Mute |= engine.LayerBass
+	default:
 		engine.ApplyBass(&p, c.Bass)
 	}
 	if c.BPM > 0 {
@@ -287,6 +301,13 @@ func main() {
 		}),
 		"levels": js.FuncOf(func(js.Value, []js.Value) any {
 			l := syn.LayerLevels()
+			// a muted layer still reports its level; a silenced lane's strip should lie flat
+			if cur.Voice == voiceNone {
+				l[3] = 0
+			}
+			if cur.Bass == voiceNone {
+				l[7] = 0
+			}
 			return []any{l[3], l[7], l[5], l[engine.DrumsLayer]} // LayerNames order: lead 3, bass 7, pulse 5
 		}),
 		"onsets": js.FuncOf(func(js.Value, []js.Value) any {
@@ -294,7 +315,7 @@ func main() {
 			evs, noteCursor, _ = syn.NoteEvents(noteCursor, noteBuf[:0])
 			out := []any{0, 0, 0, 0}
 			for _, e := range evs {
-				if k, ok := lanes[e.Layer]; ok {
+				if k, ok := lanes[e.Layer]; ok && !(k == 0 && cur.Voice == voiceNone) && !(k == 1 && cur.Bass == voiceNone) {
 					out[k] = out[k].(int) + 1
 				}
 			}

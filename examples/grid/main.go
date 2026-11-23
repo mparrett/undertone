@@ -15,7 +15,8 @@
 //
 //	setGrid(json)    {lead:[16], bass:[16], pulse:[16], drums:[3], bed}: degrees 1..8, 0 = rest;
 //	                 drums are kick, clap, shaker as 32 sixteenths of X x o .
-//	setParams(json)  {bpm, mood: "village"|"aurora"|"meadow"|"overworld"|"ruins"|"dungeon", voice, seed}
+//	setParams(json)  {bpm, mood: "village"|"aurora"|"meadow"|"overworld"|"ruins"|"dungeon", voice, bass, seed}:
+//	                 voice and bass name a lead instrument for the lead and bass lanes; "" keeps the mood's
 //	seedGrid(seed)   a starting grid derived from the current params, as JSON
 //	play() / stop()  call from the tap handler: iOS resumes audio only inside one
 //	restart()        start the pattern over from its first step; while stopped, the next play starts there
@@ -69,6 +70,7 @@ type paramsJSON struct {
 	BPM   float64 `json:"bpm"`
 	Mood  string  `json:"mood"`
 	Voice string  `json:"voice"`
+	Bass  string  `json:"bass"`
 	Seed  uint64  `json:"seed"`
 }
 
@@ -152,6 +154,9 @@ func derive(c paramsJSON) engine.Params {
 	}
 	if c.Voice != "" {
 		engine.ApplyLead(&p, c.Voice)
+	}
+	if c.Bass != "" {
+		engine.ApplyBass(&p, c.Bass)
 	}
 	if c.BPM > 0 {
 		p.BPM = min(max(c.BPM, 40), 200)

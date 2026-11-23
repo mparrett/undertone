@@ -78,7 +78,9 @@
   main.loading .grid, main.loading .lane, main.loading .bar .chip, main.loading .bar button:not(#play),
   main.loading .bar label { opacity: .35; pointer-events: none; transition: opacity .3s; }
   footer { margin: 4px 0 10px; font-size: 12px; color: var(--mut); }
-  @media (max-width: 899px) { footer { order: 9; } aside, header { display: contents; } main { display: flex; flex-direction: column; } section { order: 5; } }
+  /* the instructions fold away: open, they are taller than the controls above them */
+  #help summary { font-size: 12px; color: var(--mut); cursor: pointer; margin: 4px 0; }
+  @media (max-width: 899px) { #help { order: 9; } aside, header { display: contents; } main { display: flex; flex-direction: column; } section { order: 5; } }
   footer a { color: var(--mut); }
   /* wide screens: play and tempo in a bar across the top, the other controls
      in a narrow column, and the rest of the width for the grid. Cells take
@@ -133,6 +135,7 @@
  <aside>
   <div class="bar" id="moods"><span class="lab">mood:</span></div>
   <div class="bar" id="voices"><span class="lab">lead voice:</span></div>
+  <div class="bar" id="basses"><span class="lab">bass voice:</span></div>
   <div class="bar">
     <button id="dice" title="a new starting pattern from the next seed">&#8635; new</button>
     <button id="clear">clear</button>
@@ -141,12 +144,15 @@
     <button id="share">copy link</button>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
+  <details id="help"><summary>how it works</summary>
   <footer>Tap a cell to place a note, tap it again to clear; drag to paint. One note per step in each lane.
     Rows are scale degrees, so the pattern stays in key when the mood changes.
     Drum cells are sixteenths: a tap cycles hit, accent, ghost, rest.
     Alt-click or shift-click a cell to hear it without placing it.
     Space plays and stops on a keyboard, and r goes back to the first step. Edits are heard the next time the playhead passes them.
-    Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim. The mix button shows all four on one strip, their colours added.</footer>
+    Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim. The mix button shows all four on one strip, their colours added.
+    A bass voice plays at the level of the pluck it replaces.</footer>
+  </details>
  </aside>
  <section>
 
@@ -177,7 +183,8 @@
   const status = $("status");
 
   // State lives here; the wasm side only hears about changes.
-  let st = { bpm: 110, mood: "overworld", voice: "kalimba", seed: 1, bed: true,
+  // bassVoice "" is the mood's own bass; bass is the lane's notes
+  let st = { bpm: 110, mood: "overworld", voice: "kalimba", bassVoice: "", seed: 1, bed: true,
              lead: Array(STEPS).fill(0), bass: Array(STEPS).fill(0), pulse: Array(STEPS).fill(false), drums: lanes() };
   let playing = false, ready = false, linkHasDrums = false;
   // Set once the drum lanes hold a choice, even an empty one: an edit, clear,
@@ -185,11 +192,12 @@
   let drumsChosen = false;
 
   // ---- share links: #v1;t=110;m=o;v=kalimba;s=1;bed=1;L=...;B=...;P=hex;D=kick,clap,shaker ----
+  // bv=<voice> follows v when a bass voice is chosen; a link without it keeps the mood's bass.
   // D came later; a link without it takes its drums from the mood's groove.
   const drumStrings = () => st.drums.map((a) => a.join(""));
   function encode() {
     const pulse = st.pulse.reduce((n, on, i) => n | (on ? 1 << i : 0), 0);
-    return `#v1;t=${st.bpm};m=${st.mood[0]};v=${st.voice};s=${st.seed};bed=${+st.bed};` +
+    return `#v1;t=${st.bpm};m=${st.mood[0]};v=${st.voice};${st.bassVoice ? `bv=${st.bassVoice};` : ""}s=${st.seed};bed=${+st.bed};` +
            `L=${st.lead.join("")};B=${st.bass.join("")};P=${pulse.toString(16)};D=${drumStrings().join(",")}`;
   }
   function decode(h) {
@@ -205,7 +213,7 @@
     st = { ...st, lead: L, bass: B, pulse: [...Array(STEPS)].map((_, i) => !!(p & (1 << i))),
            drums: lanes(linkHasDrums ? D : null),
            bpm: Math.min(160, Math.max(60, +kv.t || 110)), mood: MOODS.find((m) => m[0] === kv.m) || "overworld",
-           voice: VOICES.includes(kv.v) ? kv.v : "kalimba", seed: +kv.s || 1, bed: kv.bed !== "0" };
+           voice: VOICES.includes(kv.v) ? kv.v : "kalimba", bassVoice: VOICES.includes(kv.bv) && kv.bv !== "pluck" ? kv.bv : "", seed: +kv.s || 1, bed: kv.bed !== "0" };
     return true;
   }
 
@@ -255,6 +263,7 @@
     }
     for (const b of document.querySelectorAll("#moods .chip")) b.classList.toggle("on", b.dataset.v === st.mood);
     for (const b of document.querySelectorAll("#voices .chip")) b.classList.toggle("on", b.dataset.v === st.voice);
+    for (const b of document.querySelectorAll("#basses .chip")) b.classList.toggle("on", b.dataset.v === st.bassVoice);
     $("bed").classList.toggle("on", st.bed);
     $("bpm").value = st.bpm; $("bpmv").textContent = st.bpm;
   }
@@ -264,7 +273,7 @@
     history.replaceState(null, "", encode());
   };
   const pushParams = () => {
-    if (ready) { undertoneGrid.setParams(JSON.stringify({ bpm: st.bpm, mood: st.mood, voice: st.voice, seed: st.seed })); showKey(); }
+    if (ready) { undertoneGrid.setParams(JSON.stringify({ bpm: st.bpm, mood: st.mood, voice: st.voice, bass: st.bassVoice, seed: st.seed })); showKey(); }
     history.replaceState(null, "", encode());
   };
 
@@ -315,9 +324,10 @@
   addEventListener("pointercancel", () => { painting = null; });
 
   // ---- controls ----
-  for (const [box, list, key] of [["moods", MOODS, "mood"], ["voices", VOICES, "voice"]]) {
+  for (const [box, list, key] of [["moods", MOODS, "mood"], ["voices", VOICES, "voice"], ["basses", ["", ...VOICES.filter((v) => v !== "pluck")], "bassVoice"]]) {
     for (const v of list) {
-      const b = document.createElement("span"); b.className = "chip"; b.textContent = v; b.dataset.v = v;
+      const b = document.createElement("span"); b.className = "chip"; b.textContent = v || "pluck"; b.dataset.v = v; // the bass the engine plays unasked is the pluck, so it is not offered twice
+      if (!v) b.title = "the bass as it is unless chosen: a plucked string";
       b.onclick = () => {
         st[key] = v; pushParams();
         if (key === "mood" && ready && !drumsChosen) {

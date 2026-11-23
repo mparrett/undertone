@@ -29,7 +29,7 @@
   #play:disabled { border-color: var(--line); background: var(--panel); color: var(--mut); }
   #play.on { border-color: var(--lead); background: #2a2414; }
   .chip { padding: 5px 10px; font-size: 13px; color: var(--mut); }
-  aside button { padding: 5px 10px; font-size: 13px; } /* a chip's size: on a phone or in the narrow column the five fit a row or two */
+  aside button { padding: 5px 10px; font-size: 13px; } /* a chip's size, so a group's buttons fit one row on a phone */
   .chip.on { color: var(--fg); border-color: var(--mut); background: #22222a; }
   label.tempo { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; font-size: 13px; color: var(--mut); }
   label.tempo input { flex: 1; accent-color: var(--lead); }
@@ -38,9 +38,11 @@
   /* air between the groups of controls: the mood, each voice, the buttons, the help.
      Padding, not margin: in the wide layout's column a margin would collapse into the row above's.
      7px is what that column can take and stay shorter than the grid at its smallest cells, help closed (2026-11-22). */
-  #voices, #basses, #basses + .bar, #help { padding-top: 7px; }
-  .lab { font-size: 13px; color: var(--mut); }
-  #key { font-size: 13px; color: var(--fg); }
+  #voices, #basses, #pattern, .pair, #help { padding-top: 7px; }
+  /* a group's heading: a line of its own, in the lane headings' small capitals */
+  .lab { flex-basis: 100%; margin-bottom: -3px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mut); }
+  .pair { display: flex; gap: 28px; }
+  #key { font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--fg); margin-left: 10px; } /* on the mood's heading line */
   /* a voice row wears its lane's colour, and so does the lane's heading: which chips go with which cells */
   #voices { --lane: var(--lead); } #basses { --lane: var(--bass); }
   #voices .lab, #basses .lab, #voices .chip.on, #basses .chip.on { color: var(--lane); }
@@ -96,6 +98,11 @@
   footer { margin: 4px 0 10px; font-size: 12px; color: var(--mut); }
   /* the instructions fold away: open, they are taller than the controls above them */
   #help summary { font-size: 12px; color: var(--mut); cursor: pointer; margin: 4px 0; }
+  /* In a window tall enough for the grid at its smallest cells (633px, as measured 2026-11-22) the
+     column never makes the page scroll: shorter than its controls, it scrolls itself. Shorter than
+     that the page scrolls anyway, and the column goes with it. The column starts 85px down (the
+     body's 32px, the top bar, a 20px gap; 2026-11-22), less its 12px margin, and ends 20px from the bottom. */
+  @media (min-width: 900px) and (min-height: 634px) { aside { max-height: calc(100dvh - 73px - 20px); overflow-y: auto; } }
   @media (max-width: 899px) { #help { order: 9; } aside, header { display: contents; } main { display: flex; flex-direction: column; } section { order: 5; } }
   footer a { color: var(--mut); }
   /* wide screens: play and tempo in a bar across the top, the other controls
@@ -125,6 +132,9 @@
     .lbl { font-size: 12px; }
     :root.mix { --other: 264px; }
     .lane:first-child, :root:not(.mix) #mixlane + .lane { margin-top: 0; }
+    /* 12px of room around the column's contents, taken back by the margin, for what is drawn
+       outside them: the key's glow, a focus ring. A scrolling box would cut those off. */
+    aside { align-self: start; padding: 12px; margin: -12px; }
   }
   /* Whole pixels, even ones so the drum cells' half is whole too: at a
      fraction of a pixel, neighbouring cells snap to different sizes. */
@@ -148,16 +158,21 @@
   </div>
  </header>
  <aside>
-  <div class="bar" id="moods"><span class="lab">mood:</span></div>
-  <div class="bar" id="voices"><span class="lab">lead voice:</span></div>
-  <div class="bar" id="basses"><span class="lab">bass voice:</span></div>
-  <div class="bar">
-    <button id="dice" title="a new starting pattern from the next seed">&#8635; new</button>
-    <button id="clear">clear</button>
-    <button class="bed" id="bed" title="the generator's drone, pad and air under the grid">bed</button>
-    <button class="bed" id="mixbtn" title="show a strip of all four lanes over one another, their colours added">mix</button>
-    <button id="share">copy link</button>
+  <div class="bar" id="moods"><span class="lab">mood</span></div>
+  <div class="bar" id="voices"><span class="lab">lead voice</span></div>
+  <div class="bar" id="basses"><span class="lab">bass voice</span></div>
+  <div class="bar" id="pattern"><span class="lab">pattern</span>
+    <button id="dice" title="fill the grid with a new random pattern; it takes the next seed, so the key may move">&#8635; random</button>
+    <button id="clear" title="empty the grid">clear</button>
+    <button id="share" title="copy a link that opens this pattern">copy link</button>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
+  </div>
+  <!-- two unrelated switches, each under its own heading: what is heard under the notes, and what is drawn above them -->
+  <div class="pair">
+    <div class="bar"><span class="lab">backing</span>
+      <button class="bed" id="bed" title="the generator's drone, pad and air, playing under the notes; saved in the link">bed</button></div>
+    <div class="bar"><span class="lab">view</span>
+      <button class="bed" id="mixbtn" title="show a strip of all four lanes over one another, their colours added; not saved in the link">mix strip</button></div>
   </div>
   <details id="help"><summary>how it works</summary>
   <footer>Tap a cell to place a note, tap it again to clear; drag to paint. One note per step in each lane.
@@ -165,7 +180,7 @@
     Drum cells are sixteenths: a tap cycles hit, accent, ghost, rest.
     Alt-click or shift-click a cell to hear it without placing it.
     Space plays and stops on a keyboard, and r goes back to the first step. Edits are heard the next time the playhead passes them.
-    Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim. The mix button shows all four on one strip, their colours added.
+    Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim. The mix strip shows all four on one, their colours added.
     A bass voice plays at the level of the pluck it replaces.</footer>
   </details>
  </aside>
@@ -353,7 +368,7 @@
       $(box).appendChild(b);
     }
   }
-  const keyEl = document.createElement("span"); keyEl.id = "key"; $("moods").appendChild(keyEl);
+  const keyEl = document.createElement("span"); keyEl.id = "key"; $("moods").querySelector(".lab").appendChild(keyEl);
   // Name the key, and label each melodic lane's rows 1 and 8 with their notes;
   // the rows between keep their degree numbers.
   let shownKey; // undefined until a key has been shown

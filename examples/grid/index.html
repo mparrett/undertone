@@ -340,8 +340,9 @@
   function showEDN() {
     if (!document.documentElement.classList.contains("edn")) return;
     $("setedn").textContent = settingsEDN();
-    // not under the cursor: a rewrite would move it, and undo what is half typed
-    if (document.activeElement !== $("patedn")) { $("patedn").value = patternEDN(); patHint(""); }
+    // Not over text being typed: a rewrite would move the cursor and undo what is half there.
+    // A box that only has the cursor is rewritten: a cell painted meanwhile must show in it.
+    if (!ednDirty && !ednApplying) { $("patedn").value = patternEDN(); patHint(""); }
   }
   function patHint(err) {
     $("patedn").classList.toggle("bad", !!err); $("patednhint").classList.toggle("bad", !!err);
@@ -408,18 +409,23 @@
     g.drums = d;
     return g;
   }
-  let ednTimer = 0;
+  // ednDirty: the box holds typing not yet applied, so it is the box that is right and not the
+  // cells. Only then is it read; a box merely clicked into must not overwrite cells painted since.
+  let ednTimer = 0, ednDirty = false, ednApplying = false;
   function applyEDN() {
     let g;
     try { g = gridOf($("patedn").value); } catch (e) { patHint(e.message); return; }
-    patHint("");
-    st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = lanes(g.drums); st.bed = g.bed;
-    drumsChosen = true; // the box carries the drum lanes, empty or not
-    paint(); pushGrid();
+    patHint(""); ednDirty = false;
+    const drums = lanes(g.drums);
+    // an edit to the drum lanes is a choice of them; one to the notes leaves a mood free to bring its groove
+    if (drums.map((a) => a.join("")).join() !== drumStrings().join()) drumsChosen = true;
+    st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = drums; st.bed = g.bed;
+    ednApplying = true; // the text stays as typed while the cursor is in it
+    try { paint(); pushGrid(); } finally { ednApplying = false; }
   }
-  $("patedn").oninput = () => { clearTimeout(ednTimer); ednTimer = setTimeout(applyEDN, 600); };
-  // leaving the box: what it holds is applied at once, and if it read, written back tidy
-  $("patedn").onblur = () => { clearTimeout(ednTimer); applyEDN(); if (!$("patedn").classList.contains("bad")) $("patedn").value = patternEDN(); };
+  $("patedn").oninput = () => { ednDirty = true; clearTimeout(ednTimer); ednTimer = setTimeout(applyEDN, 600); };
+  // leaving the box: typing not yet applied is applied at once, and if it read, written back tidy
+  $("patedn").onblur = () => { clearTimeout(ednTimer); if (ednDirty) applyEDN(); if (!ednDirty) { $("patedn").value = patternEDN(); patHint(""); } };
   // Like the MIX strip, a way of looking: out of the link, remembered by this browser.
   function showEDNBox(on) {
     document.documentElement.classList.toggle("edn", on);
@@ -531,7 +537,7 @@
     }
     shownKey = k.key;
   }
-  $("bpm").oninput = (e) => { st.bpm = +e.target.value; $("bpmv").textContent = st.bpm; pushParams(); };
+  $("bpm").oninput = (e) => { st.bpm = +e.target.value; $("bpmv").textContent = st.bpm; pushParams(); showEDN(); };
   $("bed").onclick = () => { st.bed = !st.bed; paint(); pushGrid(); };
   // The MIX strip is a way of looking, not part of the pattern: it stays out
   // of the link and is remembered by this browser, where storage allows.

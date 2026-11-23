@@ -492,6 +492,10 @@
   function audition(c) {
     if (!ready) return;
     const lane = c.dataset.lane;
+    // a silenced lane has no voice to hear a note in; say so, and do not claim it was heard
+    if ((lane === "lead" && st.voice === NONE) || (lane === "bass" && st.bassVoice === NONE)) {
+      status.textContent = `${lane} voice is none: choose a voice to hear it`; return;
+    }
     const g = { lead: Array(STEPS).fill(0), bass: Array(STEPS).fill(0), pulse: Array(STEPS).fill(false), drums: DRUMS.map(() => ""), bed: false };
     if (lane === "drums") {
       const now = st.drums[c.dataset.drum][c.dataset.i];

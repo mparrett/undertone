@@ -64,10 +64,18 @@
   .ednbox { flex: 1 1 190px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
   .ednbox:first-child { flex: 2.2 1 300px; } /* the pattern: a lane's 16 values on a line */
   .ednbox .lab { flex-basis: auto; margin: 0; }
-  #patedn, #setedn { font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+  #patedn, #patednhl, #setedn { font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--fg); background: var(--panel); border: 1px solid var(--line);
                      border-radius: 8px; padding: 8px 10px; margin: 0; width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
-  #patedn { resize: vertical; }
   #patedn.bad { border-color: var(--pulse); }
+  /* the pattern's text, coloured as the designer and studio colour EDN: a
+     layer under the textarea, whose own text is transparent over it */
+  .hl { display: grid; width: 100%; }
+  .hl > * { grid-area: 1 / 1; box-sizing: border-box; }
+  .hl > pre { overflow: hidden; pointer-events: none; contain: size; } /* the textarea sets the height */
+  .hl > #patedn { background: transparent; color: transparent; caret-color: var(--fg); position: relative; resize: none; overflow: hidden; }
+  .hl > #patedn::selection { background: color-mix(in srgb, var(--bass) 35%, transparent); color: transparent; }
+  .e-kw { color: #b48ad6; } .e-num { color: var(--bass); } .e-str { color: var(--lead); } .e-br { color: var(--mut); }
+  .e-cm { color: var(--mut); font-style: italic; } .e-off { opacity: .6; }
   .hint { font-size: 12px; color: var(--mut); min-height: 1.4em; }
   .hint.bad { color: var(--pulse); }
   #key { font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--fg); margin-left: 4px; white-space: nowrap; } /* beside the mood's chip */
@@ -154,7 +162,15 @@
   /* the instructions fold away: open, they are taller than the controls above them */
   /* how it works: under the grid at a lane's width, off until the ? button turns it on. In the side column it was a long thin strip. */
   #helpsec { display: none; margin: 18px 0 0; line-height: 1.6; max-width: calc(32px + 16 * var(--cell) + 3 * 6px); }
-  :root.help #helpsec { display: block; }
+  :root.help #helpsec { display: grid; }
+  /* three short columns where there is room for them, one under another where not */
+  #helpsec { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px 28px; line-height: 1.5; font-size: 13px; }
+  #helpsec h3 { margin: 0 0 6px; font-size: 11px; font-weight: normal; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); }
+  #helpsec ul { margin: 0; padding: 0; list-style: none; }
+  #helpsec li { margin: 0 0 7px; padding-left: 12px; text-indent: -12px; }
+  #helpsec li::before { content: "·"; display: inline-block; width: 12px; text-indent: 0; color: var(--mut); }
+  #helpsec b { font-weight: normal; color: var(--fg); border-bottom: 1px dotted var(--mut); }
+  kbd { font: inherit; font-size: 11px; padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--panel); }
   @media (max-width: 899px) { header { display: contents; } main { display: flex; flex-direction: column; } section { order: 5; } }
   footer a { color: var(--mut); }
   /* wide screens: a header across the top that stays in view, the
@@ -277,14 +293,22 @@
     <div class="grid drums" id="drums"></div>
   </div>
 
-  <footer id="helpsec">Tap a cell to place a note, tap it again to clear; drag to paint. One note per step in each lane.
-    Rows are scale degrees, so the pattern stays in key when the mood changes.
-    Drum cells are sixteenths: a tap cycles hit, accent, ghost, rest.
-    Alt-click or shift-click a cell to hear it without placing it.
-    Space plays and stops on a keyboard, and r goes back to the first step. Edits are heard the next time the playhead passes them.
-    Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim. Under VIEW, mix shows all four on one strip, their colours added.
-    A bass voice plays at the level of the pluck it replaces.
-    Under VIEW, edn shows the pattern as EDN: a theme's grid, which can be edited or pasted over.</footer>
+  <footer id="helpsec">
+    <div><h3>editing</h3><ul>
+      <li>Tap a cell to place a note, tap it again to clear; drag to paint. One note per step in each lane.</li>
+      <li>Rows are scale degrees, so the pattern stays in key when the mood changes.</li>
+      <li>Drum cells are sixteenths: a tap cycles hit, accent, ghost, rest.</li>
+      <li><kbd>alt</kbd>- or <kbd>shift</kbd>-click a cell to hear it without placing it.</li></ul></div>
+    <div><h3>playing</h3><ul>
+      <li><kbd>space</kbd> plays and stops; <kbd>r</kbd> goes back to the first step.</li>
+      <li>Edits are heard the next time the playhead passes them.</li>
+      <li>A pick in the header opens its choices; <kbd>&larr;</kbd> <kbd>&rarr;</kbd> step through them while it is open, and <kbd>esc</kbd> closes it.</li>
+      <li>A bass voice plays at the level of the pluck it replaces.</li></ul></div>
+    <div><h3>seeing</h3><ul>
+      <li>Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim.</li>
+      <li><b>mix</b> shows all four lanes on one strip, their colours added.</li>
+      <li><b>edn</b> shows the pattern as EDN, a theme's grid, which can be edited or pasted over.</li></ul></div>
+  </footer>
   <div id="ednsec">
     <div class="ednbox"><label class="lab" for="patedn">pattern, as a theme's grid</label>
       <textarea id="patedn" rows="10" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
@@ -436,7 +460,7 @@
     `{:mood       :${st.mood}\n :bpm        ${st.bpm}\n :seed       ${st.seed}\n :lead-voice :${st.voice}\n :bass-voice :${st.bassVoice || "pluck"}}`;
   function showEDN() {
     if (!document.documentElement.classList.contains("edn")) return;
-    $("setedn").textContent = settingsEDN();
+    $("setedn").innerHTML = highlightEDN(settingsEDN());
     // Not over text being typed: a rewrite would move the cursor and undo what is half there.
     // A box that only has the cursor is rewritten: a cell painted meanwhile must show in it.
     if (!ednDirty && !ednApplying) { $("patedn").value = patternEDN(); patHint(""); }
@@ -520,6 +544,36 @@
     st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = drums; st.bed = g.bed;
     ednApplying = true; // the text stays as typed while the cursor is in it
     try { paint(); pushGrid(); } finally { ednApplying = false; }
+  }
+  // EDN highlighting, the designer's and the studio's tokenizer.
+  // Explanatory comments dim; commented-out code keeps its colours, faded.
+  const TOK = /("(?:\\.|[^"\\])*")|(:[^\s\[\]{}()",;]+)|(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)(?![\w.])|([\[\]{}()])|([^"\[\]{}():\-\d;]+|[\s\S])/g;
+  const escH = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const tokensH = (code) => code.replace(TOK, (m, str, k, num, br) => {
+    const c = str ? "e-str" : k ? "e-kw" : num ? "e-num" : br ? "e-br" : null;
+    return c ? `<span class="${c}">${escH(m)}</span>` : escH(m);
+  });
+  function highlightEDN(block) {
+    return block.split("\n").map((line) => {
+      const m = /^(\s*;+\s?)(.*)$/.exec(line);
+      if (!m) return tokensH(line);
+      return /^\s*[\[{(:]/.test(m[2])
+        ? `<span class="e-cm">${escH(m[1])}</span><span class="e-off">${tokensH(m[2])}</span>`
+        : `<span class="e-cm">${escH(line)}</span>`;
+    }).join("\n");
+  }
+  // The pattern's textarea over its highlight layer: setting its value, or
+  // typing, repaints the layer, and the box grows to its text, so neither scrolls.
+  {
+    const ta = $("patedn"), wrap = document.createElement("div"), pre = document.createElement("pre");
+    wrap.className = "hl"; pre.id = "patednhl"; pre.setAttribute("aria-hidden", "true");
+    ta.replaceWith(wrap); wrap.append(pre, ta);
+    const d = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
+    // a trailing space keeps a final empty line
+    const paint = () => { const v = d.get.call(ta); pre.innerHTML = highlightEDN(v) + " "; ta.style.height = "auto"; ta.style.height = ta.scrollHeight + 2 + "px"; };
+    Object.defineProperty(ta, "value", { get() { return d.get.call(ta); }, set(v) { d.set.call(ta, v); paint(); } });
+    ta.addEventListener("input", paint);
+    new ResizeObserver(paint).observe(wrap); // a narrower box wraps to more lines
   }
   $("patedn").oninput = () => { ednDirty = true; clearTimeout(ednTimer); ednTimer = setTimeout(applyEDN, 600); };
   // leaving the box: typing not yet applied is applied at once, and if it read, written back tidy

@@ -482,11 +482,16 @@
     });
   })();
 
+  // A looping lane runs on across patterns, so each pass starts it somewhere
+  // else in its loop: loopAt is where, per lane, learnt from the hits the
+  // engine reports, and the cells draw the pass that is playing.
+  const loopAt = DRUMS.map(() => 0);
+  const shown = (d, i) => { const a = st.drums[d]; return a.loop ? a.loop[(loopAt[d] + +i) % a.loop.length] : a[i]; };
   function paint() {
     for (const c of document.querySelectorAll(".c")) {
       const s = +c.dataset.step, lane = c.dataset.lane;
       if (lane === "drums") {
-        const ch = st.drums[c.dataset.drum][c.dataset.i], lv = LEVEL[ch] || 0;
+        const ch = shown(c.dataset.drum, c.dataset.i), lv = LEVEL[ch] || 0;
         c.classList.toggle("ch", !!CHANCE[ch]); c.classList.toggle("fill", ch === "f");
         c.classList.toggle("on", lv > 0);
         c.classList.toggle("v1", lv === 1); c.classList.toggle("v2", lv === 2);
@@ -498,7 +503,7 @@
     for (const l of document.querySelectorAll("#drums .lbl")) { // a looping lane names its length
       const loop = st.drums[l.dataset.drum].loop;
       l.textContent = DRUMS[l.dataset.drum] + (loop ? ` ↻${loop.length}` : "");
-      l.title = loop ? `loops every ${loop.length} sixteenths, running on across patterns; the cells show one pattern of it. Editing a cell makes it a plain lane.` : "";
+      l.title = loop ? `loops every ${loop.length} sixteenths, running on across patterns; the cells show the pass that is playing. Editing a cell makes it a plain lane.` : "";
     }
     for (const b of document.querySelectorAll("#moods .chip")) b.classList.toggle("on", b.dataset.v === st.mood);
     for (const b of document.querySelectorAll("#voices .chip")) b.classList.toggle("on", b.dataset.v === st.voice);
@@ -701,7 +706,12 @@
     try { saved = !!localStorage.getItem("undertone-grid-edn"); } catch {} // storage may be blocked
     if (saved) showEDNBox(true); }
 
+  // Drum hits still on their way to the ear belong to the grid as it was;
+  // lighting them on the new one would light the wrong cells, so they go
+  // unlit. Counted per change sent.
+  let gridGen = 0;
   const pushGrid = () => {
+    gridGen++;
     if (ready) undertoneGrid.setGrid(JSON.stringify({ lead: st.lead, bass: st.bass, pulse: st.pulse, drums: drumStrings(), bed: st.bed }));
     history.replaceState(null, "", encode());
     remember();
@@ -719,8 +729,10 @@
   function toggle(c, mode) {
     const s = +c.dataset.step, lane = c.dataset.lane, d = +c.dataset.deg;
     if (lane === "drums") { // mode is the character a drag paints
-      const row = st.drums[c.dataset.drum], v = mode ?? TAP[row[c.dataset.i]];
-      row[c.dataset.i] = v; delete row.loop; drumsChosen = true; groove = ""; return v; // an edited loop is the pattern it shows; no groove's any more
+      const d = c.dataset.drum, row = st.drums[d];
+      if (row.loop) { for (let i = 0; i < row.length; i++) row[i] = shown(d, i); delete row.loop; loopAt[d] = 0; } // the pass on screen
+      const v = mode ?? TAP[row[c.dataset.i]];
+      row[c.dataset.i] = v; drumsChosen = true; groove = ""; return v; // an edited loop is the pattern it shows; no groove's any more
     }
     if (lane === "pulse") {
       const v = mode ?? !st.pulse[s]; st.pulse[s] = v; return v;
@@ -970,10 +982,15 @@
   let early = [];
   const light = (lane, six) => {
     const c = $("drums").querySelector(`.c[data-drum="${lane}"][data-i="${six}"]`);
-    if (!c) return;
+    // a cell that draws no step: a hit from the grid as it was, a moment ago
+    if (!c || !(c.classList.contains("on") || c.classList.contains("ch"))) return;
     c.classList.remove("fired"); void c.offsetWidth; c.classList.add("fired"); // restart the fade if it is still running
   };
-  function strike(lane, six) { if (six >> 1 === lastRow) light(lane, six); else early.push([lane, six]); }
+  function strike(lane, six, run) {
+    const loop = st.drums[lane]?.loop;
+    if (loop) { const at = ((run - six) % loop.length + loop.length) % loop.length; if (at !== loopAt[lane]) { loopAt[lane] = at; paint(); } }
+    if (six >> 1 === lastRow) light(lane, six); else early.push([lane, six]);
+  }
   (function head() {
     const r = ready && playing ? undertoneGrid.row() : -1;
     if (r !== lastRow) {
@@ -1124,12 +1141,12 @@
       if (r >= 0) {
         if (stale()) measure();
         // due by the queue as it stood when read: it is still filling just after play
-        q.push({ due: t + undertoneGrid.queued(), lv: undertoneGrid.levels(), hit: undertoneGrid.onsets() });
+        q.push({ due: t + undertoneGrid.queued(), lv: undertoneGrid.levels(), hit: undertoneGrid.onsets(), gen: gridGen });
         while (q.length && q[0].due <= t) {
           cur = q.shift();
           for (let k = 0; k < 4; k++) hits[k] += cur.hit[k];
-          const s = cur.hit[4] || [];
-          for (let i = 0; i < s.length; i += 2) strike(s[i], s[i + 1]);
+          const s = cur.gen === gridGen ? cur.hit[4] || [] : [];
+          for (let i = 0; i < s.length; i += 3) strike(s[i], s[i + 1], s[i + 2]);
         }
         // a restart lands with a row change near its time, or with none: on the first step already
         const restarting = jumpAt && t >= jumpAt - 50 && (r !== row || t >= jumpAt + 50);

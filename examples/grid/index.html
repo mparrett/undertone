@@ -101,6 +101,9 @@
   .drawer .chip.on { color: var(--lane); border-color: var(--lane); }
   /* the pattern's slots: a chip per slot; an empty one is dim */
   .pick.slots { --lane: var(--fg); margin-left: 6px; } .pick.slots .pickbtn { width: auto; } .pick.slots .pickbtn::after { margin-left: 8px; }
+  /* undo lights once there is a change to step back from, and is dim after a load */
+  #undo:disabled { opacity: .35; cursor: default; }
+  #undo:not(:disabled) { color: var(--fg); border-color: var(--mut); }
   .slotchips .chip.empty { opacity: .5; border-style: dashed; }
   .lane.of-lead span { color: var(--lead); } .lane.of-bass span { color: var(--bass); }
   .lane.of-pulse span { color: var(--pulse); } .lane.of-drums span { color: var(--drum); }

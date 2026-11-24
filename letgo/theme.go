@@ -22,11 +22,66 @@ func (m *Music) playTheme(v vm.Value) (vm.Value, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.out == nil { // not started, waiting for the gesture, or stopped
-		m.theme = t
+		m.theme, m.themeEnd = t, nil
 		return vm.NIL, nil
 	}
 	m.synth.PlayTheme(t)
 	return vm.NIL, nil
+}
+
+// themeEnd is an undertone/end-theme's count.
+type themeEnd struct {
+	n int
+	u engine.ThemeUnit
+}
+
+// endTheme ends the playing theme after a count of grids, bars or rows, given
+// as {:grids n}, {:bars n} or {:rows n} (engine.Synth.EndTheme). For a theme
+// waiting on music-start, the count applies once it starts.
+func (m *Music) endTheme(v vm.Value) (vm.Value, error) {
+	e, err := endThemeArgs(v)
+	if err != nil {
+		return vm.NIL, fmt.Errorf("undertone/end-theme: %w", err)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.out == nil {
+		if m.theme != nil {
+			m.themeEnd = &e
+		}
+		return vm.NIL, nil
+	}
+	m.synth.EndTheme(e.n, e.u)
+	return vm.NIL, nil
+}
+
+// endThemeArgs reads {:grids n}, {:bars n} or {:rows n}: one key, n a
+// positive integer.
+func endThemeArgs(v vm.Value) (themeEnd, error) {
+	lgm, ok := v.(*vm.PersistentMap)
+	if !ok {
+		return themeEnd{}, fmt.Errorf("takes a map {:grids n}, {:bars n} or {:rows n}")
+	}
+	var e themeEnd
+	found := 0
+	for _, k := range []struct {
+		key string
+		u   engine.ThemeUnit
+	}{{"grids", engine.ThemeGrids}, {"bars", engine.ThemeBars}, {"rows", engine.ThemeRows}} {
+		x := at(lgm, k.key)
+		if x == vm.NIL {
+			continue
+		}
+		n, ok := x.(vm.Int)
+		if !ok || n < 1 {
+			return themeEnd{}, fmt.Errorf(":%s must be a positive integer, got %v", k.key, x)
+		}
+		e, found = themeEnd{int(n), k.u}, found+1
+	}
+	if found != 1 {
+		return themeEnd{}, fmt.Errorf("takes exactly one of :grids, :bars or :rows")
+	}
+	return e, nil
 }
 
 // themePlaying reports whether the last theme has still to finish, counting

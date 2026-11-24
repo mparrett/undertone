@@ -39,6 +39,7 @@
 //	theme(json)              play grids through the bed's voices ({lead, bass, pulse, drums, bed}),
 //	                         as a vector of them or {grids, then: generate|silence|loop}; "" stops
 //	themeCheck(json)         "" or what is wrong with that theme, without playing it
+//	endTheme(unit, n)        end that theme after n "grids", "bars" or "rows", as undertone/end-theme
 //	themePlaying()           whether that theme is still playing
 //	levels()                 each layer's level, as JSON in LayerNames order
 //	play() / stop()          call from the tap handler: iOS resumes audio only inside one
@@ -424,6 +425,14 @@ func main() {
 			if _, err := themejson.Parse(a[0].String()); err != nil {
 				return err.Error()
 			}
+			return ""
+		}),
+		"endTheme": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			u, ok := map[string]engine.ThemeUnit{"grids": engine.ThemeGrids, "bars": engine.ThemeBars, "rows": engine.ThemeRows}[a[0].String()]
+			if !ok {
+				return "unit must be grids, bars or rows"
+			}
+			syn.EndTheme(a[1].Int(), u)
 			return ""
 		}),
 		"themePlaying": js.FuncOf(func(_ js.Value, _ []js.Value) any { return syn.ThemePlaying() }),

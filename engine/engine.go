@@ -1583,6 +1583,9 @@ type Synth struct {
 	// authored themes (theme.go): themeCmd is staged by PlayTheme; the rest
 	// belongs to the audio thread, except the two counters ThemePlaying reads
 	themeCmd            atomic.Pointer[themeCmd]
+	endCmd              atomic.Pointer[endCmd] // staged by EndTheme
+	themeEndAt          int                    // the absolute row (pat*rows+row) EndTheme ends the theme before
+	themeEnds           bool                   // whether themeEndAt is set for the playing theme
 	themeGen, themeDone atomic.Int64
 	theme               *Theme
 	themeAt             int
@@ -2026,6 +2029,7 @@ func (s *Synth) revoice(t, pat, row int) {
 }
 
 func (s *Synth) step() {
+	s.endThemeAt()
 	_, s.owner, s.runFrom = s.nextOwner()
 	s.cut = false
 	if s.row == 0 {
@@ -2081,6 +2085,9 @@ func (s *Synth) frame() (int16, int16) {
 	if s.nframe%nowBlock == 0 {
 		if c := s.themeCmd.Swap(nil); c != nil {
 			s.startTheme(c)
+		}
+		if c := s.endCmd.Swap(nil); c != nil {
+			s.markThemeEnd(c)
 		}
 		// after a theme staged in the same block, so that one starts from
 		// its first grid either way

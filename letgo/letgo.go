@@ -70,6 +70,8 @@ type Music struct {
 	// theme is an undertone/play-theme that came before music-start; it
 	// starts with the music.
 	theme *engine.Theme
+	// themeEnd is an undertone/end-theme sent for that waiting theme.
+	themeEnd *themeEnd
 
 	// queue is the last undertone/set-queue, applied to an output that
 	// starts later; zero leaves the output's own default.
@@ -390,7 +392,10 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	if m.theme != opening {
 		m.synth.PlayTheme(m.theme)
 	}
-	m.theme = nil
+	if e := m.themeEnd; e != nil && m.theme != nil {
+		m.synth.EndTheme(e.n, e.u)
+	}
+	m.theme, m.themeEnd = nil, nil
 	if m.queue > 0 {
 		m.applyQueue()
 	}
@@ -862,6 +867,9 @@ func installNS() {
 	}))
 	ns.Def("play-theme", native("play-theme", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().playTheme(a[0])
+	}))
+	ns.Def("end-theme", native("end-theme", 1, func(a []vm.Value) (vm.Value, error) {
+		return current.Load().endTheme(a[0])
 	}))
 	ns.Def("theme-playing?", native("theme-playing?", 0, func([]vm.Value) (vm.Value, error) {
 		return vm.Boolean(current.Load().themePlaying()), nil

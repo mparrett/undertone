@@ -31,6 +31,7 @@
   .chip { padding: 5px 10px; font-size: 13px; color: var(--mut); }
   aside button { padding: 5px 10px; font-size: 13px; } /* a chip's size, so a group's buttons fit one row on a phone */
   .chip.on { color: var(--fg); border-color: var(--mut); background: #22222a; }
+  #groove { font: inherit; font-size: 13px; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
   label.tempo { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; font-size: 13px; color: var(--mut); }
   label.tempo input { flex: 1; accent-color: var(--lead); }
   #pattern { gap: 8px 6px; } /* four controls: at 8px the last wraps alone on a 390px phone */
@@ -188,6 +189,8 @@
  </header>
  <aside>
   <div class="bar" id="moods"><span class="lab">mood</span></div>
+  <div class="bar" id="groovebar"><span class="lab">groove</span>
+    <select id="groove" title="put a groove from the library on the drum lanes, in the mood's kit; the seed draws its chance steps"><option value="">the mood's</option></select></div>
   <div class="bar" id="voices"><span class="lab">lead voice</span></div>
   <div class="bar" id="basses"><span class="lab">bass voice</span></div>
   <div class="bar" id="pattern"><span class="lab">pattern</span>
@@ -246,8 +249,19 @@
   const DRUMS = ["kick", "clap", "shkr"];
   const TAP = { ".": "x", x: "X", X: "o", o: "." }; // what a tap turns a drum cell into
   const LEVEL = { o: 1, x: 2, X: 3 };
-  // drum lanes as arrays of single characters, padded to a full pattern
-  const lanes = (ds) => DRUMS.map((_, d) => [...((ds && ds[d]) || "").padEnd(SIXTEENTHS, ".").slice(0, SIXTEENTHS)]);
+  // drum lanes as arrays of single characters, padded to a full pattern. A
+  // lane ending in | loops at its own length across patterns: its cells show
+  // the loop spelled out over one pattern, and the lane keeps the loop as
+  // .loop, which is what the engine gets until a cell is edited.
+  const lanes = (ds) => DRUMS.map((_, d) => {
+    const s = (ds && ds[d]) || "";
+    if (s.length > 1 && s.endsWith("|")) {
+      const loop = s.slice(0, -1), a = [...loop.repeat(Math.ceil(SIXTEENTHS / loop.length)).slice(0, SIXTEENTHS)];
+      a.loop = loop; return a;
+    }
+    return [...s.padEnd(SIXTEENTHS, ".").slice(0, SIXTEENTHS)];
+  });
+  const laneString = (a) => a.loop ? a.loop + "|" : a.join("");
   const MOODS = ["village", "aurora", "meadow", "overworld", "ruins", "dungeon"];
   const VOICES = ["kalimba", "bell", "chime", "pluck", "reed", "clang"];
   const NONE = "none"; // the voice that silences a lane: its notes stay on the grid, unheard
@@ -267,7 +281,7 @@
   // ---- share links: #v1;t=110;m=o;v=kalimba;s=1;bed=1;L=...;B=...;P=hex;D=kick,clap,shaker ----
   // bv=<voice> follows v when a bass voice is chosen; a link without it keeps the mood's bass.
   // D came later; a link without it takes its drums from the mood's groove.
-  const drumStrings = () => st.drums.map((a) => a.join(""));
+  const drumStrings = () => st.drums.map(laneString);
   function encode() {
     const pulse = st.pulse.reduce((n, on, i) => n | (on ? 1 << i : 0), 0);
     return `#v1;t=${st.bpm};m=${st.mood[0]};v=${st.voice};${st.bassVoice ? `bv=${st.bassVoice};` : ""}s=${st.seed};bed=${+st.bed};` +
@@ -280,8 +294,8 @@
     const L = digits(kv.L), B = digits(kv.B);
     if (!L || !B) return false;
     const p = parseInt(kv.P || "0", 16);
-    const D = (kv.D || "").split(",");
-    linkHasDrums = D.length === DRUMS.length && D.every((s) => /^[Xxo.]*$/.test(s));
+    const D = decodeURIComponent(kv.D || "").split(",");
+    linkHasDrums = D.length === DRUMS.length && D.every((s) => /^[Xxo.]*$|^[Xxo.]+\|$/.test(s));
     drumsChosen = linkHasDrums;
     st = { ...st, lead: L, bass: B, pulse: [...Array(STEPS)].map((_, i) => !!(p & (1 << i))),
            drums: lanes(linkHasDrums ? D : null),
@@ -312,7 +326,7 @@
     el.style.gridTemplateColumns = "32px " + [...Array(SIXTEENTHS)]
       .map((_, i) => i && i % 8 === 0 ? `calc(${half} + 6px)` : half).join(" ");
     DRUMS.forEach((name, d) => {
-      const lbl = document.createElement("div"); lbl.className = "lbl"; lbl.textContent = name; el.appendChild(lbl);
+      const lbl = document.createElement("div"); lbl.className = "lbl"; lbl.textContent = name; lbl.dataset.drum = d; el.appendChild(lbl);
       for (let i = 0; i < SIXTEENTHS; i++) {
         const c = document.createElement("div");
         c.className = "c" + (i && i % 8 === 0 ? " g4" : "");
@@ -333,6 +347,11 @@
       }
       const on = lane === "pulse" ? st.pulse[s] : st[lane][s] === +c.dataset.deg;
       c.classList.toggle("on", on);
+    }
+    for (const l of document.querySelectorAll("#drums .lbl")) { // a looping lane names its length
+      const loop = st.drums[l.dataset.drum].loop;
+      l.textContent = DRUMS[l.dataset.drum] + (loop ? ` ↻${loop.length}` : "");
+      l.title = loop ? `loops every ${loop.length} sixteenths, running on across patterns; the cells show one pattern of it. Editing a cell makes it a plain lane.` : "";
     }
     for (const b of document.querySelectorAll("#moods .chip")) b.classList.toggle("on", b.dataset.v === st.mood);
     for (const b of document.querySelectorAll("#voices .chip")) b.classList.toggle("on", b.dataset.v === st.voice);
@@ -422,8 +441,9 @@
     if (!Array.isArray(d) || d.length > DRUMS.length) throw new Error(`:drums should be a vector of at most ${DRUMS.length} lanes: ${DRUMS.join(", ")}`);
     d.forEach((l, n) => {
       if (typeof l !== "string") throw new Error(`:drums lane ${n + 1} should be a string like "X...x..."`);
-      // the engine also takes g, a flam, and a lane ending in |, which loops; the cells have no way to show either
-      if (l.length > SIXTEENTHS || /[^.xXo]/.test(l)) throw new Error(`:drums lane ${n + 1} should be at most ${SIXTEENTHS} of . x X o`);
+      // the engine also takes g, a flam, which the cells have no way to show
+      if (/^[.xXo]+\|$/.test(l)) return; // a loop, any length
+      if (l.length > SIXTEENTHS || /[^.xXo]/.test(l)) throw new Error(`:drums lane ${n + 1} should be at most ${SIXTEENTHS} of . x X o, or a loop ending in |`);
     });
     g.drums = d;
     return g;
@@ -437,7 +457,7 @@
     patHint(""); ednDirty = false;
     const drums = lanes(g.drums);
     // an edit to the drum lanes is a choice of them; one to the notes leaves a mood free to bring its groove
-    if (drums.map((a) => a.join("")).join() !== drumStrings().join()) drumsChosen = true;
+    if (drums.map(laneString).join() !== drumStrings().join()) drumsChosen = true;
     st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = drums; st.bed = g.bed;
     ednApplying = true; // the text stays as typed while the cursor is in it
     try { paint(); pushGrid(); } finally { ednApplying = false; }
@@ -479,7 +499,7 @@
     const s = +c.dataset.step, lane = c.dataset.lane, d = +c.dataset.deg;
     if (lane === "drums") { // mode is the character a drag paints
       const row = st.drums[c.dataset.drum], v = mode ?? TAP[row[c.dataset.i]];
-      row[c.dataset.i] = v; drumsChosen = true; return v;
+      row[c.dataset.i] = v; delete row.loop; drumsChosen = true; return v; // an edited loop is the pattern it shows
     }
     if (lane === "pulse") {
       const v = mode ?? !st.pulse[s]; st.pulse[s] = v; return v;
@@ -583,7 +603,7 @@
     dispatchEvent(new Event("resize")); // the cells may have changed size, and the strips with them
   }
   $("mixbtn").onclick = () => showMix(!document.documentElement.classList.contains("mix"));
-  $("clear").onclick = () => { st.lead.fill(0); st.bass.fill(0); st.pulse.fill(false); st.drums = lanes(); drumsChosen = true; paint(); pushGrid(); };
+  $("clear").onclick = () => { st.lead.fill(0); st.bass.fill(0); st.pulse.fill(false); st.drums = lanes(); drumsChosen = true; $("groove").value = ""; paint(); pushGrid(); };
   // Go to a seed: its pattern replaces the grid's, as random's does.
   function takeSeed(n) {
     if (!ready) return;
@@ -592,6 +612,7 @@
     const g = JSON.parse(undertoneGrid.seedGrid(st.seed));
     st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = lanes(g.drums);
     drumsChosen = false; // a fresh start: the next mood brings its groove
+    $("groove").value = "";
     paint(); pushGrid();
     status.textContent = `seed ${st.seed}`;
   }
@@ -813,6 +834,7 @@
     $("play").innerHTML = "&#9654; play";
     document.querySelector("main").classList.remove("loading");
     $("mutate").hidden = !undertoneGrid.mutate;
+    for (const g of JSON.parse(undertoneGrid.grooves())) $("groove").add(new Option(g, g));
     status.textContent = "ready: tap play";
   };
   // An address that differs only after the # does not reload the page, so a
@@ -824,6 +846,16 @@
     paint(); pushGrid();
     status.textContent = "pattern loaded from the link";
   });
+  // A groove picked here is a choice of drums, as an edit is; "the mood's"
+  // goes back to the mood's own and lets a mood change bring its groove again.
+  $("groove").onchange = () => {
+    if (!ready) return;
+    const g = $("groove").value;
+    st.drums = lanes(g ? JSON.parse(undertoneGrid.grooveDrums(g, st.seed)) : JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
+    drumsChosen = !!g;
+    paint(); pushGrid();
+    status.textContent = g ? `groove: ${g}` : "the mood's groove";
+  };
   paint();
   const go = new Go();
   WebAssembly.instantiateStreaming(fetch("main.wasm", { cache: "no-cache" }), go.importObject)

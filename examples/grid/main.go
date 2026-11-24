@@ -270,6 +270,19 @@ func main() {
 			p.Seed = uint64(a[0].Int())
 			return toJSON(engine.SeedGrid(p))
 		}),
+		// grooves() lists the groove library; grooveDrums(name, seed) is that
+		// groove written out as SeedGrid writes a mood's, chances drawn from
+		// the seed and polymetric lanes kept.
+		"grooves": js.FuncOf(func(js.Value, []js.Value) any {
+			b, _ := json.Marshal(engine.GrooveNames())
+			return string(b)
+		}),
+		"grooveDrums": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			p := derive(cur)
+			p.Groove, p.Seed = a[0].String(), uint64(a[1].Int())
+			b, _ := json.Marshal(engine.SeedGrid(p).Drums)
+			return string(b)
+		}),
 		"play": js.FuncOf(func(js.Value, []js.Value) any {
 			src.on.Store(true)
 			if p := player.Load(); p != nil {

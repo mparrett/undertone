@@ -309,6 +309,7 @@ type shotReq struct {
 	dated bool // due is set
 	gate  int
 	seed  uint64
+	group string
 }
 
 const nShots = 8
@@ -369,7 +370,28 @@ type sfx struct {
 	pos     int
 	recent  [nRecent]recentShot
 	rpos    int
+
+	// Cutting (see Cut). group is each voice's trigger group; fade its level,
+	// 1 until a cut starts it falling by fadeStep a frame.
+	cuts     []cutReq
+	cutting  atomic.Bool // mirror of len(cuts) > 0
+	group    [nShots]string
+	fade     [nShots]float64
+	fadeStep [nShots]float64
 }
+
+// cutReq is a Cut waiting for the audio thread, which alone may touch voices.
+type cutReq struct {
+	group string
+	step  float64
+}
+
+// Cut fades are bounded: under a few milliseconds the stop is a click, and a
+// cut is a stop, not a slow fade-out.
+const (
+	minCutFadeMS = 5
+	maxCutFadeMS = 2000
+)
 
 // lately finds a start of the same shot within shotGapMS of frame.
 func (fx *sfx) lately(k shotKey, frame int64) *recentShot {
@@ -409,6 +431,11 @@ type Shot struct {
 	// few, without a dry copy of each patch. They are stored as the cut, not
 	// as the scale, so a Shot that never sets them plays exactly as before.
 	Dry, DryVerb float64
+
+	// Group names the shot for Cut: a game tags the notes of a phrase (a run
+	// that should end when a floor finishes loading, say) so it can stop
+	// them together. Empty is no group, and Cut never touches it.
+	Group string
 }
 
 // TriggerShot stages a Shot, resolving a scale degree if that is how pitch
@@ -421,7 +448,38 @@ func (s *Synth) TriggerShot(sh Shot) bool {
 	case sh.HasDegree:
 		note = s.resolveDegree(sh.Degree, sh.Octave)
 	}
-	return s.trigger(sh.Name, note, sh.Gain, sh.Pan, sh.DelayMS, sh.Seed, sh.Dry, sh.DryVerb)
+	return s.trigger(sh.Name, note, sh.Gain, sh.Pan, sh.DelayMS, sh.Seed, sh.Dry, sh.DryVerb, sh.Group)
+}
+
+// Cut stops every shot of group: those still waiting on their delay are
+// dropped, and those sounding fade out over fadeMS (held to 5 ms..2 s) and
+// free their voices, their sends to the delay and room fading with them, so
+// what is already in the echo rings on but nothing new feeds it. A shot
+// triggered after the Cut plays. It reports how many waiting shots it
+// dropped. An empty group cuts nothing.
+func (s *Synth) Cut(group string, fadeMS float64) int {
+	if group == "" {
+		return 0
+	}
+	if !(fadeMS >= minCutFadeMS) { // also catches NaN
+		fadeMS = minCutFadeMS
+	}
+	fadeMS = min(fadeMS, maxCutFadeMS)
+	s.fx.mu.Lock()
+	defer s.fx.mu.Unlock()
+	keep := s.fx.pending[:0]
+	for _, q := range s.fx.pending {
+		if q.group != group {
+			keep = append(keep, q)
+		}
+	}
+	dropped := len(s.fx.pending) - len(keep)
+	clear(s.fx.pending[len(keep):])
+	s.fx.pending = keep
+	s.fx.waiting.Store(len(keep) > 0)
+	s.fx.cuts = append(s.fx.cuts, cutReq{group, 1000 / (fadeMS * SampleRate)})
+	s.fx.cutting.Store(true)
+	return dropped
 }
 
 // resolveDegree maps a scale degree in the current parameters' scale to an
@@ -446,10 +504,10 @@ func (s *Synth) resolveDegree(degree, octave int) int {
 // by up to maxDelayMS. It reports whether the shot was staged: false for an
 // unknown name or a delay out of range.
 func (s *Synth) Trigger(name string, note int, gain, pan, delayMS float64, seed uint64) bool {
-	return s.trigger(name, note, gain, pan, delayMS, seed, 0, 0)
+	return s.trigger(name, note, gain, pan, delayMS, seed, 0, 0, "")
 }
 
-func (s *Synth) trigger(name string, note int, gain, pan, delayMS float64, seed uint64, dry, dryVerb float64) bool {
+func (s *Synth) trigger(name string, note int, gain, pan, delayMS float64, seed uint64, dry, dryVerb float64, group string) bool {
 	d, ok := lookupShot(name)
 	if !ok {
 		return false
@@ -489,6 +547,7 @@ func (s *Synth) trigger(name string, note int, gain, pan, delayMS float64, seed 
 		delay: int(delayMS * SampleRate / 1000),
 		gate:  int(d.gateMS * SampleRate / 1000),
 		seed:  seed,
+		group: group,
 	}
 	s.fx.mu.Lock()
 	// While nothing renders (stopped, or a phone has suspended the page's
@@ -554,6 +613,21 @@ func unsend(p Patch, dry, dryVerb float64) {
 // nothing due yet) is a few comparisons and no lock.
 func (s *Synth) runShots(l, r *float64, bus *sends) {
 	fx := &s.fx
+	if fx.cutting.Load() {
+		// Before this frame's due shots start, so a shot triggered after a
+		// Cut is not caught by it.
+		fx.mu.Lock()
+		for _, c := range fx.cuts {
+			for i := range fx.shots {
+				if fx.shots[i].active && fx.group[i] == c.group && (fx.fadeStep[i] == 0 || c.step > fx.fadeStep[i]) {
+					fx.fadeStep[i] = c.step
+				}
+			}
+		}
+		fx.cuts = fx.cuts[:0]
+		fx.cutting.Store(false)
+		fx.mu.Unlock()
+	}
 	if fx.waiting.Load() && (fx.fresh.Load() || s.nframe >= fx.next) {
 		fx.mu.Lock()
 		fx.fresh.Store(false)
@@ -583,6 +657,7 @@ func (s *Synth) runShots(l, r *float64, bus *sends) {
 			fx.shots[i].trigger(q.patch, q.note, 0, q.gain, q.seed)
 			fx.shots[i].gateSamples = q.gate
 			fx.pan[i] = q.pan
+			fx.group[i], fx.fade[i], fx.fadeStep[i] = q.group, 1, 0
 		}
 		fx.pending = keep
 		fx.next = next
@@ -601,7 +676,20 @@ func (s *Synth) runShots(l, r *float64, bus *sends) {
 			}
 		}
 		var sl, sr float64
-		v.run(&sl, &sr, bus)
+		if fx.fadeStep[i] > 0 {
+			// Fading: scale what this voice adds to the sends as well as its
+			// dry signal, then free it at silence.
+			before, f := *bus, fx.fade[i]
+			v.run(&sl, &sr, bus)
+			bus.delay = before.delay + (bus.delay-before.delay)*f
+			bus.verb = before.verb + (bus.verb-before.verb)*f
+			sl, sr = sl*f, sr*f
+			if fx.fade[i] -= fx.fadeStep[i]; fx.fade[i] <= 0 {
+				v.active, fx.fadeStep[i] = false, 0
+			}
+		} else {
+			v.run(&sl, &sr, bus)
+		}
 		mono := sl + sr
 		*l += mono * (1 - fx.pan[i])
 		*r += mono * fx.pan[i]

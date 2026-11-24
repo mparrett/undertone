@@ -245,6 +245,36 @@ func (m *Music) trigger(v vm.Value) vm.Value {
 	return vm.NIL
 }
 
+// cut stops a group of shots; see engine.Synth.Cut. Like trigger it is
+// fire-and-forget: with no synth running it does nothing.
+func (m *Music) cut(v vm.Value) (vm.Value, error) {
+	group, fadeMS, err := cutArgs(v)
+	if err != nil {
+		return vm.NIL, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.synth != nil {
+		m.synth.Cut(group, fadeMS)
+	}
+	return vm.NIL, nil
+}
+
+// cutArgs reads {:group g :fade-ms ms}; :fade-ms defaults to 30.
+func cutArgs(v vm.Value) (string, float64, error) {
+	lgm, ok := v.(*vm.PersistentMap)
+	if !ok {
+		return "", 0, fmt.Errorf("undertone/cut: takes a map {:group g :fade-ms ms}")
+	}
+	group, ok := kwStr(lgm, "group")
+	if !ok || group == "" {
+		return "", 0, fmt.Errorf("undertone/cut: :group must be a keyword or a non-empty string")
+	}
+	fadeMS := 30.0
+	flt(lgm, "fade-ms", &fadeMS)
+	return group, fadeMS, nil
+}
+
 // shots reads one trigger map or a vector of them; a map without :shot is
 // skipped.
 func shots(v vm.Value) []engine.Shot {
@@ -274,6 +304,8 @@ func shots(v vm.Value) []engine.Shot {
 		flt(lgm, "send", &send)
 		flt(lgm, "verb", &verb)
 		sh.Dry, sh.DryVerb = 1-send, 1-verb
+		// :group tags the shot for undertone/cut (a keyword or a string).
+		sh.Group, _ = kwStr(lgm, "group")
 		if integer(lgm, "note", &sh.Note) {
 			sh.HasNote = true
 		} else if integer(lgm, "degree", &sh.Degree) {
@@ -851,6 +883,9 @@ func installNS() {
 	}))
 	ns.Def("trigger", native("trigger", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().trigger(a[0]), nil
+	}))
+	ns.Def("cut", native("cut", 1, func(a []vm.Value) (vm.Value, error) {
+		return current.Load().cut(a[0])
 	}))
 	// The mood derivation, for undertone.ambience: pure functions, not audio
 	// state, so the surface stays write-only.

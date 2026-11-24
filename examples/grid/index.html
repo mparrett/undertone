@@ -619,6 +619,15 @@
     if (on && !matchMedia("(min-width: 900px)").matches) $("helpsec").scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
   $("helpbtn").onclick = () => showHelp(!document.documentElement.classList.contains("help"));
+  // Where they float over the grid, a tap outside the EDN box or the help
+  // closes it; their own buttons toggle them instead. On a narrow window
+  // they sit under the grid and stay open.
+  addEventListener("pointerdown", (e) => {
+    if (!matchMedia("(min-width: 900px)").matches || e.target.closest("#ednbtn, #helpbtn")) return;
+    const root = document.documentElement;
+    if (root.classList.contains("edn") && !$("ednsec").contains(e.target)) showEDNBox(false);
+    if (root.classList.contains("help") && !$("helpsec").contains(e.target)) showHelp(false);
+  });
   { let saved = false;
     try { saved = !!localStorage.getItem("undertone-grid-edn"); } catch {} // storage may be blocked
     if (saved) showEDNBox(true); }

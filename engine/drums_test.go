@@ -631,6 +631,16 @@ func TestDriftGrooves(t *testing.T) {
 	}
 }
 
+// limp's lanes loop together at fourteen 16ths, a bar of 7/8, so the bar
+// stays one bar as it slides across patterns.
+func TestLimpIsOneSevenEightBar(t *testing.T) {
+	for d, lane := range grooveLib["limp"] {
+		if loop, ok := strings.CutSuffix(lane, "|"); !ok || len(loop) != 14 {
+			t.Errorf("limp lane %d is %q, want 14 steps then |", d, lane)
+		}
+	}
+}
+
 // A tempo change landing near a grace point still plays the grace exactly
 // once: a speed-up that jumps the frames left in the row past the lead, and
 // a slow-down that brings them back above it after the grace has struck.

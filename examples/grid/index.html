@@ -27,11 +27,17 @@
   button, .chip { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line);
                   border-radius: 8px; padding: 8px 12px; cursor: pointer; }
   button:active { transform: translateY(1px); }
-  #play { min-width: 6.5em; font-size: 16px; border-color: #3d5a47; background: #18241d; }
+  #play { min-width: 6.5em; font-size: 14px; border-color: #3d5a47; background: #18241d; }
   #play:disabled { border-color: var(--line); background: var(--panel); color: var(--mut); }
   #play.on { border-color: var(--lead); background: #2a2414; }
   .chip { padding: 2px 7px; font-size: 12px; border-radius: 6px; color: var(--mut); }
-  .toolbar button { padding: 2px 9px; font-size: 12px; border-radius: 6px; } /* a chip's size */
+  .toolbar button, .pair button { padding: 2px 9px; font-size: 12px; border-radius: 6px; } /* a chip's size */
+  #transport button { padding: 5px 12px; font-size: 14px; }
+  /* compact at every width for a mouse; a touch screen gets controls a finger can hit */
+  @media (pointer: coarse) {
+    #transport button, #play { padding: 8px 12px; font-size: 16px; }
+    .chip, .toolbar button, .pair button, .pick .pickbtn { padding: 5px 10px; font-size: 13px; }
+  }
   .chip.on { color: var(--fg); border-color: var(--mut); background: #22222a; }
   label.tempo { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; font-size: 13px; color: var(--mut); }
   label.tempo input { flex: 1; accent-color: var(--lead); }
@@ -50,6 +56,7 @@
   /* a group's heading: a line of its own, in the lane headings' small capitals */
   .lab { flex-basis: 100%; margin-bottom: -3px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mut); }
   .pair { display: flex; gap: 24px; align-items: center; }
+  .pair .lab { flex-basis: auto; margin: 0 3px 0 0; } .pair .bar { gap: 5px; } /* a heading beside its buttons, as the picks' are */
   button { white-space: nowrap; }
   /* the pattern and the settings as EDN, under the grid; off until the edn button turns it on */
   #ednsec { display: none; margin-top: 18px; gap: 14px 24px; flex-wrap: wrap; max-width: calc(32px + 16 * var(--cell) + 3 * 6px); /* a lane's width */ }
@@ -181,11 +188,6 @@
     header .toolbar { order: 6; flex-basis: 100%; }
     /* the switches ride the transport's row, at its right end; the toolbar under it is then one row in the column */
     header > .pair { order: 4; margin-bottom: 10px; gap: 18px; }
-    header > .pair .lab { flex-basis: auto; margin: 0 3px 0 0; }
-    header > .pair button { padding: 2px 9px; font-size: 12px; border-radius: 6px; }
-    header > .pair .bar { gap: 5px; }
-    header #transport button { padding: 5px 12px; font-size: 14px; }
-    #play { font-size: 14px; }
     label.tempo { flex: none; width: auto; min-width: 0; }
     label.tempo input { flex: none; width: 96px; }
     section { width: max-content; margin: 0 auto; }
@@ -225,7 +227,15 @@
     <button id="restart" title="restart: back to the first step (r); the pattern starts over, or will when you press play" aria-label="restart">&#9198;&#xFE0E;</button>
     <label class="tempo">tempo <input id="bpm" type="range" min="60" max="160" step="1" value="110"><span id="bpmv">110</span></label>
   </div>
-  <!-- what the whole pattern plays in and with: the mood, the pattern's own controls, and the switches -->
+  <!-- the mood and each lane's voice: a chip in the lane's colour that drops its choices over the page -->
+  <div class="picks">
+    <div class="pick mood"><span class="lab">mood</span><button class="pickbtn" title="the mood: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="moods"></div></div>
+    <div class="pick lead"><span class="lab">lead</span><button class="pickbtn" title="the lead's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="voices"></div></div>
+    <div class="pick bass"><span class="lab">bass</span><button class="pickbtn" title="the bass's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="basses"></div></div>
+    <div class="pick pulse"><span class="lab">pulse</span><button class="pickbtn fixed" disabled title="the pulse plays the mood's own pulse sound; there is no choice of it here">mood's</button></div>
+    <div class="pick drums"><span class="lab">drums</span><button class="pickbtn" title="a groove from the library on the drum lanes, in the mood's kit: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="drumsec"></div></div>
+  </div>
+  <!-- the pattern's own controls -->
   <div class="toolbar">
   <div class="bar" id="pattern"><span class="lab">pattern</span>
     <button id="dice" title="fill the grid with a new random pattern; it takes the next seed, so the key may move">&#8635; random</button>
@@ -236,15 +246,7 @@
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
   </div>
-  <!-- the mood and each lane's voice: a chip in the lane's colour that drops its choices over the page -->
-  <div class="picks">
-    <div class="pick mood"><span class="lab">mood</span><button class="pickbtn" title="the mood: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="moods"></div></div>
-    <div class="pick lead"><span class="lab">lead</span><button class="pickbtn" title="the lead's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="voices"></div></div>
-    <div class="pick bass"><span class="lab">bass</span><button class="pickbtn" title="the bass's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="basses"></div></div>
-    <div class="pick pulse"><span class="lab">pulse</span><button class="pickbtn fixed" disabled title="the pulse plays the mood's own pulse sound; there is no choice of it here">mood's</button></div>
-    <div class="pick drums"><span class="lab">drums</span><button class="pickbtn" title="a groove from the library on the drum lanes, in the mood's kit: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="drumsec"></div></div>
-  </div>
-  <!-- two unrelated switches, each under its own heading: what is heard under the notes, and what is drawn above them -->
+  <!-- two unrelated switches, each beside its heading: what is heard under the notes, and what is drawn above them -->
   <div class="pair">
     <div class="bar"><span class="lab">backing</span>
       <button class="bed" id="bed" title="the generator's drone, pad and air, playing under the notes; saved in the link">bed</button></div>

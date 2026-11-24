@@ -125,6 +125,12 @@
           grid-template-columns: 32px calc(16 * var(--cell) + 3 * 6px); /* the strip is as wide as the cells under it */ }
   /* a lane's chips, strip and cells; air above each, so it starts a section of its own */
   .lanegroup { margin-top: 24px; }
+  /* a lane's name folds its cells away and back; the name and the strip stay */
+  .lanegroup > .lane span { cursor: pointer; user-select: none; }
+  .lanegroup > .lane span:hover, .lanegroup > .lane span:focus-visible { color: var(--fg); outline: none; }
+  .lanegroup > .lane span::after { content: "\00A0\25BE"; } /* rtl: the caret sits to the left of the name, the space between */
+  .lanegroup.shut > .lane span::after { content: "\00A0\25B8"; }
+  .lanegroup.shut > .grid { display: none; }
   :root:not(.mix):not(.echo) #echolane + .lanegroup { margin-top: 0; }
   :root.mix #mixlane + #echolane { margin-top: 6px; }
   .lane span { text-align: right; padding-right: 5px; white-space: nowrap; direction: rtl; /* a long name overflows to the left, off the strip */ }
@@ -203,7 +209,8 @@
      transport over the toolbar, and the full width under it for the grid.
      A cell's width comes from the window's width, up to 56px (72 read as
      stretched), and a row's height from what is left of its height: 17
-     rows of notes and three drum rows, under --other, the body's padding,
+     rows of notes and three drum rows (--rows and --drows: fewer while a
+     lane is folded away), under --other, the body's padding,
      the header (three rows: transport, mood and pattern, voices) and the four lane
      headers (about 322px as measured 2026-11-24, 48px more while the MIX
      strip shows, 44px while the ECHO strip does, 72px with both). A note cell is never taller than it is wide. Drum cells
@@ -213,7 +220,7 @@
     :root { --other: 355px; /* 33px of it the backing row */
             --cell: clamp(22px, calc((100vw - 64px - 32px - 18px) / 16), 56px);
             --drow: min(calc(var(--cell) / 2), 32px);
-            --row: clamp(20px, min(calc((100dvh - var(--other) - 3 * var(--drow)) / 17), var(--cell)), 44px); }
+            --row: clamp(20px, min(calc((100dvh - var(--other) - var(--drows, 3) * var(--drow)) / var(--rows, 17)), var(--cell)), 44px); }
     body { padding: 0 32px 32px; }
     main { max-width: none; }
     /* the bar's background runs edge to edge; its contents line up with the grid's column under it */
@@ -257,7 +264,7 @@
     @media (min-width: 900px) {
       :root { --cell: clamp(22px, round(down, calc((100vw - 64px - 32px - 18px) / 16), 2px), 56px);
               --drow: min(round(down, calc(var(--cell) / 2), 1px), 32px);
-              --row: clamp(20px, round(down, min(calc((100dvh - var(--other) - 3 * var(--drow)) / 17), var(--cell)), 1px), 44px); }
+              --row: clamp(20px, round(down, min(calc((100dvh - var(--other) - var(--drows, 3) * var(--drow)) / var(--rows, 17)), var(--cell)), 1px), 44px); }
     }
   }
 </style>
@@ -347,6 +354,7 @@
       <li>Every note echoes 3 steps later, and again every 3, each fainter: an echo can sound like a note of its own.</li>
       <li>With <b>bed</b> on, the mood's drone, fifth and pad play under the grid, and their chord moves each pass (tonic, then VI or iv) while the grid's rows stay on the key's root, so one loop can sound different from pass to pass.</li></ul></div>
     <div><h3>seeing</h3><ul>
+      <li>A lane's name (LEAD, BASS, …) folds its cells away and opens them again; its strip stays, and the lanes left open grow into the room.</li>
       <li>Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim.</li>
       <li><b>mix</b> shows all four lanes on one strip, their colours added.</li>
       <li><b>echo</b> shows what the echo returns, all lanes' at once, scaled to its loudest, with a tick where each echo arrives: a bump some steps after a hit is that hit coming back.</li>
@@ -923,6 +931,36 @@
     if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
     if (e.key === "r") restart();
   });
+
+  // ---- folding a lane ----
+  // A lane's name folds its cells away, its strip staying; the rows it gave
+  // up go to the lanes still open. A view, as mix and echo are: kept in this
+  // browser, not in the link.
+  const FOLD_KEY = "undertone-grid-folded";
+  function fold(names) {
+    let rows = 0, drows = 0;
+    for (const g of document.querySelectorAll(".lanegroup")) {
+      const grid = g.querySelector(".grid"), shut = names.includes(grid.id);
+      g.classList.toggle("shut", shut);
+      g.querySelector(".lane span").setAttribute("aria-expanded", String(!shut));
+      if (shut) continue;
+      const n = grid.querySelectorAll(".lbl").length;
+      if (grid.id === "drums") drows += n; else rows += n;
+    }
+    const root = document.documentElement.style;
+    root.setProperty("--rows", Math.max(rows, 1)); root.setProperty("--drows", drows);
+    try { localStorage.setItem(FOLD_KEY, names.join(",")); } catch {}
+    dispatchEvent(new Event("resize"));
+  }
+  const folded = () => [...document.querySelectorAll(".lanegroup.shut .grid")].map((g) => g.id);
+  for (const g of document.querySelectorAll(".lanegroup")) {
+    const name = g.querySelector(".lane span"), id = g.querySelector(".grid").id;
+    name.tabIndex = 0; name.setAttribute("role", "button"); name.title = "fold this lane's cells away, or open them again; the strip stays";
+    const flip = () => fold(g.classList.contains("shut") ? folded().filter((x) => x !== id) : [...folded(), id]);
+    name.onclick = flip;
+    name.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(); } };
+  }
+  { let saved = ""; try { saved = localStorage.getItem(FOLD_KEY) || ""; } catch {} fold(saved.split(",").filter(Boolean)); }
 
   // ---- playhead ----
   let lastRow = -2;

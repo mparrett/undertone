@@ -67,7 +67,7 @@
   /* a voice row wears its lane's colour, and so does the lane's heading: which chips go with which cells */
   /* a lane's voice: its name and a chip naming the pick, in the lane's colour; the chip drops a
      drawer of the choices over the page, which stays open while they are tried */
-  .pick.mood { --lane: var(--fg); } .pick.lead { --lane: var(--lead); } .pick.bass { --lane: var(--bass); } .pick.drums { --lane: var(--drum); }
+  .pick.mood { --lane: var(--fg); } .pick.lead { --lane: var(--lead); } .pick.bass { --lane: var(--bass); } .pick.pulse { --lane: var(--pulse); } .pick.drums { --lane: var(--drum); }
   .picks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; margin-bottom: 10px; }
   .pick { position: relative; display: flex; align-items: center; gap: 6px; }
   .pick .lab { flex-basis: auto; margin: 0; color: var(--lane); }
@@ -76,6 +76,8 @@
              border-color: color-mix(in srgb, var(--lane) 45%, var(--line)); overflow: hidden; text-overflow: ellipsis; }
   .pickbtn::after { content: "▾"; float: right; color: var(--mut); }
   .pick.open .pickbtn { border-color: var(--lane); }
+  /* a lane with nothing to choose: shown for completeness, dimmed, no drawer */
+  .pickbtn.fixed { width: auto; opacity: .6; cursor: default; } .pickbtn.fixed::after { content: none; }
   .drawer { display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 6; margin: 0; gap: 4px;
             width: max-content; max-width: min(440px, 90vw); padding: 8px; background: var(--bg);
             border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 12px 32px #000c; }
@@ -239,6 +241,7 @@
     <div class="pick mood"><span class="lab">mood</span><button class="pickbtn" title="the mood: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="moods"></div></div>
     <div class="pick lead"><span class="lab">lead</span><button class="pickbtn" title="the lead's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="voices"></div></div>
     <div class="pick bass"><span class="lab">bass</span><button class="pickbtn" title="the bass's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="basses"></div></div>
+    <div class="pick pulse"><span class="lab">pulse</span><button class="pickbtn fixed" disabled title="the pulse plays the mood's own pulse sound; there is no choice of it here">mood's</button></div>
     <div class="pick drums"><span class="lab">drums</span><button class="pickbtn" title="a groove from the library on the drum lanes, in the mood's kit: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="drumsec"></div></div>
   </div>
   <!-- two unrelated switches, each under its own heading: what is heard under the notes, and what is drawn above them -->
@@ -407,7 +410,7 @@
     for (const b of document.querySelectorAll("#voices .chip")) b.classList.toggle("on", b.dataset.v === st.voice);
     for (const b of document.querySelectorAll("#basses .chip")) b.classList.toggle("on", b.dataset.v === st.bassVoice);
     for (const b of document.querySelectorAll("#drumsec .chip")) b.classList.toggle("on", b.dataset.v === groove);
-    const [mp, lp, bp, dp] = document.querySelectorAll(".pickbtn");
+    const [mp, lp, bp, dp] = document.querySelectorAll(".pickbtn:not(.fixed)");
     mp.textContent = st.mood; lp.textContent = st.voice; bp.textContent = st.bassVoice || "pluck"; dp.textContent = groove || "mood's";
     $("lead").classList.toggle("silent", st.voice === NONE); $("bass").classList.toggle("silent", st.bassVoice === NONE);
     $("bed").classList.toggle("on", st.bed);

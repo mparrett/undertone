@@ -126,6 +126,7 @@
      and a tick where a note starts, and leaves the last pass behind it */
   .strip { width: 100%; min-width: 0; height: 14px; border-radius: 3px; background: var(--panel); transition: opacity .3s; }
   .strip.idle { opacity: .4; }
+  .strip.mix, .strip.echo { cursor: pointer; } /* a click clears them */
   /* all four lanes on one strip, their colours added where they sound together */
   .strip.mix { height: 22px; }
   /* off until the mix button turns it on */
@@ -1031,6 +1032,14 @@
     // a new width or zoom moves the columns, and what was drawn no longer lies over them
     const stale = () => Math.round(L[0].cv.getBoundingClientRect().width * (devicePixelRatio || 1)) !== W;
     addEventListener("resize", () => { if (stale()) { measure(); for (const l of L) draw(l, at); } drawMix(at); drawEcho(at); });
+    // A click on the MIX or ECHO strip wipes what it has drawn, to watch it
+    // fill again from the cursor on. The mix is drawn from the lanes' own
+    // readings, so its click clears their strips too.
+    const wipe = (l) => { l.pass.fill(0); l.hit.fill(0); l.lv.fill(0); if (l.raw) l.raw.fill(0); };
+    mix.title = "the four lanes together; click to clear";
+    echoCv.title = "the echo; click to clear";
+    mix.onclick = () => { for (const l of L) { wipe(l); draw(l, at); } drawMix(at); };
+    echoCv.onclick = () => { wipe(E); echoTrough = 0; drawEcho(at); };
     measure();
     let saved = false;
     try { saved = !!localStorage.getItem("undertone-grid-mix"); } catch {} // storage may be blocked; nothing else is guarded here

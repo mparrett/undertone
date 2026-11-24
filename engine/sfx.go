@@ -326,6 +326,10 @@ const shotGapMS = 30
 type shotKey struct {
 	name string
 	note int
+	// The cuts, as held by unsend: a dry and a wet trigger of one note are
+	// different sounds, and as one key the louder took the voice, so a dry
+	// one could still echo.
+	dry, dryVerb float64
 }
 
 // recentShot is a shot that started lately, kept for shotGapMS. They live in
@@ -398,6 +402,13 @@ type Shot struct {
 	Octave    int
 	HasNote   bool
 	HasDegree bool
+
+	// Dry and DryVerb take this trigger's send to the shared delay and room
+	// down, 0..1: 0 plays the patch as authored, 1 removes the send. A game
+	// can then keep most sounds out of the music's echo and leave it on a
+	// few, without a dry copy of each patch. They are stored as the cut, not
+	// as the scale, so a Shot that never sets them plays exactly as before.
+	Dry, DryVerb float64
 }
 
 // TriggerShot stages a Shot, resolving a scale degree if that is how pitch
@@ -410,7 +421,7 @@ func (s *Synth) TriggerShot(sh Shot) bool {
 	case sh.HasDegree:
 		note = s.resolveDegree(sh.Degree, sh.Octave)
 	}
-	return s.Trigger(sh.Name, note, sh.Gain, sh.Pan, sh.DelayMS, sh.Seed)
+	return s.trigger(sh.Name, note, sh.Gain, sh.Pan, sh.DelayMS, sh.Seed, sh.Dry, sh.DryVerb)
 }
 
 // resolveDegree maps a scale degree in the current parameters' scale to an
@@ -435,6 +446,10 @@ func (s *Synth) resolveDegree(degree, octave int) int {
 // by up to maxDelayMS. It reports whether the shot was staged: false for an
 // unknown name or a delay out of range.
 func (s *Synth) Trigger(name string, note int, gain, pan, delayMS float64, seed uint64) bool {
+	return s.trigger(name, note, gain, pan, delayMS, seed, 0, 0)
+}
+
+func (s *Synth) trigger(name string, note int, gain, pan, delayMS float64, seed uint64, dry, dryVerb float64) bool {
 	d, ok := lookupShot(name)
 	if !ok {
 		return false
@@ -462,9 +477,12 @@ func (s *Synth) Trigger(name string, note int, gain, pan, delayMS float64, seed 
 		return false
 	}
 	delayMS = max(delayMS, 0)
+	dry, dryVerb = clampCut(dry), clampCut(dryVerb)
+	patch := humanize(d.patch, seed)
+	unsend(patch, dry, dryVerb)
 	req := shotReq{
-		key:   shotKey{name, note},
-		patch: humanize(d.patch, seed),
+		key:   shotKey{name, note, dry, dryVerb},
+		patch: patch,
 		note:  note,
 		gain:  gain,
 		pan:   pan,
@@ -502,6 +520,33 @@ func humanize(p Patch, seed uint64) Patch {
 		}
 	}
 	return out
+}
+
+// clampCut holds a cut to 0..1; NaN counts as 0.
+func clampCut(c float64) float64 {
+	if !(c > 0) {
+		return 0
+	}
+	return min(c, 1)
+}
+
+// unsend scales p's send and verb units in place by 1-dry and 1-dryVerb, each
+// cut held to 0..1. p is the trigger's own copy, from humanize, so the
+// registered patch is untouched; scaling here rather than in the voice keeps
+// the audio thread as it was.
+func unsend(p Patch, dry, dryVerb float64) {
+	dry, dryVerb = clampCut(dry), clampCut(dryVerb)
+	if dry == 0 && dryVerb == 0 {
+		return
+	}
+	for i := range p {
+		switch p[i].op {
+		case opSend:
+			p[i].p[0] *= 1 - dry
+		case opVerb:
+			p[i].p[0] *= 1 - dryVerb
+		}
+	}
 }
 
 // runShots activates due triggers and mixes the live one-shot voices.

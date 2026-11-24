@@ -44,3 +44,20 @@ func TestStringsAndSeqsAreNotVectors(t *testing.T) {
 		t.Error("a map entry was not read as a vector")
 	}
 }
+
+// :send and :verb arrive as scales (1 as authored) and reach the engine as
+// cuts, so a map without them plays as it always has.
+func TestSendAndVerbKeysAreRead(t *testing.T) {
+	c := renderLg(t, "sendkeys")
+	v, err := c.Run(`[{:shot :pluck :note 60} {:shot :pluck :note 60 :send 0 :verb 0.25}]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh := shots(v)
+	if sh[0].Dry != 0 || sh[0].DryVerb != 0 {
+		t.Errorf("no keys: Dry %v DryVerb %v, want 0 0", sh[0].Dry, sh[0].DryVerb)
+	}
+	if sh[1].Dry != 1 || sh[1].DryVerb != 0.75 {
+		t.Errorf(":send 0 :verb 0.25: Dry %v DryVerb %v, want 1 0.75", sh[1].Dry, sh[1].DryVerb)
+	}
+}

@@ -268,6 +268,12 @@ func shots(v vm.Value) []engine.Shot {
 		flt(lgm, "gain", &sh.Gain)
 		flt(lgm, "pan", &sh.Pan)
 		flt(lgm, "delay-ms", &sh.DelayMS)
+		// :send and :verb scale the patch's send to the delay and the room
+		// (1 as authored, 0 none); the engine takes them as cuts.
+		send, verb := 1.0, 1.0
+		flt(lgm, "send", &send)
+		flt(lgm, "verb", &verb)
+		sh.Dry, sh.DryVerb = 1-send, 1-verb
 		if integer(lgm, "note", &sh.Note) {
 			sh.HasNote = true
 		} else if integer(lgm, "degree", &sh.Degree) {

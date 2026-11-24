@@ -10,6 +10,8 @@
     --lead: #e0b84f; --bass: #5fa8c9; --pulse: #c96a5f; --drum: #9cc46a; --head: #ffffff14;
     /* as wide as the screen allows, up to a size that keeps the whole grid in view */
     --cell: clamp(17px, calc((100vw - 32px - 32px - 3 * 6px) / 16), 28px);
+    /* a row's height; on a phone cells are square, on a wide screen rows take the height and cells the width */
+    --row: var(--cell);
   }
   /* ::after too: * does not match a pseudo-element, and a cell is drawn by one.
      Without it the square's border was added to its height and not its width. */
@@ -28,27 +30,27 @@
   #play { min-width: 6.5em; font-size: 16px; border-color: #3d5a47; background: #18241d; }
   #play:disabled { border-color: var(--line); background: var(--panel); color: var(--mut); }
   #play.on { border-color: var(--lead); background: #2a2414; }
-  .chip { padding: 5px 10px; font-size: 13px; color: var(--mut); }
-  aside button { padding: 5px 10px; font-size: 13px; } /* a chip's size, so a group's buttons fit one row on a phone */
+  .chip { padding: 2px 8px; font-size: 12px; border-radius: 6px; color: var(--mut); }
+  .toolbar button { padding: 2px 9px; font-size: 12px; border-radius: 6px; } /* a chip's size */
   .chip.on { color: var(--fg); border-color: var(--mut); background: #22222a; }
   label.tempo { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; font-size: 13px; color: var(--mut); }
   label.tempo input { flex: 1; accent-color: var(--lead); }
   #pattern { gap: 8px 6px; } /* four controls: at 8px the last wraps alone on a 390px phone */
   label.seed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--mut); }
-  #seed { font: inherit; width: 40px; padding: 5px 2px; text-align: center; color: var(--fg); background: var(--panel);
-          border: 1px solid var(--line); border-radius: 8px; appearance: textfield; -moz-appearance: textfield; }
+  #seed { font: inherit; font-size: 12px; width: 40px; padding: 2px; text-align: center; color: var(--fg); background: var(--panel);
+          border: 1px solid var(--line); border-radius: 6px; appearance: textfield; -moz-appearance: textfield; }
   #seed::-webkit-inner-spin-button, #seed::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; } /* no room for the arrows; random steps it */
   #bpmv { color: var(--fg); min-width: 3ch; text-align: right; }
 
-  /* air between the groups of controls: the mood, each voice, the buttons, the help.
-     Padding, not margin: in the wide layout's column a margin would collapse into the row above's.
-     7px is what that column can take and stay shorter than the grid at its smallest cells, help closed (2026-11-22). */
-  #voices, #basses, #drumsec, #pattern, .pair { padding-top: 7px; }
+  /* the mood, the pattern's controls and the switches: one row under the transport, wrapping as it must */
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 24px; margin-bottom: 10px; }
+  .toolbar .bar { margin: 0; gap: 5px; }
+  .toolbar .lab { flex-basis: auto; margin: 0 3px 0 0; }
+  /* a lane's choice sits over its cells, lined up with them, in the lane's colour */
+  .lanechips { margin: 0 0 5px 32px; gap: 4px; max-width: calc(16 * var(--cell) + 3 * 6px); /* wraps at the cells' width */ }
   /* a group's heading: a line of its own, in the lane headings' small capitals */
   .lab { flex-basis: 100%; margin-bottom: -3px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mut); }
-  .pair { display: flex; gap: 10px; align-items: flex-start; }
-  /* the first as wide as its heading, the second what is left: its three buttons share a row in the 210px column */
-  .pair > .bar:first-child { flex: 0 0 58px; } .pair > .bar:last-child { flex: 1; gap: 6px; }
+  .pair { display: flex; gap: 24px; align-items: center; }
   button { white-space: nowrap; }
   /* the pattern and the settings as EDN, under the grid; off until the edn button turns it on */
   #ednsec { display: none; margin-top: 18px; gap: 14px 24px; flex-wrap: wrap; max-width: calc(32px + 16 * var(--cell) + 3 * 6px); /* a lane's width */ }
@@ -64,11 +66,8 @@
   .hint.bad { color: var(--pulse); }
   #key { font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--fg); margin-left: 10px; } /* on the mood's heading line */
   /* a voice row wears its lane's colour, and so does the lane's heading: which chips go with which cells */
-  #voices { --lane: var(--lead); } #basses { --lane: var(--bass); }
-  #voices .lab, #basses .lab, #voices .chip.on, #basses .chip.on { color: var(--lane); }
-  #voices .chip.on, #basses .chip.on { border-color: var(--lane); }
-  #drumsec { --lane: var(--drum); } #drumsec .lab { color: var(--lane); }
-  #drumsec .chip.on { color: var(--lane); border-color: var(--lane); }
+  #voices { --lane: var(--lead); } #basses { --lane: var(--bass); } #drumsec { --lane: var(--drum); }
+  .lanechips .chip.on { color: var(--lane); border-color: var(--lane); }
   .lane.of-lead span { color: var(--lead); } .lane.of-bass span { color: var(--bass); }
   .lane.of-pulse span { color: var(--pulse); } .lane.of-drums span { color: var(--drum); }
   .lbl.ref { color: var(--fg); }
@@ -78,7 +77,7 @@
   #key { --glow: #fff; } #lead .lbl { --glow: var(--lead); } #bass .lbl { --glow: var(--bass); }
   @media (prefers-reduced-motion: reduce) { .changed { animation-timing-function: steps(1, end); } } /* held, then gone: no fade */
   /* a lane's name sits in the row labels' column, and its strip over the cells */
-  .lane { margin: 12px 0 4px; font-size: 10px; color: var(--mut); display: grid; align-items: center;
+  .lane { margin: 12px 0 5px; font-size: 10px; color: var(--mut); display: grid; align-items: center;
           grid-template-columns: 32px calc(16 * var(--cell) + 3 * 6px); /* the strip is as wide as the cells under it */ }
   .lane span { text-align: right; padding-right: 5px; white-space: nowrap; direction: rtl; /* a long name overflows to the left, off the strip */ }
   /* the lane as it plays: a cursor under the playhead draws the lane's level
@@ -98,8 +97,8 @@
           touch-action: pan-y; /* vertical drags scroll the page; drags along a lane paint */
           user-select: none; -webkit-user-select: none; }
   .lbl { font-size: 10px; color: var(--mut); white-space: nowrap; display: flex; align-items: center; justify-content: flex-end;
-         padding-right: 6px; height: var(--cell); }
-  .c { height: var(--cell); padding: 1px; cursor: pointer; }
+         padding-right: 6px; height: var(--row); }
+  .c { height: var(--row); padding: 1px; cursor: pointer; }
   .c::after { content: ""; display: block; height: 100%; border-radius: 3px; background: var(--panel);
               border: 1px solid var(--line); }
   .c.g4 { padding-left: 7px; }
@@ -129,50 +128,52 @@
   /* how it works: under the grid at a lane's width, off until the ? button turns it on. In the side column it was a long thin strip. */
   #helpsec { display: none; margin: 18px 0 0; line-height: 1.6; max-width: calc(32px + 16 * var(--cell) + 3 * 6px); }
   :root.help #helpsec { display: block; }
-  /* In a window tall enough for the grid at its smallest cells (633px, as measured 2026-11-22) the
-     column never makes the page scroll: shorter than its controls, it scrolls itself. Shorter than
-     that the page scrolls anyway, and the column goes with it. The column starts 85px down (the
-     body's 32px, the top bar, a 20px gap; 2026-11-22), less its 12px margin, and ends 20px from the bottom. */
-  @media (min-width: 900px) and (min-height: 634px) { aside { max-height: calc(100dvh - 73px - 20px); overflow-y: auto; } }
-  @media (max-width: 899px) { aside, header { display: contents; } main { display: flex; flex-direction: column; } section { order: 5; } }
+  @media (max-width: 899px) { header { display: contents; } main { display: flex; flex-direction: column; } section { order: 5; } }
   footer a { color: var(--mut); }
-  /* wide screens: play and tempo in a bar across the top, the other controls
-     in a narrow column, and the rest of the width for the grid. Cells take
-     what the width gives, short of making the page scroll: 18.5 cells of
-     height (the drum rows are half ones), and what is not cells: the body's
-     padding, the top bar and the four lane headers, 226px as measured
-     2026-11-22, and 34px more while the MIX strip shows. */
+  /* wide screens: a header across the top that stays in view, the
+     transport over the toolbar, and the full width under it for the grid.
+     A cell's width comes from the window's width, up to 72px, and a row's
+     height from what is left of its height: 17 rows of notes and three
+     drum rows, under --other, the body's padding, the header, the four lane
+     headers and the three chip rows (about 330px as measured 2026-11-24,
+     34px more while the MIX strip shows). A note cell is never taller than
+     it is wide. Drum cells are half a step wide and as tall, square, up to
+     32px: wider lanes are what give them room. */
   @media (min-width: 900px) {
-    :root { --side: 210px; --other: 230px;
-            --cell: clamp(22px, min(calc((100vw - 64px - var(--side) - 32px - 32px - 18px) / 16), calc((100dvh - var(--other)) / 18.5)), 36px); }
-    body { padding: 32px; }
-    main { max-width: none; display: grid; grid-template-columns: var(--side) auto; gap: 20px 32px; justify-content: center; align-items: start; }
-    /* min-width 0: the bar is as wide as the columns under it, and does not widen them */
-    header { grid-column: 1 / -1; min-width: 0; display: flex; align-items: center; gap: 16px; }
+    :root { --other: 330px;
+            --cell: clamp(22px, calc((100vw - 64px - 32px - 18px) / 16), 72px);
+            --drow: min(calc(var(--cell) / 2), 32px);
+            --row: clamp(20px, min(calc((100dvh - var(--other) - 3 * var(--drow)) / 17), var(--cell)), 44px); }
+    body { padding: 0 32px 32px; }
+    main { max-width: none; }
+    header { position: sticky; top: 0; z-index: 3; background: var(--bg); margin: 0 -32px 14px; padding: 16px 32px 0;
+             display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; border-bottom: 1px solid var(--line); }
     header h1, header .bar, header #status { margin: 0; }
-    header h1 { width: var(--side); flex: none; margin-right: 16px; }
-    header .bar { flex: none; flex-wrap: nowrap; }
+    header h1 { flex: none; margin-right: 16px; }
+    header #transport { flex: none; flex-wrap: nowrap; margin-bottom: 10px; }
+    header h1, header #status { margin-bottom: 10px; }
     header #status { order: 3; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    header button { padding: 5px 12px; font-size: 14px; }
+    header .toolbar { order: 4; flex-basis: 100%; }
+    header #transport button { padding: 5px 12px; font-size: 14px; }
     #play { font-size: 14px; }
     label.tempo { flex: none; width: 200px; min-width: 0; }
+    section { width: max-content; margin: 0 auto; }
     /* a pointer can hit a small cell, so the drum cells, half a step wide,
        are half as tall too: square */
-    .drums .c, .drums .lbl { height: calc(var(--cell) / 2); }
+    .drums .c, .drums .lbl { height: var(--drow); }
     .drums .lbl { font-size: 10px; } /* the other labels' 12px does not fit a half row at the smallest cell */
     .lbl { font-size: 12px; }
-    :root.mix { --other: 264px; }
+    :root.mix { --other: 364px; }
     .lane:first-child, :root:not(.mix) #mixlane + .lane { margin-top: 0; }
-    /* 12px of room around the column's contents, taken back by the margin, for what is drawn
-       outside them: the key's glow, a focus ring. A scrolling box would cut those off. */
-    aside { align-self: start; padding: 12px; margin: -12px; }
   }
   /* Whole pixels, even ones so the drum cells' half is whole too: at a
      fraction of a pixel, neighbouring cells snap to different sizes. */
   @supports (width: round(down, 1px, 1px)) {
     :root { --cell: clamp(17px, round(down, calc((100vw - 32px - 32px - 3 * 6px) / 16), 2px), 28px); }
     @media (min-width: 900px) {
-      :root { --cell: clamp(22px, round(down, min(calc((100vw - 64px - var(--side) - 32px - 32px - 18px) / 16), calc((100dvh - var(--other)) / 18.5)), 2px), 36px); }
+      :root { --cell: clamp(22px, round(down, calc((100vw - 64px - 32px - 18px) / 16), 2px), 72px);
+              --drow: min(round(down, calc(var(--cell) / 2), 1px), 32px);
+              --row: clamp(20px, round(down, min(calc((100dvh - var(--other) - 3 * var(--drow)) / 17), var(--cell)), 1px), 44px); }
     }
   }
 </style>
@@ -187,12 +188,9 @@
     <button id="restart" title="back to the first step (r): the pattern starts over, or will when you press play">&#9198;&#xFE0E; restart</button>
     <label class="tempo">tempo <input id="bpm" type="range" min="60" max="160" step="1" value="110"><span id="bpmv">110</span></label>
   </div>
- </header>
- <aside>
+  <!-- what the whole pattern plays in and with: the mood, the pattern's own controls, and the switches -->
+  <div class="toolbar">
   <div class="bar" id="moods"><span class="lab">mood</span></div>
-  <div class="bar" id="voices"><span class="lab">lead voice</span></div>
-  <div class="bar" id="basses"><span class="lab">bass voice</span></div>
-  <div class="bar" id="drumsec"><span class="lab">drums</span></div>
   <div class="bar" id="pattern"><span class="lab">pattern</span>
     <button id="dice" title="fill the grid with a new random pattern; it takes the next seed, so the key may move">&#8635; random</button>
     <label class="seed" title="the seed: each gives its own pattern, and may move the key. Type one to go to it.">seed
@@ -210,17 +208,21 @@
       <button class="bed" id="ednbtn" title="show the pattern and the settings as EDN under the grid; not saved in the link">edn</button>
       <button class="bed" id="helpbtn" title="how it works, under the grid" aria-label="how it works">?</button></div>
   </div>
- </aside>
+  </div>
+ </header>
  <section>
 
   <div class="lane" id="mixlane"><span>MIX</span><canvas class="strip mix idle" id="mixstrip"></canvas></div>
   <div class="lane of-lead"><span>LEAD</span><canvas class="strip idle" data-lane="lead"></canvas></div>
+  <div class="bar lanechips" id="voices"></div>
   <div class="grid lead" id="lead"></div>
   <div class="lane of-bass"><span>BASS</span><canvas class="strip idle" data-lane="bass"></canvas></div>
+  <div class="bar lanechips" id="basses"></div>
   <div class="grid bass" id="bass"></div>
   <div class="lane of-pulse"><span>PULSE</span><canvas class="strip idle" data-lane="pulse"></canvas></div>
   <div class="grid pulse" id="pulse"></div>
   <div class="lane of-drums"><span>DRUMS</span><canvas class="strip idle" data-lane="drums"></canvas></div>
+  <div class="bar lanechips" id="drumsec"></div>
   <div class="grid drums" id="drums"></div>
 
   <footer id="helpsec">Tap a cell to place a note, tap it again to clear; drag to paint. One note per step in each lane.

@@ -75,6 +75,15 @@
   #mix .chip i { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--sec); }
   .card.muted { opacity: .55; }
   .card.muted .hd span { color: var(--mut); }
+  /* the master meter: the output after everything, in dBFS */
+  #vu { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mut); }
+  #vu .bar { position: relative; flex: 1; height: 10px; border-radius: 3px; overflow: hidden;
+             background: linear-gradient(to right, #3d6b4f 0%, #7aa36a 75%, #c9a94f 75% 93.75%, #c96a5f 93.75%); }
+  #vu .cur { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; background: var(--panel); }
+  #vu .hold { position: absolute; top: 0; bottom: 0; width: 2px; left: 0; background: var(--fg); opacity: 0; }
+  #vu #vudb { min-width: 6.5em; text-align: right; font-variant-numeric: tabular-nums; }
+  #vu #clip { width: 10px; height: 10px; border-radius: 50%; background: var(--line); cursor: pointer; }
+  #vu #clip.on { background: var(--err); }
   #now { flex: 1; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
   /* docked, the dock rides the bottom edge, so play is in reach from any
      section: always on a phone, and on a wide screen once its slot in the top
@@ -162,6 +171,9 @@
   <div class="playing">
    <div id="status">loading the engine…</div>
    <div id="dockslot"><div id="dock"><div class="row"><button id="play" disabled>loading…</button><div id="now">–</div></div>
+    <div id="vu" title="the output, after the mix, echo and reverb: peak in dBFS, -48 to 0; the number is the peak held over 1.5 s"><span>OUT</span>
+     <div class="bar"><div class="cur"></div><div class="hold"></div></div><span id="vudb">–</span>
+     <span id="clip" title="lights when the output reaches full scale, and stays lit; tap to reset"></span></div>
     <div class="lab" id="mixlab">MIX <small style="font-weight:400;letter-spacing:0">· tap a layer to mute it; none, then one, solos it</small></div>
     <div id="mix" title="tap a layer to mute or unmute it; none, then one layer, solos it"></div></div></div>
   </div>
@@ -575,8 +587,26 @@
   // The loop runs only while playing: stopped, it clears the bars and ends.
   const chips = [...document.querySelectorAll("#mix .chip")];
   let metering = false;
+  // The master meter: peak in dB, falling back at 24 dB/s, its highest held
+  // for 1.5 s. The scale runs -48 to 0 dBFS, yellow from -12, red from -3.
+  const VU_FLOOR = -48, vuCur = document.querySelector("#vu .cur"), vuHold = document.querySelector("#vu .hold");
+  let vuDB = -Infinity, holdDB = -Infinity, holdAt = 0, vuT = 0;
+  const vuPct = (db) => Math.max(0, Math.min(100, (db - VU_FLOOR) / -VU_FLOOR * 100));
+  function master(on) {
+    const t = performance.now(), dt = vuT ? (t - vuT) / 1000 : 0; vuT = on ? t : 0;
+    if (!on) { vuDB = holdDB = -Infinity; vuCur.style.width = "100%"; vuHold.style.opacity = 0; $("vudb").textContent = "–"; return; }
+    const pk = undertoneDesigner.outPeak(), db = pk > 0 ? 20 * Math.log10(pk) : -Infinity;
+    vuDB = Math.max(db, vuDB - 24 * dt);
+    if (db >= holdDB || t - holdAt > 1500) { holdDB = db; holdAt = t; }
+    if (pk >= 32767 / 32768) $("clip").classList.add("on");
+    vuCur.style.width = `${100 - vuPct(vuDB)}%`;
+    vuHold.style.left = `calc(${vuPct(holdDB)}% - 2px)`; vuHold.style.opacity = holdDB > VU_FLOOR ? 1 : 0;
+    $("vudb").textContent = holdDB > -Infinity ? `${holdDB.toFixed(1)} dBFS` : "-∞ dBFS";
+  }
+  $("clip").onclick = () => $("clip").classList.remove("on");
   function meters() {
     const v = ready && playing ? JSON.parse(undertoneDesigner.levels()) : null;
+    master(!!v);
     chips.forEach((c, i) => {
       c.firstElementChild.style.width = `${!v || muted.has(LAYERS[i]) ? 0 : Math.min(100, Math.sqrt(v[i]) * 140)}%`;
     });

@@ -21,6 +21,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"math"
@@ -35,6 +36,10 @@ import (
 type gate struct {
 	src io.Reader
 	on  atomic.Bool
+	// peak is the largest |sample| written since the page last took it, of
+	// 32768: the master meter reads the output itself, after the mix, the
+	// echo and the reverb, and the int16 clamp, so full scale is a clip.
+	peak atomic.Uint32
 }
 
 func (g *gate) Read(p []byte) (int, error) {
@@ -42,7 +47,15 @@ func (g *gate) Read(p []byte) (int, error) {
 		clear(p)
 		return len(p), nil
 	}
-	return g.src.Read(p)
+	n, err := g.src.Read(p)
+	var m uint32
+	for i := 0; i+1 < n; i += 2 {
+		v := int32(int16(binary.LittleEndian.Uint16(p[i:])))
+		m = max(m, uint32(max(v, -v)))
+	}
+	for old := g.peak.Load(); m > old && !g.peak.CompareAndSwap(old, m); old = g.peak.Load() {
+	}
+	return n, err
 }
 
 // lineJSON is a Line with its unbounded clamps as null, which JSON can carry
@@ -212,6 +225,8 @@ func main() {
 			})
 		}),
 		"levels": js.FuncOf(func(js.Value, []js.Value) any { return marshal(syn.LayerLevels()) }),
+		// outPeak is the output's peak since the last call, 0..1 of full scale
+		"outPeak": js.FuncOf(func(js.Value, []js.Value) any { return float64(src.peak.Swap(0)) / 32768 }),
 		"edn": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			s, ok := parse(a[0])
 			if !ok {

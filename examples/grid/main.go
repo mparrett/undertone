@@ -22,7 +22,8 @@
 //	play() / stop()  call from the tap handler: iOS resumes audio only inside one
 //	restart()        start the pattern over from its first step; while stopped, the next play starts there
 //	row()            the step being heard, or -1 while stopped
-//	levels()         [lead, bass, pulse, drums]: each lane's level, dry, as of the last block rendered
+//	levels()         [lead, bass, pulse, drums, echo]: each lane's level, dry, as of the last block
+//	                 rendered, then the echo's: what the shared delay returns, all lanes' at once
 //	onsets()         [lead, bass, pulse, drums]: how many notes each lane started since the last call
 //	queued()         milliseconds of audio rendered but not yet heard: how far levels and onsets lead the ear
 //	audition(json)   play a grid once, alone, without touching the pattern: a cell heard before it is placed
@@ -321,7 +322,7 @@ func main() {
 			if cur.Bass == voiceNone {
 				l[7] = 0
 			}
-			return []any{l[3], l[7], l[5], l[engine.DrumsLayer]} // LayerNames order: lead 3, bass 7, pulse 5
+			return []any{l[3], l[7], l[5], l[engine.DrumsLayer], syn.EchoLevel()} // LayerNames order: lead 3, bass 7, pulse 5
 		}),
 		"onsets": js.FuncOf(func(js.Value, []js.Value) any {
 			var evs []engine.NoteEvent

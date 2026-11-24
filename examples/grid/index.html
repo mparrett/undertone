@@ -316,7 +316,7 @@
       <li>With <b>bed</b> on, the mood's drone, fifth and pad play under the grid, and their chord moves each pass (tonic, then VI or iv) while the grid's rows stay on the key's root, so one loop can sound different from pass to pass.</li></ul></div>
     <div><h3>seeing</h3><ul>
       <li>Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim.</li>
-      <li><b>mix</b> shows all four lanes on one strip, their colours added.</li>
+      <li><b>mix</b> shows all four lanes on one strip, their colours added, and the echo as a pale outline over them: a bump some steps after a hit is that hit coming back.</li>
       <li><b>edn</b> shows the pattern as EDN, a theme's grid, which can be edited or pasted over.</li></ul></div>
   </footer>
   <div id="ednsec">
@@ -849,6 +849,8 @@
       return { cv, g: cv.getContext("2d"), color: css.getPropertyValue(lane === "drums" ? "--drum" : "--" + lane).trim() };
     });
     const mix = $("mixstrip"), mg = mix.getContext("2d");
+    // the echo: no strip of its own, drawn on the mix's as a contour over the lanes
+    const E = { color: css.getPropertyValue("--fg").trim() };
     const GAP = 5; // css px cleared ahead of the cursor
     let xs = [], W = 0, H = 0, HM = 0, dpr = 1; // in device pixels: each step's left edge, then the last one's right
     function measure() {
@@ -861,8 +863,8 @@
       const was = W;
       W = Math.round(box.width * dpr); H = Math.round(box.height * dpr);
       HM = -1; // the mix strip takes its size when next drawn
-      for (const l of L) {
-        l.cv.width = W; l.cv.height = H;
+      for (const l of [...L, E]) {
+        if (l.cv) { l.cv.width = W; l.cv.height = H; }
         const lv = new Float32Array(W), hit = new Uint8Array(W), pass = new Uint32Array(W); // pass 0: never written
         // What was drawn comes along, stretched to the new width: the mix
         // button changes the cells' size, and should not wipe the strips.
@@ -912,7 +914,24 @@
       // ticks a column wide: a wider one would add to the level beside it, and read as two lanes
       for (const l of L) paint(mg, l, x, HM, 0.22, 0.55, 1);
       mg.globalCompositeOperation = "source-over";
+      echo(x);
       cursor(mg, x, HM);
+    }
+    // The echo's level as a contour, the bar's top and bottom edges: the
+    // lanes' colours stay readable under it, and a bump a few steps after a
+    // hit is that hit coming back. The last pass dim, as the lanes'.
+    function echo(x) {
+      const gap = GAP * dpr, t = Math.max(1, Math.round(dpr));
+      mg.fillStyle = E.color;
+      for (let c = 0; c < W; c++) {
+        if (!E.pass[c] || (x >= 0 && c > x && c <= x + gap)) continue;
+        const v = E.lv[c];
+        if (v <= 0.01) continue;
+        const bh = Math.max(t, v * HM);
+        mg.globalAlpha = E.pass[c] === pass ? 0.9 : 0.3;
+        mg.fillRect(c, (HM - bh) / 2, 1, t); mg.fillRect(c, (HM + bh) / 2 - t, 1, t);
+      }
+      mg.globalAlpha = 1;
     }
     // The engine reports what it has rendered, which the ear gets queued()
     // later: readings wait here that long, so a tick lands under the
@@ -963,6 +982,8 @@
           if (hits[k]) { l.hit[x] = 1; hits[k] = 0; }
           draw(l, x);
         });
+        { const v = cur ? Math.min(1, Math.sqrt(cur.lv[4] * 2.5)) : 0; // on the lanes' scale
+          for (const [a, b, p] of spans) for (let c = a; c <= b; c++) { E.lv[c] = v; E.pass[c] = p || pass; } }
         drawMix(x);
         at = x;
       }

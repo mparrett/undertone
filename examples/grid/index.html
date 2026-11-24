@@ -861,8 +861,7 @@
     groove = g;
     st.drums = lanes(g ? JSON.parse(undertoneGrid.grooveDrums(g, st.seed)) : JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
     drumsChosen = !!g;
-    paint(); pushGrid();
-    status.textContent = g ? `groove: ${g}` : "the mood's groove";
+    paint(); pushGrid(); // the chip shows the pick; a status line for it moved the header
   }
   paint();
   const go = new Go();

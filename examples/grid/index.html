@@ -99,6 +99,15 @@
   .pick.open .drawer { display: flex; }
   .pick.drums .drawer { left: auto; right: 0; } /* the last pick: open toward the column, not off its edge */
   .drawer .chip.on { color: var(--lane); border-color: var(--lane); }
+  /* the pattern's slots: a list, a slot a row, with what it holds and when it was saved */
+  .pick.slots { --lane: var(--fg); margin-left: 6px; } .pick.slots .pickbtn { width: auto; } .pick.slots .pickbtn::after { margin-left: 8px; }
+  .pick.slots .drawer { left: auto; right: 0; max-width: none; } /* at the row's end: open toward the column */
+  .pick.open .slotlist { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 6px 10px; align-items: center; font-size: 12px; }
+  .slotlist .n { color: var(--mut); } .slotlist .what { white-space: nowrap; } .slotlist .when { color: var(--mut); white-space: nowrap; }
+  .slotlist .empty { color: var(--mut); font-style: italic; }
+  .slotlist button { padding: 1px 8px; font-size: 12px; border-radius: 6px; }
+  .slotlist button.arm { color: var(--pulse); border-color: var(--pulse); }
+  .slotlist button:disabled { opacity: .3; cursor: default; }
   .lane.of-lead span { color: var(--lead); } .lane.of-bass span { color: var(--bass); }
   .lane.of-pulse span { color: var(--pulse); } .lane.of-drums span { color: var(--drum); }
   .lbl.ref { color: var(--fg); }
@@ -255,6 +264,7 @@
     <label class="seed" title="the seed: each gives its own pattern, and may move the key. Type one to go to it.">seed
       <input id="seed" type="number" inputmode="numeric" min="1" max="9999" step="1" value="1"></label>
     <button id="share" title="copy a link that opens this pattern">copy link</button>
+    <div class="pick slots"><button class="pickbtn" title="five slots in this browser to save the pattern to and load it from">slots</button><div class="drawer slotlist" id="slots"></div></div>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
   </div>
@@ -437,7 +447,7 @@
     for (const b of document.querySelectorAll("#voices .chip")) b.classList.toggle("on", b.dataset.v === st.voice);
     for (const b of document.querySelectorAll("#basses .chip")) b.classList.toggle("on", b.dataset.v === st.bassVoice);
     for (const b of document.querySelectorAll("#drumsec .chip")) b.classList.toggle("on", b.dataset.v === groove);
-    const [mp, lp, bp, dp] = document.querySelectorAll(".pickbtn:not(.fixed)");
+    const [mp, lp, bp, dp] = ["mood", "lead", "bass", "drums"].map((k) => document.querySelector(`.pick.${k} .pickbtn`));
     mp.textContent = st.mood; lp.textContent = st.voice; bp.textContent = st.bassVoice || "pluck"; dp.textContent = groove || "mood's";
     $("lead").classList.toggle("silent", st.voice === NONE); $("bass").classList.toggle("silent", st.bassVoice === NONE);
     $("bed").classList.toggle("on", st.bed);
@@ -609,6 +619,7 @@
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
     const chips = [...openPick.querySelectorAll(".drawer .chip")], i = chips.findIndex((c) => c.classList.contains("on"));
+    if (!chips.length) return; // the slots' list has no choices to step through
     chips[(i + (e.key === "ArrowRight" ? 1 : -1) + chips.length) % chips.length].click();
   });
   function showHelp(on) {
@@ -992,6 +1003,49 @@
     }
     status.textContent = "ready: tap play";
   };
+  // ---- slots: five patterns kept in this browser. A slot holds what a link
+  // holds, and the groove picked, so loading one goes the way a link does.
+  const SLOTS = 5, SLOTKEY = "undertone-grid-slots";
+  const readSlots = () => { try { const a = JSON.parse(localStorage.getItem(SLOTKEY)); if (Array.isArray(a)) return a; } catch {} return []; };
+  const writeSlots = (a) => { try { localStorage.setItem(SLOTKEY, JSON.stringify(a)); return true; } catch { return false; } };
+  let armed = -1; // a filled slot's save asks again before it replaces it
+  function paintSlots() {
+    const box = $("slots"), a = readSlots(); box.innerHTML = "";
+    const add = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = text; box.appendChild(e); return e; };
+    for (let i = 0; i < SLOTS; i++) {
+      const sl = a[i];
+      add("span", "n", i + 1);
+      if (sl) {
+        const kv = Object.fromEntries(sl.link.slice(4).split(";").map((x) => x.split("=")));
+        add("span", "what", `${MOODS.find((m) => m[0] === kv.m) || "?"} · seed ${kv.s} · ${kv.t} bpm${sl.groove ? " · " + sl.groove : ""}`);
+        add("span", "when", new Date(sl.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
+      } else { add("span", "what empty", "empty"); add("span", "", ""); }
+      const save = add("button", i === armed ? "arm" : "", i === armed ? "replace?" : "save");
+      save.title = sl ? "save this pattern here, in place of what is saved (asks again)" : "save this pattern here";
+      save.onclick = () => saveSlot(i);
+      const load = add("button", "", "load"); load.disabled = !sl; load.title = "load this slot's pattern";
+      load.onclick = () => loadSlot(i);
+    }
+  }
+  function saveSlot(i) {
+    const a = readSlots();
+    if (a[i] && armed !== i) { armed = i; paintSlots(); return; }
+    armed = -1; a[i] = { link: encode(), groove, at: Date.now() };
+    status.textContent = writeSlots(a) ? `saved to slot ${i + 1}` : "this browser will not keep it: storage is blocked";
+    paintSlots();
+  }
+  function loadSlot(i) {
+    const sl = readSlots()[i];
+    armed = -1;
+    if (!sl || !ready || !decode(sl.link)) return;
+    groove = linkHasDrums ? sl.groove || "" : "";
+    pushParams();
+    if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
+    paint(); pushGrid(); paintSlots();
+    status.textContent = `slot ${i + 1} loaded`;
+  }
+  document.querySelector(".pick.slots .pickbtn").addEventListener("click", () => { armed = -1; paintSlots(); });
+  paintSlots();
   // An address that differs only after the # does not reload the page, so a
   // link pasted over this one arrives here and nowhere else.
   addEventListener("hashchange", () => {

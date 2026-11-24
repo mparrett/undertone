@@ -331,6 +331,10 @@ type shotKey struct {
 	// different sounds, and as one key the louder took the voice, so a dry
 	// one could still echo.
 	dry, dryVerb float64
+	// The group, so a cut can tell repeats apart: merged into one voice, a
+	// grouped and an ungrouped hit would share one tag, and a cut would take
+	// both or neither.
+	group string
 }
 
 // recentShot is a shot that started lately, kept for shotGapMS. They live in
@@ -477,7 +481,20 @@ func (s *Synth) Cut(group string, fadeMS float64) int {
 	clear(s.fx.pending[len(keep):])
 	s.fx.pending = keep
 	s.fx.waiting.Store(len(keep) > 0)
-	s.fx.cuts = append(s.fx.cuts, cutReq{group, 1000 / (fadeMS * SampleRate)})
+	// One request per group: cut again before the audio thread has run (or
+	// while it is suspended and nothing drains this) and the faster fade wins
+	// rather than the list growing.
+	step := 1000 / (fadeMS * SampleRate)
+	merged := false
+	for i := range s.fx.cuts {
+		if s.fx.cuts[i].group == group {
+			s.fx.cuts[i].step = max(s.fx.cuts[i].step, step)
+			merged = true
+		}
+	}
+	if !merged {
+		s.fx.cuts = append(s.fx.cuts, cutReq{group, step})
+	}
 	s.fx.cutting.Store(true)
 	return dropped
 }
@@ -539,7 +556,7 @@ func (s *Synth) trigger(name string, note int, gain, pan, delayMS float64, seed 
 	patch := humanize(d.patch, seed)
 	unsend(patch, dry, dryVerb)
 	req := shotReq{
-		key:   shotKey{name, note, dry, dryVerb},
+		key:   shotKey{name, note, dry, dryVerb, group},
 		patch: patch,
 		note:  note,
 		gain:  gain,
@@ -621,6 +638,16 @@ func (s *Synth) runShots(l, r *float64, bus *sends) {
 			for i := range fx.shots {
 				if fx.shots[i].active && fx.group[i] == c.group && (fx.fadeStep[i] == 0 || c.step > fx.fadeStep[i]) {
 					fx.fadeStep[i] = c.step
+				}
+			}
+		}
+		for _, c := range fx.cuts {
+			// Forget the group's recent starts: a repeat triggered after the
+			// cut would otherwise be merged into the voice now fading, and
+			// never sound.
+			for i := range fx.recent {
+				if fx.recent[i].key.group == c.group {
+					fx.recent[i] = recentShot{}
 				}
 			}
 		}

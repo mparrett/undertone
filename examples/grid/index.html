@@ -30,7 +30,7 @@
   #play { min-width: 6.5em; font-size: 16px; border-color: #3d5a47; background: #18241d; }
   #play:disabled { border-color: var(--line); background: var(--panel); color: var(--mut); }
   #play.on { border-color: var(--lead); background: #2a2414; }
-  .chip { padding: 2px 8px; font-size: 12px; border-radius: 6px; color: var(--mut); }
+  .chip { padding: 2px 7px; font-size: 12px; border-radius: 6px; color: var(--mut); }
   .toolbar button { padding: 2px 9px; font-size: 12px; border-radius: 6px; } /* a chip's size */
   .chip.on { color: var(--fg); border-color: var(--mut); background: #22222a; }
   label.tempo { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; font-size: 13px; color: var(--mut); }
@@ -43,11 +43,13 @@
   #bpmv { color: var(--fg); min-width: 3ch; text-align: right; }
 
   /* the mood, the pattern's controls and the switches: one row under the transport, wrapping as it must */
-  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 24px; margin-bottom: 10px; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin-bottom: 10px; }
   .toolbar .bar { margin: 0; gap: 5px; }
   .toolbar .lab { flex-basis: auto; margin: 0 3px 0 0; }
   /* a lane's choice sits over its cells, lined up with them, in the lane's colour */
-  .lanechips { margin: 0 0 5px 32px; gap: 4px; max-width: calc(16 * var(--cell) + 3 * 6px); /* wraps at the cells' width */ }
+  /* the lane's name in the label column, its chips from where the cells start; they wrap at the cells' width */
+  .lanechips { margin: 24px 0 6px; gap: 4px; max-width: calc(32px + 16 * var(--cell) + 3 * 6px); }
+  .lanechips .lname { flex: 0 0 32px; min-width: 0; white-space: nowrap; direction: rtl; margin-right: -4px; /* a long name overflows left, as the lanes' do */ padding-right: 5px; text-align: right; font-size: 10px; color: var(--lane); align-self: flex-start; line-height: 23px; }
   /* a group's heading: a line of its own, in the lane headings' small capitals */
   .lab { flex-basis: 100%; margin-bottom: -3px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mut); }
   .pair { display: flex; gap: 24px; align-items: center; }
@@ -77,8 +79,10 @@
   #key { --glow: #fff; } #lead .lbl { --glow: var(--lead); } #bass .lbl { --glow: var(--bass); }
   @media (prefers-reduced-motion: reduce) { .changed { animation-timing-function: steps(1, end); } } /* held, then gone: no fade */
   /* a lane's name sits in the row labels' column, and its strip over the cells */
-  .lane { margin: 24px 0 5px; /* air above each lane's heading, so it starts a section of its own */ font-size: 10px; color: var(--mut); display: grid; align-items: center;
+  .lane { margin: 24px 0 5px; /* air above each lane's heading, so it starts a section of its own */
+ font-size: 10px; color: var(--mut); display: grid; align-items: center;
           grid-template-columns: 32px calc(16 * var(--cell) + 3 * 6px); /* the strip is as wide as the cells under it */ }
+  .lanechips + .lane { margin-top: 0; } /* a lane with chips starts at them */
   .lane span { text-align: right; padding-right: 5px; white-space: nowrap; direction: rtl; /* a long name overflows to the left, off the strip */ }
   /* the lane as it plays: a cursor under the playhead draws the lane's level
      and a tick where a note starts, and leaves the last pass behind it */
@@ -134,12 +138,11 @@
      transport over the toolbar, and the full width under it for the grid.
      A cell's width comes from the window's width, up to 56px (72 read as
      stretched), and a row's height from what is left of its height: 17
-     rows of notes and three
-     drum rows, under --other, the body's padding, the header, the four lane
-     headers and the three chip rows (about 376px as measured 2026-11-24,
-     46px more while the MIX strip shows). A note cell is never taller than
-     it is wide. Drum cells are half a step wide and as tall, square, up to
-     32px: wider lanes are what give them room. */
+     rows of notes and three drum rows, under --other, the body's padding,
+     the header, the four lane headers and the three chip rows (about 376px
+     as measured 2026-11-24, 46px more while the MIX strip shows). A note
+     cell is never taller than it is wide. Drum cells are half a step wide
+     and as tall, square, up to 32px: wider lanes are what give them room. */
   @media (min-width: 900px) {
     :root { --other: 376px;
             --cell: clamp(22px, calc((100vw - 64px - 32px - 18px) / 16), 56px);
@@ -147,17 +150,26 @@
             --row: clamp(20px, min(calc((100dvh - var(--other) - 3 * var(--drow)) / 17), var(--cell)), 44px); }
     body { padding: 0 32px 32px; }
     main { max-width: none; }
-    header { position: sticky; top: 0; z-index: 3; background: var(--bg); margin: 0 -32px 14px; padding: 16px 32px 0;
+    /* the bar's background runs edge to edge; its contents line up with the grid's column under it */
+    header { --col: calc(32px + 16 * var(--cell) + 3 * 6px);
+             position: sticky; top: 0; z-index: 3; background: var(--bg); margin: 0 -32px 14px;
+             padding: 16px max(32px, calc((100% + 64px - var(--col)) / 2)) 0;
              display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; border-bottom: 1px solid var(--line); }
     header h1, header .bar, header #status { margin: 0; }
     header h1 { flex: none; margin-right: 16px; }
     header #transport { flex: none; flex-wrap: nowrap; margin-bottom: 10px; }
     header h1, header #status { margin-bottom: 10px; }
     header #status { order: 3; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    header .toolbar { order: 4; flex-basis: 100%; }
+    header .toolbar { order: 5; flex-basis: 100%; }
+    /* the switches ride the transport's row, at its right end; the toolbar under it is then one row in the column */
+    header > .pair { order: 4; margin-bottom: 10px; gap: 18px; }
+    header > .pair .lab { flex-basis: auto; margin: 0 3px 0 0; }
+    header > .pair button { padding: 2px 9px; font-size: 12px; border-radius: 6px; }
+    header > .pair .bar { gap: 5px; }
     header #transport button { padding: 5px 12px; font-size: 14px; }
     #play { font-size: 14px; }
-    label.tempo { flex: none; width: 200px; min-width: 0; }
+    label.tempo { flex: none; width: auto; min-width: 0; }
+    label.tempo input { flex: none; width: 96px; }
     section { width: max-content; margin: 0 auto; }
     /* a pointer can hit a small cell, so the drum cells, half a step wide,
        are half as tall too: square */
@@ -165,7 +177,14 @@
     .drums .lbl { font-size: 10px; } /* the other labels' 12px does not fit a half row at the smallest cell */
     .lbl { font-size: 12px; }
     :root.mix { --other: 422px; }
-    .lane:first-child, :root:not(.mix) #mixlane + .lane { margin-top: 0; }
+    .lane:first-child, :root:not(.mix) #mixlane + .lane, :root:not(.mix) #mixlane + .lanechips { margin-top: 0; }
+    /* the EDN box floats over the top of the grid rather than opening under
+       it, off the bottom of a grid that fits the window; the cells it covers
+       are the ones its text spells out. Esc or the edn button closes it. */
+    section { position: relative; }
+    :root.edn #ednsec { position: absolute; top: 0; left: 32px; right: 0; z-index: 2; margin: 0; max-width: none;
+                        padding: 14px 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+                        box-shadow: 0 14px 40px #000c; }
   }
   /* Whole pixels, even ones so the drum cells' half is whole too: at a
      fraction of a pixel, neighbouring cells snap to different sizes. */
@@ -186,7 +205,7 @@
   <div id="status">loading the engine…</div>
   <div class="bar" id="transport">
     <button id="play" disabled>loading…</button>
-    <button id="restart" title="back to the first step (r): the pattern starts over, or will when you press play">&#9198;&#xFE0E; restart</button>
+    <button id="restart" title="restart: back to the first step (r); the pattern starts over, or will when you press play" aria-label="restart">&#9198;&#xFE0E;</button>
     <label class="tempo">tempo <input id="bpm" type="range" min="60" max="160" step="1" value="110"><span id="bpmv">110</span></label>
   </div>
   <!-- what the whole pattern plays in and with: the mood, the pattern's own controls, and the switches -->
@@ -200,30 +219,30 @@
     <button id="share" title="copy a link that opens this pattern">copy link</button>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
+  </div>
   <!-- two unrelated switches, each under its own heading: what is heard under the notes, and what is drawn above them -->
   <div class="pair">
     <div class="bar"><span class="lab">backing</span>
       <button class="bed" id="bed" title="the generator's drone, pad and air, playing under the notes; saved in the link">bed</button></div>
     <div class="bar"><span class="lab">view</span>
       <button class="bed" id="mixbtn" title="show a strip of all four lanes over one another, their colours added; not saved in the link">mix</button>
-      <button class="bed" id="ednbtn" title="show the pattern and the settings as EDN under the grid; not saved in the link">edn</button>
+      <button class="bed" id="ednbtn" title="show the pattern and the settings as EDN over the grid (Esc closes it); not saved in the link">edn</button>
       <button class="bed" id="helpbtn" title="how it works, under the grid" aria-label="how it works">?</button></div>
-  </div>
   </div>
  </header>
  <section>
 
   <div class="lane" id="mixlane"><span>MIX</span><canvas class="strip mix idle" id="mixstrip"></canvas></div>
-  <div class="lane of-lead"><span>LEAD</span><canvas class="strip idle" data-lane="lead"></canvas></div>
-  <div class="bar lanechips" id="voices"></div>
+  <div class="bar lanechips" id="voices"><span class="lname">LEAD</span></div>
+  <div class="lane of-lead"><span></span><canvas class="strip idle" data-lane="lead"></canvas></div>
   <div class="grid lead" id="lead"></div>
-  <div class="lane of-bass"><span>BASS</span><canvas class="strip idle" data-lane="bass"></canvas></div>
-  <div class="bar lanechips" id="basses"></div>
+  <div class="bar lanechips" id="basses"><span class="lname">BASS</span></div>
+  <div class="lane of-bass"><span></span><canvas class="strip idle" data-lane="bass"></canvas></div>
   <div class="grid bass" id="bass"></div>
   <div class="lane of-pulse"><span>PULSE</span><canvas class="strip idle" data-lane="pulse"></canvas></div>
   <div class="grid pulse" id="pulse"></div>
-  <div class="lane of-drums"><span>DRUMS</span><canvas class="strip idle" data-lane="drums"></canvas></div>
-  <div class="bar lanechips" id="drumsec"></div>
+  <div class="bar lanechips" id="drumsec"><span class="lname">DRUMS</span></div>
+  <div class="lane of-drums"><span></span><canvas class="strip idle" data-lane="drums"></canvas></div>
   <div class="grid drums" id="drums"></div>
 
   <footer id="helpsec">Tap a cell to place a note, tap it again to clear; drag to paint. One note per step in each lane.
@@ -479,6 +498,7 @@
     showEDN();
   }
   $("ednbtn").onclick = () => showEDNBox(!document.documentElement.classList.contains("edn"));
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && document.documentElement.classList.contains("edn")) showEDNBox(false); });
   $("helpbtn").onclick = () => {
     const on = document.documentElement.classList.toggle("help");
     $("helpbtn").classList.toggle("on", on);

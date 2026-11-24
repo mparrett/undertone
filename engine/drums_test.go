@@ -8,11 +8,17 @@ import (
 	"testing"
 )
 
-// Every groove is three lanes of two bars of 16ths, in the step alphabet.
+// Every groove is three lanes of two bars of 16ths, in the step alphabet,
+// or a polymetric loop of any length ending in |.
 func TestGroovesAreWellFormed(t *testing.T) {
 	for name, g := range grooveLib {
 		for d, lane := range g {
-			if len(lane) != 2*rows {
+			if loop, ok := strings.CutSuffix(lane, "|"); ok {
+				if loop == "" || strings.Contains(loop, "|") {
+					t.Errorf("%s lane %d: polymetric lane %q, want steps then one |", name, d, lane)
+				}
+				lane = loop
+			} else if len(lane) != 2*rows {
 				t.Errorf("%s lane %d: %d steps, want %d", name, d, len(lane), 2*rows)
 			}
 			if i := strings.IndexFunc(lane, func(c rune) bool { return !strings.ContainsRune("Xxo.?frR", c) }); i >= 0 {
@@ -571,6 +577,56 @@ func TestPolymetricGrooveLaneRunsFromTheFirstPattern(t *testing.T) {
 			if want := (2*rows*pat+i)%3 == 0; hit != want {
 				t.Errorf("pattern %d 16th %d: hit %v, want %v", pat, i, hit, want)
 			}
+		}
+	}
+}
+
+// drift is the kick's one and the ghost into the next phrase, and nothing
+// else when the chance hit misses; drift-poly lays a top lane over it that
+// loops every six 16ths, so it falls differently in each pattern.
+func TestDriftGrooves(t *testing.T) {
+	p, _ := DeriveMood("aurora", 1, 2, 0)
+	p.DrumGain, p.DrumBusy = 1, 0
+	hitsAt := func(lane [rows]drumHit) []int {
+		var at []int
+		for i := range 2 * rows {
+			if h := lane[i/2]; (i%2 == 0 && h.on > 0) || (i%2 == 1 && h.off > 0) {
+				at = append(at, i)
+			}
+		}
+		return at
+	}
+	for _, name := range []string{"drift", "drift-poly"} {
+		p.Groove = name
+		d := buildDrums(p, 0)
+		if got := hitsAt(d[0]); !slices.Equal(got, []int{0, 30}) {
+			t.Errorf("%s kick at %v, want [0 30]", name, got)
+		}
+		if got := hitsAt(d[1]); got != nil {
+			t.Errorf("%s clap at %v, want none", name, got)
+		}
+	}
+	p.Groove = "drift"
+	if got := hitsAt(buildDrums(p, 0)[2]); got != nil {
+		t.Errorf("drift top at %v, want none", got)
+	}
+	p.Groove = "drift-poly"
+	var first []int
+	for pat := range 3 {
+		got := hitsAt(buildDrums(p, pat)[2])
+		var want []int
+		for i := range 2 * rows {
+			if (2*rows*pat+i)%6 == 0 {
+				want = append(want, i)
+			}
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("drift-poly top in pattern %d at %v, want %v", pat, got, want)
+		}
+		if pat == 0 {
+			first = got
+		} else if slices.Equal(got, first) {
+			t.Errorf("drift-poly top in pattern %d repeats pattern 0's %v: not polymetric", pat, got)
 		}
 	}
 }

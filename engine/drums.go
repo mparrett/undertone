@@ -81,6 +81,24 @@ var grooveLib = map[string]groove{
 		"....X..o....X..R....X..o....X.rR",
 		"x?o?x?R?x?o?x?r?x?o?x?R?x?o?x?R?",
 	},
+	// drift: momentum without a beat, for a mood whose game plays its own
+	// percussion (steps, blows). One soft hit on the one, a chance hit in
+	// the middle of the second bar, and a ghost on the and of four that
+	// pulls into the next phrase. No backbeat, no top, no fills.
+	"drift": {
+		"X.......................?.....o.",
+		"................................",
+		"................................",
+	},
+	// drift-poly: drift under a top lane of dotted eighths, three 16ths
+	// against the pattern's 32, so its accent lands somewhere else each
+	// time the pulse comes round. Every other tick is a chance, so it
+	// thins out at low tension.
+	"drift-poly": {
+		"X.......................?.....o.",
+		"................................",
+		"o..?..|",
+	},
 }
 
 // drumHit is a lane's two 16ths within one row: on the row, and the off 16th

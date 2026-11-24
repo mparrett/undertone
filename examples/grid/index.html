@@ -99,15 +99,9 @@
   .pick.open .drawer { display: flex; }
   .pick.drums .drawer { left: auto; right: 0; } /* the last pick: open toward the column, not off its edge */
   .drawer .chip.on { color: var(--lane); border-color: var(--lane); }
-  /* the pattern's slots: a list, a slot a row, with what it holds and when it was saved */
+  /* the pattern's slots: a chip per slot; an empty one is dim */
   .pick.slots { --lane: var(--fg); margin-left: 6px; } .pick.slots .pickbtn { width: auto; } .pick.slots .pickbtn::after { margin-left: 8px; }
-  .pick.slots .drawer { left: auto; right: 0; max-width: none; } /* at the row's end: open toward the column */
-  .pick.open .slotlist { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 6px 10px; align-items: center; font-size: 12px; }
-  .slotlist .n { color: var(--mut); } .slotlist .what { white-space: nowrap; } .slotlist .when { color: var(--mut); white-space: nowrap; }
-  .slotlist .empty { color: var(--mut); font-style: italic; }
-  .slotlist button { padding: 1px 8px; font-size: 12px; border-radius: 6px; }
-  .slotlist button.arm { color: var(--pulse); border-color: var(--pulse); }
-  .slotlist button:disabled { opacity: .3; cursor: default; }
+  .slotchips .chip.empty { opacity: .5; border-style: dashed; }
   .lane.of-lead span { color: var(--lead); } .lane.of-bass span { color: var(--bass); }
   .lane.of-pulse span { color: var(--pulse); } .lane.of-drums span { color: var(--drum); }
   .lbl.ref { color: var(--fg); }
@@ -261,10 +255,11 @@
   <div class="bar" id="pattern"><span class="lab">pattern</span>
     <button id="dice" title="fill the grid with a new random pattern; it takes the next seed, so the key may move">&#8635; random</button>
     <button id="clear" title="empty the grid">clear</button>
+    <button id="undo" disabled title="undo the last change (⌘Z or ctrl-Z)">&#8630; undo</button>
     <label class="seed" title="the seed: each gives its own pattern, and may move the key. Type one to go to it.">seed
       <input id="seed" type="number" inputmode="numeric" min="1" max="9999" step="1" value="1"></label>
     <button id="share" title="copy a link that opens this pattern">copy link</button>
-    <div class="pick slots"><button class="pickbtn" title="five slots in this browser to save the pattern to and load it from">slots</button><div class="drawer slotlist" id="slots"></div></div>
+    <div class="pick slots"><button class="pickbtn" title="five slots kept in this browser: picking one loads it, and every change saves to the one picked (arrows step through them)">slot 1</button><div class="bar drawer slotchips" id="slots"></div></div>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
   </div>
@@ -646,10 +641,12 @@
   const pushGrid = () => {
     if (ready) undertoneGrid.setGrid(JSON.stringify({ lead: st.lead, bass: st.bass, pulse: st.pulse, drums: drumStrings(), bed: st.bed }));
     history.replaceState(null, "", encode());
+    remember();
   };
   const pushParams = () => {
     if (ready) { undertoneGrid.setParams(JSON.stringify({ bpm: st.bpm, mood: st.mood, voice: st.voice, bass: st.bassVoice, seed: st.seed })); showKey(); }
     history.replaceState(null, "", encode());
+    remember();
   };
 
   // One handler for every cell (pointerdown: no 300 ms click delay, and
@@ -983,7 +980,11 @@
   window.undertoneGridFailed = (msg) => { status.textContent = "audio failed: " + msg; };
   window.undertoneGridReady = () => {
     ready = true;
-    if (!decode(location.hash)) {
+    // A link's pattern goes into the picked slot, whose old state is the first
+    // step back; with no link, the slot is what opens.
+    const kept = slots[slot];
+    if (kept) { undo = [kept]; if (!location.hash || location.hash === kept.link) groove = kept.groove || ""; }
+    if (!decode(location.hash) && !(kept && decode(kept.link))) {
       const g = JSON.parse(undertoneGrid.initial);
       st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = lanes(g.drums);
       linkHasDrums = true;
@@ -1003,48 +1004,78 @@
     }
     status.textContent = "ready: tap play";
   };
-  // ---- slots: five patterns kept in this browser. A slot holds what a link
-  // holds, and the groove picked, so loading one goes the way a link does.
-  const SLOTS = 5, SLOTKEY = "undertone-grid-slots";
-  const readSlots = () => { try { const a = JSON.parse(localStorage.getItem(SLOTKEY)); if (Array.isArray(a)) return a; } catch {} return []; };
-  const writeSlots = (a) => { try { localStorage.setItem(SLOTKEY, JSON.stringify(a)); return true; } catch { return false; } };
-  let armed = -1; // a filled slot's save asks again before it replaces it
+  // ---- slots and undo. Five patterns kept in this browser; the one picked
+  // takes every change, so there is no save. A slot holds what a link holds,
+  // and the groove picked, and loading one goes the way a link does. Picking
+  // an empty slot starts it as a copy of what is playing. Undo steps back
+  // through this session's changes to the slot; a burst of them (a drag
+  // across cells, a slide of the tempo) is one step.
+  const SLOTS = 5, SLOTKEY = "undertone-grid-slots", CURKEY = "undertone-grid-slot";
+  const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} }; // storage may be blocked
+  let slots = [], slot = 0;
+  try { slots = JSON.parse(localStorage.getItem(SLOTKEY)) || []; slot = Math.min(SLOTS - 1, Math.max(0, +localStorage.getItem(CURKEY) || 0)); } catch {}
+  let undo = [], lastAt = 0, restoring = false;
+  const snap = () => ({ link: encode(), groove });
+  // pushGrid and pushParams call this after every change
+  function remember() {
+    if (restoring || !ready) return;
+    const s = snap(), top = undo[undo.length - 1];
+    if (top && top.link === s.link && top.groove === s.groove) return;
+    const now = Date.now();
+    if (top && now - lastAt < 600 && undo.length > 1) {
+      undo[undo.length - 1] = s;
+      const prev = undo[undo.length - 2]; // a burst that ends where it began is no step
+      if (prev.link === s.link && prev.groove === s.groove) undo.pop();
+    } else undo.push(s);
+    lastAt = now;
+    slots[slot] = s; store(SLOTKEY, JSON.stringify(slots));
+    $("undo").disabled = undo.length < 2;
+  }
+  function restore(s) {
+    restoring = true;
+    if (decode(s.link)) {
+      groove = linkHasDrums ? s.groove || "" : "";
+      pushParams();
+      if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
+      paint(); pushGrid();
+    }
+    restoring = false;
+  }
+  function stepBack() {
+    if (undo.length < 2) return;
+    undo.pop(); lastAt = 0;
+    const s = undo[undo.length - 1];
+    restore(s); slots[slot] = s; store(SLOTKEY, JSON.stringify(slots));
+    $("undo").disabled = undo.length < 2;
+    status.textContent = "undone";
+  }
+  $("undo").onclick = stepBack;
+  addEventListener("keydown", (e) => {
+    if (e.key !== "z" || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return; // their own undo
+    e.preventDefault(); stepBack();
+  });
   function paintSlots() {
-    const box = $("slots"), a = readSlots(); box.innerHTML = "";
-    const add = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = text; box.appendChild(e); return e; };
-    for (let i = 0; i < SLOTS; i++) {
-      const sl = a[i];
-      add("span", "n", i + 1);
-      if (sl) {
-        const kv = Object.fromEntries(sl.link.slice(4).split(";").map((x) => x.split("=")));
-        add("span", "what", `${MOODS.find((m) => m[0] === kv.m) || "?"} · seed ${kv.s} · ${kv.t} bpm${sl.groove ? " · " + sl.groove : ""}`);
-        add("span", "when", new Date(sl.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
-      } else { add("span", "what empty", "empty"); add("span", "", ""); }
-      const save = add("button", i === armed ? "arm" : "", i === armed ? "replace?" : "save");
-      save.title = sl ? "save this pattern here, in place of what is saved (asks again)" : "save this pattern here";
-      save.onclick = () => saveSlot(i);
-      const load = add("button", "", "load"); load.disabled = !sl; load.title = "load this slot's pattern";
-      load.onclick = () => loadSlot(i);
+    document.querySelector(".pick.slots .pickbtn").textContent = `slot ${slot + 1}`;
+    for (const c of document.querySelectorAll("#slots .chip")) {
+      const i = +c.dataset.v;
+      c.classList.toggle("on", i === slot); c.classList.toggle("empty", !slots[i]);
+      c.title = slots[i] ? "load this slot" : "an empty slot: picking it starts it as a copy of this pattern";
     }
   }
-  function saveSlot(i) {
-    const a = readSlots();
-    if (a[i] && armed !== i) { armed = i; paintSlots(); return; }
-    armed = -1; a[i] = { link: encode(), groove, at: Date.now() };
-    status.textContent = writeSlots(a) ? `saved to slot ${i + 1}` : "this browser will not keep it: storage is blocked";
+  function pickSlot(i) {
+    if (i === slot) return;
+    slot = i; store(CURKEY, String(i));
+    undo = []; lastAt = 0;
+    if (slots[i]) restore(slots[i]);
+    remember(); // the slot's state is the first step back to; an empty slot takes this pattern
     paintSlots();
+    status.textContent = `slot ${i + 1}`;
   }
-  function loadSlot(i) {
-    const sl = readSlots()[i];
-    armed = -1;
-    if (!sl || !ready || !decode(sl.link)) return;
-    groove = linkHasDrums ? sl.groove || "" : "";
-    pushParams();
-    if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
-    paint(); pushGrid(); paintSlots();
-    status.textContent = `slot ${i + 1} loaded`;
+  for (let i = 0; i < SLOTS; i++) {
+    const c = document.createElement("span"); c.className = "chip"; c.textContent = i + 1; c.dataset.v = i;
+    c.onclick = () => pickSlot(i); $("slots").appendChild(c);
   }
-  document.querySelector(".pick.slots .pickbtn").addEventListener("click", () => { armed = -1; paintSlots(); });
   paintSlots();
   // An address that differs only after the # does not reload the page, so a
   // link pasted over this one arrives here and nowhere else.

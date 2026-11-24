@@ -92,14 +92,16 @@ func (s *Synth) PlayTheme(t *Theme) {
 // does; one that would end sooner on its own still does. n below 1 counts as
 // 1. EndTheme applies to the theme started by the last PlayTheme before it,
 // so it is ignored if that one has finished or another has started since; a
-// second call replaces the first. Safe to call from any goroutine.
+// second call replaces the first, and a Rewind drops it. Safe to call from
+// any goroutine.
 func (s *Synth) EndTheme(n int, u ThemeUnit) {
 	s.endCmd.Store(&endCmd{max(n, 1), u, s.themeGen.Load()})
 }
 
 // ThemePlaying reports whether the last theme started with PlayTheme is still
 // to finish: false once its last grid has played (ThenGenerate,
-// ThenSilence), never false for ThenLoop. Safe to call from any goroutine.
+// ThenSilence), or once EndTheme has ended it, the only way a ThenLoop theme
+// ends short of another PlayTheme. Safe to call from any goroutine.
 func (s *Synth) ThemePlaying() bool { return s.themeGen.Load() != s.themeDone.Load() }
 
 // startTheme runs on the audio thread at a block boundary, before the row
@@ -130,17 +132,47 @@ func (s *Synth) markThemeEnd(c *endCmd) {
 // endThemeAt ends the theme before the row about to step when EndTheme's
 // count has run out there. The generator's pattern for the rest of this one
 // was built at its row 0 and only the rows already played were overwritten
-// by the theme's grid, so a mid-pattern hand-back picks it up where it is.
+// by the theme's grid, so a mid-pattern hand-back plays on from its rows.
 func (s *Synth) endThemeAt() {
 	if s.theme == nil || !s.themeEnds || s.pat*rows+s.row < s.themeEndAt {
 		return
 	}
 	s.themeEnds = false
+	g := s.theme.Grids[s.themeAt]
 	if s.theme.Then == ThenSilence {
 		s.silent = true
 	}
 	s.theme = nil
 	s.finishTheme(s.themeOf)
+	if s.row != 0 && !g.Bed && !s.silent {
+		s.resumeBed()
+	}
+}
+
+// bedTracks are the generator's tracks a grid without a bed silences.
+var bedTracks = []int{0, trackFifth, 2, 4}
+
+// resumeBed re-sounds, from the row about to step, the generator's bed notes
+// that would still be held there. The drone and fifth trigger only at row 0
+// and the pad at rows 0 and 8, and a grid without a bed blanked those rows,
+// so without this a mid-pattern hand-back leaves them out until the next
+// pattern: a dropout right where the music changes hands.
+func (s *Synth) resumeBed() {
+	gen := buildPatterns(s.params, s.pat)
+	for _, t := range bedTracks {
+		if s.pats[t][s.row].note != 0 {
+			continue // the generator starts a note here anyway
+		}
+		for r := s.row - 1; r >= 0; r-- {
+			if n := gen[t][r]; n.note != 0 {
+				if left := n.gateRows - (s.row - r); left > 0 {
+					n.gateRows = left
+					s.pats[t][s.row] = n
+				}
+				break
+			}
+		}
+	}
 }
 
 // playingGrid is the grid that owns this pattern: the theme's, the silence

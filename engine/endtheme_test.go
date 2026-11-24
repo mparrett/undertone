@@ -106,15 +106,38 @@ func TestEndThemeIntoSilence(t *testing.T) {
 }
 
 // Mid-pattern, the generator takes the rest of the pattern: its own rows,
-// not the theme's grid and not silence.
+// not the theme's grid and not silence, with its bed sounding from the row
+// it takes over rather than from the next pattern.
 func TestEndThemeHandsBackMidPattern(t *testing.T) {
-	s, r0 := themeSynth(t, 4, ThenGenerate, 3)
-	s.EndTheme(1, ThemeBars)
+	s, r0 := themeSynth(t, 4, ThenGenerate, 3) // themeOf's grids have no bed
+	if s.params.DroneGain <= 0.01 {
+		t.Fatal("the mood has no drone: the test proves nothing")
+	}
+	s.EndTheme(4, ThemeRows)
+	if !stepTo(s, r0+8) {
+		t.Fatal("never reached the hand-back")
+	}
+	if v := s.voices[0]; !v.active || !v.gate {
+		t.Errorf("the drone is not sounding after the hand-back at row 7: active %v gate %v", v.active, v.gate)
+	}
 	if !stepTo(s, r0+rows) {
 		t.Fatal("never reached the next pattern")
 	}
 	if g := s.playingGrid(); g != nil {
 		t.Errorf("after the hand-back a grid owns the pattern: %+v", g)
+	}
+}
+
+// A Rewind after EndTheme plays the theme from the top, whole: the end was
+// counted from where it was.
+func TestEndThemeDroppedByRewind(t *testing.T) {
+	s, _ := themeSynth(t, 4, ThenLoop, 5)
+	s.EndTheme(1, ThemeGrids)
+	render(s, nowBlock)
+	s.Rewind()
+	render(s, nowBlock)
+	if !stepTo(s, s.pat*rows+rows+2) || s.theme == nil {
+		t.Error("the theme ended after a Rewind")
 	}
 }
 

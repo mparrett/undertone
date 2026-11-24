@@ -70,7 +70,9 @@ func (s *Synth) Rewind() { s.rewind.Store(true) }
 // step, so the first row steps on this frame.
 func (s *Synth) startOver() {
 	if s.theme != nil {
-		s.themeAt, s.themeFresh = 0, true
+		// From the top, the theme plays as if just started: an EndTheme
+		// counted from where it was would cut the replay short.
+		s.themeAt, s.themeFresh, s.themeEnds = 0, true, false
 	}
 	if s.row != 0 {
 		s.pat++ // the cut pattern ends here, as in startTheme

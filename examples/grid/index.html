@@ -324,7 +324,7 @@
     <div><h3>seeing</h3><ul>
       <li>Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim.</li>
       <li><b>mix</b> shows all four lanes on one strip, their colours added.</li>
-      <li><b>echo</b> shows what the echo returns, all lanes' at once: a bump some steps after a hit is that hit coming back.</li>
+      <li><b>echo</b> shows what the echo returns, all lanes' at once, scaled to its loudest, with a tick where each echo arrives: a bump some steps after a hit is that hit coming back.</li>
       <li><b>edn</b> shows the pattern as EDN, a theme's grid, which can be edited or pasted over.</li></ul></div>
   </footer>
   <div id="ednsec">
@@ -868,6 +868,10 @@
     const echoCv = $("echostrip"), eg = echoCv.getContext("2d");
     const E = { color: css.getPropertyValue("--fg").trim() }; // the echo's readings, as a lane's
     let HE = 0;
+    // below this the echo is the tail of a reverb, not an echo: the scale
+    // stops growing and a rise from it is no arrival
+    const ECHO_FLOOR = 0.002;
+    let echoWas = 0, echoRising = false;
     const GAP = 5; // css px cleared ahead of the cursor
     let xs = [], W = 0, H = 0, HM = 0, dpr = 1; // in device pixels: each step's left edge, then the last one's right
     function measure() {
@@ -882,6 +886,11 @@
       HM = -1; HE = -1; // the mix and echo strips take their size when next drawn
       for (const l of [...L, E]) {
         if (l.cv) { l.cv.width = W; l.cv.height = H; }
+        if (l === E) { // raw readings, scaled when drawn
+          const raw = new Float32Array(W);
+          if (was && E.raw) for (let c = 0; c < W; c++) raw[c] = E.raw[Math.min(was - 1, Math.floor(c * was / W))];
+          E.raw = raw;
+        }
         const lv = new Float32Array(W), hit = new Uint8Array(W), pass = new Uint32Array(W); // pass 0: never written
         // What was drawn comes along, stretched to the new width: the mix
         // button changes the cells' size, and should not wipe the strips.
@@ -934,11 +943,17 @@
       cursor(mg, x, HM);
     }
     // The echo on a strip of its own, drawn as a lane's level is: a bump
-    // some steps after a hit is that hit coming back.
+    // some steps after a hit is that hit coming back. Echoes are far quieter
+    // than the notes they repeat, so the strip scales itself to the loudest
+    // reading on it, this pass's or the last's, and ticks where one arrives.
     function drawEcho(x) {
       const h = Math.round(echoCv.getBoundingClientRect().height * dpr); // 0 while hidden
       if (h !== HE) { HE = h; echoCv.width = W; echoCv.height = h; }
       if (!HE) return;
+      let ref = ECHO_FLOOR;
+      for (let c = 0; c < W; c++) if (E.pass[c] && E.raw[c] > ref) ref = E.raw[c];
+      // linear, not the lanes' root: a root lifts the tails and fills the gaps the peaks stand out from
+      for (let c = 0; c < W; c++) E.lv[c] = E.raw[c] / ref;
       eg.clearRect(0, 0, W, HE);
       paint(eg, E, x, HE, 0.2, 0.55, 1);
       cursor(eg, x, HE);
@@ -992,8 +1007,14 @@
           if (hits[k]) { l.hit[x] = 1; hits[k] = 0; }
           draw(l, x);
         });
-        { const v = cur ? Math.min(1, Math.sqrt(cur.lv[4] * 2.5)) : 0; // on the lanes' scale
-          for (const [a, b, p] of spans) for (let c = a; c <= b; c++) { E.lv[c] = v; E.pass[c] = p || pass; } }
+        { const v = cur ? cur.lv[4] : 0;
+          for (const [a, b, p] of spans) for (let c = a; c <= b; c++) { E.raw[c] = v; E.hit[c] = 0; E.pass[c] = p || pass; }
+          // An arrival: the meter holds a peak and lets it fall, so it rises
+          // only when an echo comes back. One tick per rise, however many
+          // frames it takes.
+          if (v > echoWas * 1.25 && v > ECHO_FLOOR) { if (!echoRising) E.hit[x] = 1; echoRising = true; }
+          else if (v <= echoWas) echoRising = false;
+          echoWas = v; }
         drawMix(x); drawEcho(x);
         at = x;
       }

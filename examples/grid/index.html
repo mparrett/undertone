@@ -119,7 +119,8 @@
           grid-template-columns: 32px calc(16 * var(--cell) + 3 * 6px); /* the strip is as wide as the cells under it */ }
   /* a lane's chips, strip and cells; air above each, so it starts a section of its own */
   .lanegroup { margin-top: 24px; }
-  :root:not(.mix) #mixlane + .lanegroup { margin-top: 0; }
+  :root:not(.mix):not(.echo) #echolane + .lanegroup { margin-top: 0; }
+  :root.mix #mixlane + #echolane { margin-top: 6px; }
   .lane span { text-align: right; padding-right: 5px; white-space: nowrap; direction: rtl; /* a long name overflows to the left, off the strip */ }
   /* the lane as it plays: a cursor under the playhead draws the lane's level
      and a tick where a note starts, and leaves the last pass behind it */
@@ -128,8 +129,10 @@
   /* all four lanes on one strip, their colours added where they sound together */
   .strip.mix { height: 22px; }
   /* off until the mix button turns it on */
-  #mixlane { display: none; }
-  :root.mix #mixlane { display: grid; }
+  #mixlane, #echolane { display: none; }
+  :root.mix #mixlane, :root.echo #echolane { display: grid; }
+  /* the echo: what the shared delay returns, every lane's at once; off until the echo button turns it on */
+  .strip.echo { height: 18px; }
   /* the first step of each beat after the first is 6px wider, padded on the left: beat groups */
   .grid { --C: calc(var(--cell) + 6px); display: grid; /* no gaps: a cell's own padding spaces it, the same on every side */
           grid-template-columns: 32px var(--cell) var(--cell) var(--cell) var(--cell)
@@ -186,7 +189,7 @@
      rows of notes and three drum rows, under --other, the body's padding,
      the header (three rows: transport, mood and pattern, voices) and the four lane
      headers (about 322px as measured 2026-11-24, 48px more while the MIX
-     strip shows). A note cell is never taller than it is wide. Drum cells
+     strip shows, 44px while the ECHO strip does, 72px with both). A note cell is never taller than it is wide. Drum cells
      are half a step wide and as tall, square, up to 32px: wider lanes are
      what give them room. */
   @media (min-width: 900px) {
@@ -219,6 +222,8 @@
     .drums .lbl { font-size: 10px; } /* the other labels' 12px does not fit a half row at the smallest cell */
     .lbl { font-size: 12px; }
     :root.mix { --other: 370px; }
+    :root.echo { --other: 366px; } /* the ECHO strip, and the air over it */
+    :root.mix.echo { --other: 394px; }
     /* the EDN box and the help float over the top of the grid rather than
        opening under it, off the bottom of a grid that fits the window; the
        cells the EDN covers are the ones its text spells out. Esc or the
@@ -277,6 +282,7 @@
   <div class="pair">
     <div class="bar"><span class="lab">view</span>
       <button class="bed" id="mixbtn" title="show a strip of all four lanes over one another, their colours added; not saved in the link">mix</button>
+      <button class="bed" id="echobtn" title="show a strip of the echo: what the shared delay returns, all four lanes' at once; not saved in the link">echo</button>
       <button class="bed" id="ednbtn" title="show the pattern and the settings as EDN over the grid (Esc closes it); not saved in the link">edn</button>
       <button class="bed" id="helpbtn" title="how it works, over the grid (Esc closes it)" aria-label="how it works">?</button></div>
   </div>
@@ -284,6 +290,7 @@
  <section>
 
   <div class="lane" id="mixlane"><span>MIX</span><canvas class="strip mix idle" id="mixstrip"></canvas></div>
+  <div class="lane" id="echolane"><span>ECHO</span><canvas class="strip echo idle" id="echostrip"></canvas></div>
   <div class="lanegroup">
     <div class="lane of-lead"><span>LEAD</span><canvas class="strip idle" data-lane="lead"></canvas></div>
     <div class="grid lead" id="lead"></div>
@@ -316,7 +323,8 @@
       <li>With <b>bed</b> on, the mood's drone, fifth and pad play under the grid, and their chord moves each pass (tonic, then VI or iv) while the grid's rows stay on the key's root, so one loop can sound different from pass to pass.</li></ul></div>
     <div><h3>seeing</h3><ul>
       <li>Each lane's strip follows the playhead: ticks are note starts, over the lane's level before the echo; the last pass stays dim.</li>
-      <li><b>mix</b> shows all four lanes on one strip, their colours added, and the echo as a pale outline over them: a bump some steps after a hit is that hit coming back.</li>
+      <li><b>mix</b> shows all four lanes on one strip, their colours added.</li>
+      <li><b>echo</b> shows what the echo returns, all lanes' at once: a bump some steps after a hit is that hit coming back.</li>
       <li><b>edn</b> shows the pattern as EDN, a theme's grid, which can be edited or pasted over.</li></ul></div>
   </footer>
   <div id="ednsec">
@@ -765,6 +773,14 @@
     dispatchEvent(new Event("resize")); // the cells may have changed size, and the strips with them
   }
   $("mixbtn").onclick = () => showMix(!document.documentElement.classList.contains("mix"));
+  // The ECHO strip likewise.
+  function showEcho(on) {
+    document.documentElement.classList.toggle("echo", on);
+    $("echobtn").classList.toggle("on", on);
+    try { localStorage.setItem("undertone-grid-echo", on ? "1" : ""); } catch {}
+    dispatchEvent(new Event("resize"));
+  }
+  $("echobtn").onclick = () => showEcho(!document.documentElement.classList.contains("echo"));
   $("clear").onclick = () => { st.lead.fill(0); st.bass.fill(0); st.pulse.fill(false); st.drums = lanes(); drumsChosen = true; groove = ""; paint(); pushGrid(); };
   // Go to a seed: its pattern replaces the grid's, as random's does.
   function takeSeed(n) {
@@ -849,8 +865,9 @@
       return { cv, g: cv.getContext("2d"), color: css.getPropertyValue(lane === "drums" ? "--drum" : "--" + lane).trim() };
     });
     const mix = $("mixstrip"), mg = mix.getContext("2d");
-    // the echo: no strip of its own, drawn on the mix's as a contour over the lanes
-    const E = { color: css.getPropertyValue("--fg").trim() };
+    const echoCv = $("echostrip"), eg = echoCv.getContext("2d");
+    const E = { color: css.getPropertyValue("--fg").trim() }; // the echo's readings, as a lane's
+    let HE = 0;
     const GAP = 5; // css px cleared ahead of the cursor
     let xs = [], W = 0, H = 0, HM = 0, dpr = 1; // in device pixels: each step's left edge, then the last one's right
     function measure() {
@@ -862,7 +879,7 @@
       xs.push((row[STEPS - 1].getBoundingClientRect().right - box.left) * dpr);
       const was = W;
       W = Math.round(box.width * dpr); H = Math.round(box.height * dpr);
-      HM = -1; // the mix strip takes its size when next drawn
+      HM = -1; HE = -1; // the mix and echo strips take their size when next drawn
       for (const l of [...L, E]) {
         if (l.cv) { l.cv.width = W; l.cv.height = H; }
         const lv = new Float32Array(W), hit = new Uint8Array(W), pass = new Uint32Array(W); // pass 0: never written
@@ -914,24 +931,17 @@
       // ticks a column wide: a wider one would add to the level beside it, and read as two lanes
       for (const l of L) paint(mg, l, x, HM, 0.22, 0.55, 1);
       mg.globalCompositeOperation = "source-over";
-      echo(x);
       cursor(mg, x, HM);
     }
-    // The echo's level as a contour, the bar's top and bottom edges: the
-    // lanes' colours stay readable under it, and a bump a few steps after a
-    // hit is that hit coming back. The last pass dim, as the lanes'.
-    function echo(x) {
-      const gap = GAP * dpr, t = Math.max(1, Math.round(dpr));
-      mg.fillStyle = E.color;
-      for (let c = 0; c < W; c++) {
-        if (!E.pass[c] || (x >= 0 && c > x && c <= x + gap)) continue;
-        const v = E.lv[c];
-        if (v <= 0.01) continue;
-        const bh = Math.max(t, v * HM);
-        mg.globalAlpha = E.pass[c] === pass ? 0.9 : 0.3;
-        mg.fillRect(c, (HM - bh) / 2, 1, t); mg.fillRect(c, (HM + bh) / 2 - t, 1, t);
-      }
-      mg.globalAlpha = 1;
+    // The echo on a strip of its own, drawn as a lane's level is: a bump
+    // some steps after a hit is that hit coming back.
+    function drawEcho(x) {
+      const h = Math.round(echoCv.getBoundingClientRect().height * dpr); // 0 while hidden
+      if (h !== HE) { HE = h; echoCv.width = W; echoCv.height = h; }
+      if (!HE) return;
+      eg.clearRect(0, 0, W, HE);
+      paint(eg, E, x, HE, 0.2, 0.55, 1);
+      cursor(eg, x, HE);
     }
     // The engine reports what it has rendered, which the ear gets queued()
     // later: readings wait here that long, so a tick lands under the
@@ -948,7 +958,7 @@
     (function tick(t) {
       const on = ready && playing;
       if (on !== was) {
-        for (const cv of [mix, ...L.map((l) => l.cv)]) cv.classList.toggle("idle", !on);
+        for (const cv of [mix, echoCv, ...L.map((l) => l.cv)]) cv.classList.toggle("idle", !on);
         if (on && was !== null) {
           // Stop froze the output with its queue, so everything resumes late
           // by the pause: the readings still waiting, and the step under way.
@@ -984,18 +994,21 @@
         });
         { const v = cur ? Math.min(1, Math.sqrt(cur.lv[4] * 2.5)) : 0; // on the lanes' scale
           for (const [a, b, p] of spans) for (let c = a; c <= b; c++) { E.lv[c] = v; E.pass[c] = p || pass; } }
-        drawMix(x);
+        drawMix(x); drawEcho(x);
         at = x;
       }
       requestAnimationFrame(tick);
     })(0);
     // a new width or zoom moves the columns, and what was drawn no longer lies over them
     const stale = () => Math.round(L[0].cv.getBoundingClientRect().width * (devicePixelRatio || 1)) !== W;
-    addEventListener("resize", () => { if (stale()) { measure(); for (const l of L) draw(l, at); } drawMix(at); });
+    addEventListener("resize", () => { if (stale()) { measure(); for (const l of L) draw(l, at); } drawMix(at); drawEcho(at); });
     measure();
     let saved = false;
     try { saved = !!localStorage.getItem("undertone-grid-mix"); } catch {} // storage may be blocked; nothing else is guarded here
     if (saved) showMix(true);
+    saved = false;
+    try { saved = !!localStorage.getItem("undertone-grid-echo"); } catch {}
+    if (saved) showEcho(true);
   })();
 
   // ---- boot ----

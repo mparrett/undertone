@@ -77,7 +77,7 @@
   #key { --glow: #fff; } #lead .lbl { --glow: var(--lead); } #bass .lbl { --glow: var(--bass); }
   @media (prefers-reduced-motion: reduce) { .changed { animation-timing-function: steps(1, end); } } /* held, then gone: no fade */
   /* a lane's name sits in the row labels' column, and its strip over the cells */
-  .lane { margin: 12px 0 5px; font-size: 10px; color: var(--mut); display: grid; align-items: center;
+  .lane { margin: 24px 0 5px; /* air above each lane's heading, so it starts a section of its own */ font-size: 10px; color: var(--mut); display: grid; align-items: center;
           grid-template-columns: 32px calc(16 * var(--cell) + 3 * 6px); /* the strip is as wide as the cells under it */ }
   .lane span { text-align: right; padding-right: 5px; white-space: nowrap; direction: rtl; /* a long name overflows to the left, off the strip */ }
   /* the lane as it plays: a cursor under the playhead draws the lane's level
@@ -132,16 +132,17 @@
   footer a { color: var(--mut); }
   /* wide screens: a header across the top that stays in view, the
      transport over the toolbar, and the full width under it for the grid.
-     A cell's width comes from the window's width, up to 72px, and a row's
-     height from what is left of its height: 17 rows of notes and three
+     A cell's width comes from the window's width, up to 56px (72 read as
+     stretched), and a row's height from what is left of its height: 17
+     rows of notes and three
      drum rows, under --other, the body's padding, the header, the four lane
-     headers and the three chip rows (about 330px as measured 2026-11-24,
-     34px more while the MIX strip shows). A note cell is never taller than
+     headers and the three chip rows (about 376px as measured 2026-11-24,
+     46px more while the MIX strip shows). A note cell is never taller than
      it is wide. Drum cells are half a step wide and as tall, square, up to
      32px: wider lanes are what give them room. */
   @media (min-width: 900px) {
-    :root { --other: 330px;
-            --cell: clamp(22px, calc((100vw - 64px - 32px - 18px) / 16), 72px);
+    :root { --other: 376px;
+            --cell: clamp(22px, calc((100vw - 64px - 32px - 18px) / 16), 56px);
             --drow: min(calc(var(--cell) / 2), 32px);
             --row: clamp(20px, min(calc((100dvh - var(--other) - 3 * var(--drow)) / 17), var(--cell)), 44px); }
     body { padding: 0 32px 32px; }
@@ -163,7 +164,7 @@
     .drums .c, .drums .lbl { height: var(--drow); }
     .drums .lbl { font-size: 10px; } /* the other labels' 12px does not fit a half row at the smallest cell */
     .lbl { font-size: 12px; }
-    :root.mix { --other: 364px; }
+    :root.mix { --other: 422px; }
     .lane:first-child, :root:not(.mix) #mixlane + .lane { margin-top: 0; }
   }
   /* Whole pixels, even ones so the drum cells' half is whole too: at a
@@ -171,7 +172,7 @@
   @supports (width: round(down, 1px, 1px)) {
     :root { --cell: clamp(17px, round(down, calc((100vw - 32px - 32px - 3 * 6px) / 16), 2px), 28px); }
     @media (min-width: 900px) {
-      :root { --cell: clamp(22px, round(down, calc((100vw - 64px - 32px - 18px) / 16), 2px), 72px);
+      :root { --cell: clamp(22px, round(down, calc((100vw - 64px - 32px - 18px) / 16), 2px), 56px);
               --drow: min(round(down, calc(var(--cell) / 2), 1px), 32px);
               --row: clamp(20px, round(down, min(calc((100dvh - var(--other) - 3 * var(--drow)) / 17), var(--cell)), 1px), 44px); }
     }

@@ -871,7 +871,9 @@
     // below this the echo is the tail of a reverb, not an echo: the scale
     // stops growing and a rise from it is no arrival
     const ECHO_FLOOR = 0.002;
-    let echoWas = 0, echoRising = false;
+    let echoWas = 0, echoRising = false, echoTrough = 0, echoRef = ECHO_FLOOR;
+    // an arrival climbs this much of the strip's loudest above the low before it
+    const ECHO_RISE = 0.15;
     const GAP = 5; // css px cleared ahead of the cursor
     let xs = [], W = 0, H = 0, HM = 0, dpr = 1; // in device pixels: each step's left edge, then the last one's right
     function measure() {
@@ -949,9 +951,10 @@
     function drawEcho(x) {
       const h = Math.round(echoCv.getBoundingClientRect().height * dpr); // 0 while hidden
       if (h !== HE) { HE = h; echoCv.width = W; echoCv.height = h; }
-      if (!HE) return;
-      let ref = ECHO_FLOOR;
+      let ref = ECHO_FLOOR; // taken while hidden too: the arrivals are judged by it
       for (let c = 0; c < W; c++) if (E.pass[c] && E.raw[c] > ref) ref = E.raw[c];
+      echoRef = ref;
+      if (!HE) return;
       // linear, not the lanes' root: a root lifts the tails and fills the gaps the peaks stand out from
       for (let c = 0; c < W; c++) E.lv[c] = E.raw[c] / ref;
       eg.clearRect(0, 0, W, HE);
@@ -1010,10 +1013,15 @@
         { const v = cur ? cur.lv[4] : 0;
           for (const [a, b, p] of spans) for (let c = a; c <= b; c++) { E.raw[c] = v; E.hit[c] = 0; E.pass[c] = p || pass; }
           // An arrival: the meter holds a peak and lets it fall, so it rises
-          // only when an echo comes back. One tick per rise, however many
-          // frames it takes.
-          if (v > echoWas * 1.25 && v > ECHO_FLOOR) { if (!echoRising) E.hit[x] = 1; echoRising = true; }
-          else if (v <= echoWas) echoRising = false;
+          // when an echo comes back. A fading tail wobbles too, by a sliver of
+          // the strip, so a rise counts only from the low before it, and only
+          // when it climbs a real part of the strip's height. One tick per rise.
+          if (echoRising) {
+            if (v < echoWas) { echoRising = false; echoTrough = v; } else echoTrough = v; // following the climb up
+          } else {
+            echoTrough = Math.min(echoTrough, v);
+            if (v - echoTrough > ECHO_RISE * echoRef && v > ECHO_FLOOR) { E.hit[x] = 1; echoRising = true; echoTrough = v; }
+          }
           echoWas = v; }
         drawMix(x); drawEcho(x);
         at = x;

@@ -197,11 +197,12 @@
     .drums .lbl { font-size: 10px; } /* the other labels' 12px does not fit a half row at the smallest cell */
     .lbl { font-size: 12px; }
     :root.mix { --other: 370px; }
-    /* the EDN box floats over the top of the grid rather than opening under
-       it, off the bottom of a grid that fits the window; the cells it covers
-       are the ones its text spells out. Esc or the edn button closes it. */
+    /* the EDN box and the help float over the top of the grid rather than
+       opening under it, off the bottom of a grid that fits the window; the
+       cells the EDN covers are the ones its text spells out. Esc or the
+       box's button closes it, and one opens in place of the other. */
     section { position: relative; }
-    :root.edn #ednsec { position: absolute; top: 0; left: 32px; right: 0; z-index: 2; margin: 0; max-width: none;
+    :root.edn #ednsec, :root.help #helpsec { position: absolute; top: 0; left: 32px; right: 0; z-index: 2; margin: 0; max-width: none;
                         padding: 14px 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
                         box-shadow: 0 14px 40px #000c; }
   }
@@ -234,9 +235,9 @@
     <button class="bed" id="bed" title="the generator's drone, pad and air, playing under the notes; saved in the link">bed</button></div>
   <div class="bar" id="pattern"><span class="lab">pattern</span>
     <button id="dice" title="fill the grid with a new random pattern; it takes the next seed, so the key may move">&#8635; random</button>
+    <button id="clear" title="empty the grid">clear</button>
     <label class="seed" title="the seed: each gives its own pattern, and may move the key. Type one to go to it.">seed
       <input id="seed" type="number" inputmode="numeric" min="1" max="9999" step="1" value="1"></label>
-    <button id="clear" title="empty the grid">clear</button>
     <button id="share" title="copy a link that opens this pattern">copy link</button>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
@@ -253,7 +254,7 @@
     <div class="bar"><span class="lab">view</span>
       <button class="bed" id="mixbtn" title="show a strip of all four lanes over one another, their colours added; not saved in the link">mix</button>
       <button class="bed" id="ednbtn" title="show the pattern and the settings as EDN over the grid (Esc closes it); not saved in the link">edn</button>
-      <button class="bed" id="helpbtn" title="how it works, under the grid" aria-label="how it works">?</button></div>
+      <button class="bed" id="helpbtn" title="how it works, over the grid (Esc closes it)" aria-label="how it works">?</button></div>
   </div>
  </header>
  <section>
@@ -525,13 +526,18 @@
   $("patedn").onblur = () => { clearTimeout(ednTimer); if (ednDirty) applyEDN(); if (!ednDirty) { $("patedn").value = patternEDN(); patHint(""); } };
   // Like the MIX strip, a way of looking: out of the link, remembered by this browser.
   function showEDNBox(on) {
+    if (on) showHelp(false);
     document.documentElement.classList.toggle("edn", on);
     $("ednbtn").classList.toggle("on", on);
     try { localStorage.setItem("undertone-grid-edn", on ? "1" : ""); } catch {}
     showEDN();
   }
   $("ednbtn").onclick = () => showEDNBox(!document.documentElement.classList.contains("edn"));
-  addEventListener("keydown", (e) => { if (e.key === "Escape" && !openPick && document.documentElement.classList.contains("edn")) showEDNBox(false); });
+  addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || openPick) return;
+    if (document.documentElement.classList.contains("edn")) showEDNBox(false);
+    showHelp(false);
+  });
 
   // ---- the voice picks' drawers: one open at a time; it stays open while
   // its choices are tried, and closes on its chip, Esc, or a tap elsewhere.
@@ -551,11 +557,14 @@
     const chips = [...openPick.querySelectorAll(".drawer .chip")], i = chips.findIndex((c) => c.classList.contains("on"));
     chips[(i + (e.key === "ArrowRight" ? 1 : -1) + chips.length) % chips.length].click();
   });
-  $("helpbtn").onclick = () => {
-    const on = document.documentElement.classList.toggle("help");
+  function showHelp(on) {
+    if (on && document.documentElement.classList.contains("edn")) showEDNBox(false);
+    document.documentElement.classList.toggle("help", on);
     $("helpbtn").classList.toggle("on", on);
-    if (on) $("helpsec").scrollIntoView({ block: "nearest", behavior: "smooth" }); // it opens under the grid, maybe off screen
-  };
+    // on a narrow window it opens under the grid, maybe off screen
+    if (on && !matchMedia("(min-width: 900px)").matches) $("helpsec").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  $("helpbtn").onclick = () => showHelp(!document.documentElement.classList.contains("help"));
   { let saved = false;
     try { saved = !!localStorage.getItem("undertone-grid-edn"); } catch {} // storage may be blocked
     if (saved) showEDNBox(true); }

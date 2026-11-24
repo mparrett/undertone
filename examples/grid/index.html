@@ -48,7 +48,7 @@
   .toolbar .lab { flex-basis: auto; margin: 0 3px 0 0; }
   /* a lane's choice sits over its cells, lined up with them, in the lane's colour */
   /* the lane's name in the label column, its chips from where the cells start; they wrap at the cells' width */
-  .lanechips { margin: 24px 0 6px; gap: 4px; max-width: calc(32px + 16 * var(--cell) + 3 * 6px); }
+  .lanechips { margin: 0 0 6px; gap: 4px; max-width: calc(32px + 16 * var(--cell) + 3 * 6px); }
   .lanechips .lname { flex: 0 0 32px; min-width: 0; white-space: nowrap; direction: rtl; margin-right: -4px; /* a long name overflows left, as the lanes' do */ padding-right: 5px; text-align: right; font-size: 10px; color: var(--lane); align-self: flex-start; line-height: 23px; }
   /* a group's heading: a line of its own, in the lane headings' small capitals */
   .lab { flex-basis: 100%; margin-bottom: -3px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mut); }
@@ -79,10 +79,12 @@
   #key { --glow: #fff; } #lead .lbl { --glow: var(--lead); } #bass .lbl { --glow: var(--bass); }
   @media (prefers-reduced-motion: reduce) { .changed { animation-timing-function: steps(1, end); } } /* held, then gone: no fade */
   /* a lane's name sits in the row labels' column, and its strip over the cells */
-  .lane { margin: 24px 0 5px; /* air above each lane's heading, so it starts a section of its own */
+  .lane { margin: 0 0 5px;
  font-size: 10px; color: var(--mut); display: grid; align-items: center;
           grid-template-columns: 32px calc(16 * var(--cell) + 3 * 6px); /* the strip is as wide as the cells under it */ }
-  .lanechips + .lane { margin-top: 0; } /* a lane with chips starts at them */
+  /* a lane's chips, strip and cells; air above each, so it starts a section of its own */
+  .lanegroup { margin-top: 24px; }
+  :root:not(.mix) #mixlane + .lanegroup { margin-top: 0; }
   .lane span { text-align: right; padding-right: 5px; white-space: nowrap; direction: rtl; /* a long name overflows to the left, off the strip */ }
   /* the lane as it plays: a cursor under the playhead draws the lane's level
      and a tick where a note starts, and leaves the last pass behind it */
@@ -177,7 +179,6 @@
     .drums .lbl { font-size: 10px; } /* the other labels' 12px does not fit a half row at the smallest cell */
     .lbl { font-size: 12px; }
     :root.mix { --other: 422px; }
-    .lane:first-child, :root:not(.mix) #mixlane + .lane, :root:not(.mix) #mixlane + .lanechips { margin-top: 0; }
     /* the EDN box floats over the top of the grid rather than opening under
        it, off the bottom of a grid that fits the window; the cells it covers
        are the ones its text spells out. Esc or the edn button closes it. */
@@ -185,6 +186,20 @@
     :root.edn #ednsec { position: absolute; top: 0; left: 32px; right: 0; z-index: 2; margin: 0; max-width: none;
                         padding: 14px 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
                         box-shadow: 0 14px 40px #000c; }
+  }
+  /* A window wide enough for gutters beside the grid's column: each lane's
+     chips hang in the left one, beside the lane, its name over them, and
+     take no height from the cells. --other loses the three chip rows, and
+     gains the 50px by which the grooves' chips run past the drum lanes
+     (2026-11-24), which the page's foot makes room for. */
+  @media (min-width: 1430px) { /* the chips need 230px left of the 946px column */
+    :root { --other: 336px; }
+    :root.mix { --other: 382px; }
+    body { padding-bottom: 82px; }
+    .lanegroup { position: relative; }
+    /* clear of the row labels, which a looping drum lane's (kick ↻14) runs left past */
+    .lanechips { position: absolute; top: 0; right: calc(100% + 40px); width: 190px; margin: 0; justify-content: flex-end; }
+    .lanechips .lname { flex-basis: 100%; margin: 0 0 1px; padding: 0; text-align: right; line-height: 14px; direction: ltr; }
   }
   /* Whole pixels, even ones so the drum cells' half is whole too: at a
      fraction of a pixel, neighbouring cells snap to different sizes. */
@@ -233,17 +248,25 @@
  <section>
 
   <div class="lane" id="mixlane"><span>MIX</span><canvas class="strip mix idle" id="mixstrip"></canvas></div>
-  <div class="bar lanechips" id="voices"><span class="lname">LEAD</span></div>
-  <div class="lane of-lead"><span></span><canvas class="strip idle" data-lane="lead"></canvas></div>
-  <div class="grid lead" id="lead"></div>
-  <div class="bar lanechips" id="basses"><span class="lname">BASS</span></div>
-  <div class="lane of-bass"><span></span><canvas class="strip idle" data-lane="bass"></canvas></div>
-  <div class="grid bass" id="bass"></div>
-  <div class="lane of-pulse"><span>PULSE</span><canvas class="strip idle" data-lane="pulse"></canvas></div>
-  <div class="grid pulse" id="pulse"></div>
-  <div class="bar lanechips" id="drumsec"><span class="lname">DRUMS</span></div>
-  <div class="lane of-drums"><span></span><canvas class="strip idle" data-lane="drums"></canvas></div>
-  <div class="grid drums" id="drums"></div>
+  <div class="lanegroup">
+    <div class="bar lanechips" id="voices"><span class="lname">LEAD</span></div>
+    <div class="lane of-lead"><span></span><canvas class="strip idle" data-lane="lead"></canvas></div>
+    <div class="grid lead" id="lead"></div>
+  </div>
+  <div class="lanegroup">
+    <div class="bar lanechips" id="basses"><span class="lname">BASS</span></div>
+    <div class="lane of-bass"><span></span><canvas class="strip idle" data-lane="bass"></canvas></div>
+    <div class="grid bass" id="bass"></div>
+  </div>
+  <div class="lanegroup">
+    <div class="lane of-pulse"><span>PULSE</span><canvas class="strip idle" data-lane="pulse"></canvas></div>
+    <div class="grid pulse" id="pulse"></div>
+  </div>
+  <div class="lanegroup">
+    <div class="bar lanechips" id="drumsec"><span class="lname">DRUMS</span></div>
+    <div class="lane of-drums"><span></span><canvas class="strip idle" data-lane="drums"></canvas></div>
+    <div class="grid drums" id="drums"></div>
+  </div>
 
   <footer id="helpsec">Tap a cell to place a note, tap it again to clear; drag to paint. One note per step in each lane.
     Rows are scale degrees, so the pattern stays in key when the mood changes.

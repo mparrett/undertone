@@ -162,7 +162,7 @@
      A cell's width comes from the window's width, up to 56px (72 read as
      stretched), and a row's height from what is left of its height: 17
      rows of notes and three drum rows, under --other, the body's padding,
-     the header (three rows: transport, picks, pattern) and the four lane
+     the header (three rows: transport, mood and pattern, voices) and the four lane
      headers (about 322px as measured 2026-11-24, 48px more while the MIX
      strip shows). A note cell is never taller than it is wide. Drum cells
      are half a step wide and as tall, square, up to 32px: wider lanes are
@@ -184,8 +184,8 @@
     header #transport { flex: none; flex-wrap: nowrap; margin-bottom: 10px; }
     header h1, header #status { margin-bottom: 10px; }
     header #status { order: 3; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    header .picks { order: 5; flex-basis: 100%; }
-    header .toolbar { order: 6; flex-basis: 100%; }
+    header .toolbar { order: 5; flex-basis: 100%; }
+    header .picks { order: 6; flex-basis: 100%; }
     /* the switches ride the transport's row, at its right end; the toolbar under it is then one row in the column */
     header > .pair { order: 4; margin-bottom: 10px; gap: 18px; }
     label.tempo { flex: none; width: auto; min-width: 0; }
@@ -227,16 +227,9 @@
     <button id="restart" title="restart: back to the first step (r); the pattern starts over, or will when you press play" aria-label="restart">&#9198;&#xFE0E;</button>
     <label class="tempo">tempo <input id="bpm" type="range" min="60" max="160" step="1" value="110"><span id="bpmv">110</span></label>
   </div>
-  <!-- the mood and each lane's voice: a chip in the lane's colour that drops its choices over the page -->
-  <div class="picks">
-    <div class="pick mood"><span class="lab">mood</span><button class="pickbtn" title="the mood: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="moods"></div></div>
-    <div class="pick lead"><span class="lab">lead</span><button class="pickbtn" title="the lead's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="voices"></div></div>
-    <div class="pick bass"><span class="lab">bass</span><button class="pickbtn" title="the bass's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="basses"></div></div>
-    <div class="pick pulse"><span class="lab">pulse</span><button class="pickbtn fixed" disabled title="the pulse plays the mood's own pulse sound; there is no choice of it here">mood's</button></div>
-    <div class="pick drums"><span class="lab">drums</span><button class="pickbtn" title="a groove from the library on the drum lanes, in the mood's kit: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="drumsec"></div></div>
-  </div>
-  <!-- the pattern's own controls -->
+  <!-- the mood and the pattern's own controls -->
   <div class="toolbar">
+  <div class="pick mood"><span class="lab">mood</span><button class="pickbtn" title="the mood: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="moods"></div></div>
   <div class="bar" id="pattern"><span class="lab">pattern</span>
     <button id="dice" title="fill the grid with a new random pattern; it takes the next seed, so the key may move">&#8635; random</button>
     <label class="seed" title="the seed: each gives its own pattern, and may move the key. Type one to go to it.">seed
@@ -245,6 +238,13 @@
     <button id="share" title="copy a link that opens this pattern">copy link</button>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
+  </div>
+  <!-- each lane's voice: a chip in the lane's colour that drops its choices over the page; a row of their own, to wrap as they need -->
+  <div class="picks">
+    <div class="pick lead"><span class="lab">lead</span><button class="pickbtn" title="the lead's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="voices"></div></div>
+    <div class="pick bass"><span class="lab">bass</span><button class="pickbtn" title="the bass's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="basses"></div></div>
+    <div class="pick pulse"><span class="lab">pulse</span><button class="pickbtn fixed" disabled title="the pulse plays the mood's own pulse sound; there is no choice of it here">mood's</button></div>
+    <div class="pick drums"><span class="lab">drums</span><button class="pickbtn" title="a groove from the library on the drum lanes, in the mood's kit: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="drumsec"></div></div>
   </div>
   <!-- two unrelated switches, each beside its heading: what is heard under the notes, and what is drawn above them -->
   <div class="pair">

@@ -15,7 +15,8 @@
 //
 //	setGrid(json)    {lead:[16], bass:[16], pulse:[16], drums:[3], bed}: degrees 1..8, 0 = rest;
 //	                 drums are kick, clap, shaker as 32 sixteenths of X x o . and the chance steps ? f
-//	setParams(json)  {bpm, mood: "village"|"aurora"|"meadow"|"overworld"|"ruins"|"dungeon", voice, bass, seed, busy}:
+//	moods()          the moods setParams takes, as JSON: the engine's, and ruins after the dungeon
+//	setParams(json)  {bpm, mood: one of moods(), voice, bass, seed, busy}:
 //	                 voice and bass name a lead instrument for the lead and bass lanes; "" keeps the mood's,
 //	                 and "none" silences the lane: its notes stay, unheard
 //	seedGrid(seed)   a starting grid derived from the current params, as JSON
@@ -356,6 +357,20 @@ func main() {
 			return nil
 		}),
 		"key": js.FuncOf(func(js.Value, []js.Value) any { return keyJSON(derive(cur)) }),
+		// The engine's moods, so the page's list cannot fall behind the
+		// engine's as it once did, and ruins, the dungeon's shallowest level,
+		// which the grid offers as a mood of its own.
+		"moods": js.FuncOf(func(js.Value, []js.Value) any {
+			var names []string
+			for _, n := range engine.MoodNames() {
+				names = append(names, n)
+				if n == "dungeon" {
+					names = append(names, "ruins")
+				}
+			}
+			b, _ := json.Marshal(names)
+			return string(b)
+		}),
 		// the mood's own busyness, what a busy left unset plays at
 		"moodBusy": js.FuncOf(func(js.Value, []js.Value) any { c := cur; c.Busy = nil; return derive(c).DrumBusy }),
 		"initial":  toJSON(g0),

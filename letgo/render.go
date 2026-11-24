@@ -95,7 +95,7 @@ func (r *scripted) Read(p []byte) (int, error) {
 }
 
 // parseScript reads [[seconds op arg] ...], where op is :set-parameters,
-// :set-parameters-now, :play-theme or :trigger and arg is what that native
+// :set-parameters-now, :play-theme, :trigger or :cut and arg is what that native
 // takes. Steps run in time order, within the render.
 func parseScript(v vm.Value, p engine.Params, seconds float64) ([]step, error) {
 	if v == vm.NIL {
@@ -159,8 +159,14 @@ func parseScript(v vm.Value, p engine.Params, seconds float64) ([]step, error) {
 					s.TriggerShot(sh)
 				}
 			}
+		case "cut":
+			group, fadeMS, err := cutArgs(arg)
+			if err != nil {
+				return nil, fmt.Errorf("step %d: %w", i, err)
+			}
+			apply = func(s *engine.Synth) { s.Cut(group, fadeMS) }
 		default:
-			return nil, fmt.Errorf("step %d: op must be :set-parameters, :set-parameters-now, :play-theme or :trigger, got %v", i, call[1])
+			return nil, fmt.Errorf("step %d: op must be :set-parameters, :set-parameters-now, :play-theme, :trigger or :cut, got %v", i, call[1])
 		}
 		steps = append(steps, step{int(t * engine.SampleRate), apply})
 	}

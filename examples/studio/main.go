@@ -23,7 +23,8 @@
 //	shot(name, degree, gain) trigger a shot on a degree of the bed's scale
 //	trigger(json)            a take: one shot map or a vector of them, as undertone/trigger
 //	                         reads them: {shot, note | degree (+ octave), gain, pan,
-//	                         delay-ms, seed}; returns which were staged, as JSON
+//	                         delay-ms, seed, group}; returns which were staged, as JSON
+//	cut(group, fadeMs)       stop a group's shots, as undertone/cut; how many waiting were dropped
 //	render(json, secs)       the same take rendered offline over the bed's params and music
 //	                         gain, from a fresh synth (engine.Take): interleaved stereo
 //	                         Float32Array, at most 60 s
@@ -141,10 +142,11 @@ type shotJSON struct {
 	Seed    seed     `json:"seed"`
 	Send    *float64 `json:"send"` // 1 as authored, 0 no send to the delay
 	Verb    *float64 `json:"verb"` // the same for the room
+	Group   string   `json:"group"`
 }
 
 func (j shotJSON) shot() engine.Shot {
-	sh := engine.Shot{Name: j.Shot, Gain: 1, Pan: 0.5, DelayMS: j.DelayMS, Seed: uint64(j.Seed), Octave: j.Octave}
+	sh := engine.Shot{Name: j.Shot, Gain: 1, Pan: 0.5, DelayMS: j.DelayMS, Seed: uint64(j.Seed), Octave: j.Octave, Group: j.Group}
 	if j.Gain != nil {
 		sh.Gain = *j.Gain
 	}
@@ -435,6 +437,9 @@ func main() {
 				staged[i] = syn.TriggerShot(sh)
 			}
 			return marshal(staged)
+		}),
+		"cut": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			return syn.Cut(a[0].String(), a[1].Float())
 		}),
 		"render": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			t, ok := newTake(a)

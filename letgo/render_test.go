@@ -160,6 +160,42 @@ func TestGlideGainRejectsNegativeSeconds(t *testing.T) {
 	}
 }
 
+// A :cut step stops its group as Synth.Cut does: the run's waiting notes
+// never play, so the render matches one without them, and a :group read from
+// a keyword names the same group as one from a string.
+func TestRenderWAVCutStopsItsGroup(t *testing.T) {
+	c := renderLg(t, "rendercut")
+	run := `[[0.5 :trigger [{:shot :hit :gain 0.8}
+	                     {:shot :footstep :note 43 :delay-ms 400 :group :run}
+	                     {:shot :footstep :note 43 :delay-ms 600 :group "run"}]]
+	         [0.6 :cut {:group :run :fade-ms 20}]]`
+	got, err := c.Run(`(undertone/render-wav nil 2.0 ` + run + `)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := c.Run(`(undertone/render-wav nil 2.0 [[0.5 :trigger [{:shot :hit :gain 0.8}]]])`)
+	if got != want {
+		t.Errorf("cut render %v, want the render without the run %v", got, want)
+	}
+	uncut, _ := c.Run(`(undertone/render-wav nil 2.0 [[0.5 :trigger [{:shot :hit :gain 0.8} {:shot :footstep :note 43 :delay-ms 400 :group :run}]]])`)
+	if uncut == want {
+		t.Error("the run's footstep changed nothing: the test proves nothing")
+	}
+	for _, bad := range []string{
+		`(undertone/render-wav nil 2.0 [[0.5 :cut {:fade-ms 20}]])`,
+		`(undertone/render-wav nil 2.0 [[0.5 :cut {:group ""}]])`,
+		`(undertone/render-wav nil 2.0 [[0.5 :cut :run]])`,
+		`(undertone/cut :run)`,
+	} {
+		if _, err := c.Run(bad); err == nil {
+			t.Errorf("%s: want an error", bad)
+		}
+	}
+	if _, err := c.Run(`(undertone/cut {:group :run})`); err != nil {
+		t.Errorf("undertone/cut with no synth running: %v, want a silent no-op", err)
+	}
+}
+
 // A bad script is an error, since it is a bug in the test that wrote it.
 func TestRenderWAVRejectsBadScripts(t *testing.T) {
 	c := renderLg(t, "renderbad")

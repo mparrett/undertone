@@ -52,7 +52,7 @@ link with a bad value changes nothing. A theme link scrolls to the section.
 Other pages can link a sound in: `#shot=<EDN>` (or `lead=`, `palette=`)
 imports it, and `&take=<JSON>` adds a button that plays a take, a vector of
 `undertone/trigger` maps (`shot`, `note` or `degree` and `octave`, `gain`,
-`pan`, `delay-ms`, `send`, `verb`, `seed`; a seed may be a decimal string, as a full 64-bit one must be). The same take goes to `undertoneStudio.trigger`,
+`pan`, `delay-ms`, `send`, `verb`, `seed`, `group`; a seed may be a decimal string, as a full 64-bit one must be). The same take goes to `undertoneStudio.trigger`,
 and `undertoneStudio.render(take, secs)` renders it offline over the bed as
 interleaved stereo float samples, for a waveform. `measure(take, secs)` returns
 the sfx board's numbers for it (hash, peak, envelopes, max LUFS, length; on the

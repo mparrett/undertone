@@ -268,7 +268,7 @@
     <button id="clear" title="empty the grid">clear</button>
     <button id="undo" disabled title="undo the last change (⌘Z or ctrl-Z)">&#8630; undo</button>
     <button id="share" title="copy a link that opens this pattern">copy link</button>
-    <div class="pick slots"><button class="pickbtn" title="five slots kept in this browser: picking one loads it, and every change saves to the one picked (arrows step through them)">slot 1</button><div class="bar drawer slotchips" id="slots"></div></div>
+    <div class="pick slots"><button class="pickbtn" title="five slots kept in this browser: picking one loads it, and every change saves to the one picked">slot 1</button><div class="bar drawer slotchips" id="slots"></div></div>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
   </div>
@@ -374,17 +374,21 @@
   // Set once the drum lanes hold a choice, even an empty one: an edit, clear,
   // or a link that carries them. Until then a mood change brings its groove.
   let drumsChosen = false;
-  // the groove chip that is on: "" is the mood's own. Not in the link, which carries the lanes.
+  // the groove chip that is on: "" is the mood's own, or drums edited since a pick
   let groove = "";
 
   // ---- share links: #v1;t=110;m=o;v=kalimba;s=1;bed=1;L=...;B=...;P=hex;D=kick,clap,shaker ----
   // bv=<voice> follows v when a bass voice is chosen; a link without it keeps the mood's bass.
   // D came later; a link without it takes its drums from the mood's groove.
+  // g=<groove> names the groove its drums were picked from; dc=0 says they
+  // were not chosen, so a mood change brings the mood's. Undo and the slots
+  // keep links too, so these come back with them. A link without dc chose its drums.
   const drumStrings = () => st.drums.map(laneString);
   function encode() {
     const pulse = st.pulse.reduce((n, on, i) => n | (on ? 1 << i : 0), 0);
     return `#v1;t=${st.bpm};m=${st.mood[0]};v=${st.voice};${st.bassVoice ? `bv=${st.bassVoice};` : ""}s=${st.seed};bed=${+st.bed};` +
-           `L=${st.lead.join("")};B=${st.bass.join("")};P=${pulse.toString(16)};D=${drumStrings().join(",")}`;
+           `L=${st.lead.join("")};B=${st.bass.join("")};P=${pulse.toString(16)};D=${drumStrings().join(",")}` +
+           (groove ? `;g=${groove}` : "") + (drumsChosen ? "" : ";dc=0");
   }
   function decode(h) {
     if (!h.startsWith("#v1;")) return false;
@@ -393,9 +397,11 @@
     const L = digits(kv.L), B = digits(kv.B);
     if (!L || !B) return false;
     const p = parseInt(kv.P || "0", 16);
-    const D = decodeURIComponent(kv.D || "").split(",");
+    let D = [];
+    try { D = decodeURIComponent(kv.D || "").split(","); } catch {} // a stray % in a hand-edited link: no drums, not a dead page
     linkHasDrums = D.length === DRUMS.length && D.every((s) => /^[Xxo.]*$|^[Xxo.]+\|$/.test(s));
-    drumsChosen = linkHasDrums;
+    drumsChosen = linkHasDrums && kv.dc !== "0";
+    groove = linkHasDrums && ready && JSON.parse(undertoneGrid.grooves()).includes(kv.g) ? kv.g : "";
     st = { ...st, lead: L, bass: B, pulse: [...Array(STEPS)].map((_, i) => !!(p & (1 << i))),
            drums: lanes(linkHasDrums ? D : null),
            bpm: Math.min(160, Math.max(60, +kv.t || 110)), mood: MOODS.find((m) => m[0] === kv.m) || "overworld",
@@ -559,7 +565,7 @@
     patHint(""); ednDirty = false;
     const drums = lanes(g.drums);
     // an edit to the drum lanes is a choice of them; one to the notes leaves a mood free to bring its groove
-    if (drums.map(laneString).join() !== drumStrings().join()) drumsChosen = true;
+    if (drums.map(laneString).join() !== drumStrings().join()) { drumsChosen = true; groove = ""; }
     st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = drums; st.bed = g.bed;
     ednApplying = true; // the text stays as typed while the cursor is in it
     try { paint(); pushGrid(); } finally { ednApplying = false; }
@@ -628,7 +634,8 @@
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
     const chips = [...openPick.querySelectorAll(".drawer .chip")], i = chips.findIndex((c) => c.classList.contains("on"));
-    if (!chips.length) return; // the slots' list has no choices to step through
+    // not the slots: stepping onto an empty one would fill it with a copy
+    if (!chips.length || openPick.classList.contains("slots")) return;
     chips[(i + (e.key === "ArrowRight" ? 1 : -1) + chips.length) % chips.length].click();
   });
   function showHelp(on) {
@@ -671,7 +678,7 @@
     const s = +c.dataset.step, lane = c.dataset.lane, d = +c.dataset.deg;
     if (lane === "drums") { // mode is the character a drag paints
       const row = st.drums[c.dataset.drum], v = mode ?? TAP[row[c.dataset.i]];
-      row[c.dataset.i] = v; delete row.loop; drumsChosen = true; return v; // an edited loop is the pattern it shows
+      row[c.dataset.i] = v; delete row.loop; drumsChosen = true; groove = ""; return v; // an edited loop is the pattern it shows; no groove's any more
     }
     if (lane === "pulse") {
       const v = mode ?? !st.pulse[s]; st.pulse[s] = v; return v;
@@ -811,6 +818,7 @@
     const out = undertoneGrid.mutate(JSON.stringify({ lead: st.lead, bass: st.bass, pulse: st.pulse, drums: drumStrings(), bed: st.bed }), ++mutations);
     if (!out) { status.textContent = "lg is still starting; try again in a moment"; return; }
     const g = JSON.parse(out);
+    if (g.drums.join() !== drumStrings().join()) { drumsChosen = true; groove = ""; }
     st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = lanes(g.drums);
     paint(); pushGrid();
   };
@@ -1056,7 +1064,7 @@
     // A link's pattern goes into the picked slot, whose old state is the first
     // step back; with no link, the slot is what opens.
     const kept = slots[slot];
-    if (kept) { undo = [kept]; if (!location.hash || location.hash === kept.link) groove = kept.groove || ""; }
+    if (kept) undo = [kept];
     if (!decode(location.hash) && !(kept && decode(kept.link))) {
       const g = JSON.parse(undertoneGrid.initial);
       st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = lanes(g.drums);
@@ -1087,27 +1095,31 @@
   const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} }; // storage may be blocked
   let slots = [], slot = 0;
   try { slots = JSON.parse(localStorage.getItem(SLOTKEY)) || []; slot = Math.min(SLOTS - 1, Math.max(0, +localStorage.getItem(CURKEY) || 0)); } catch {}
+  // Another tab may have saved its own slot since this one read them: take
+  // storage as it is now and change only this tab's slot in it.
+  const readSlots = () => { try { const a = JSON.parse(localStorage.getItem(SLOTKEY)); if (Array.isArray(a)) return a; } catch {} return slots; };
+  function keep(s) { slots = readSlots(); slots[slot] = s; store(SLOTKEY, JSON.stringify(slots)); }
+  addEventListener("storage", (e) => { if (e.key === SLOTKEY) { slots = readSlots(); paintSlots(); } });
   let undo = [], lastAt = 0, restoring = false;
-  const snap = () => ({ link: encode(), groove });
+  const snap = () => ({ link: encode() }); // the link carries the groove and the drums' choice
   // pushGrid and pushParams call this after every change
   function remember() {
     if (restoring || !ready) return;
     const s = snap(), top = undo[undo.length - 1];
-    if (top && top.link === s.link && top.groove === s.groove) return;
+    if (top && top.link === s.link) return;
     const now = Date.now();
     if (top && now - lastAt < 600 && undo.length > 1) {
       undo[undo.length - 1] = s;
       const prev = undo[undo.length - 2]; // a burst that ends where it began is no step
-      if (prev.link === s.link && prev.groove === s.groove) undo.pop();
+      if (prev.link === s.link) undo.pop();
     } else undo.push(s);
     lastAt = now;
-    slots[slot] = s; store(SLOTKEY, JSON.stringify(slots));
+    keep(s);
     $("undo").disabled = undo.length < 2;
   }
   function restore(s) {
     restoring = true;
     if (decode(s.link)) {
-      groove = linkHasDrums ? s.groove || "" : "";
       pushParams();
       if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
       paint(); pushGrid();
@@ -1118,7 +1130,7 @@
     if (undo.length < 2) return;
     undo.pop(); lastAt = 0;
     const s = undo[undo.length - 1];
-    restore(s); slots[slot] = s; store(SLOTKEY, JSON.stringify(slots));
+    restore(s); keep(s);
     $("undo").disabled = undo.length < 2;
   }
   $("undo").onclick = stepBack;
@@ -1137,6 +1149,7 @@
   }
   function pickSlot(i) {
     if (i === slot) return;
+    slots = readSlots();
     slot = i; store(CURKEY, String(i));
     undo = []; lastAt = 0;
     if (slots[i]) restore(slots[i]);

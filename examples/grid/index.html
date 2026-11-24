@@ -31,16 +31,23 @@
   #play:disabled { border-color: var(--line); background: var(--panel); color: var(--mut); }
   #play.on { border-color: var(--lead); background: #2a2414; }
   .chip { padding: 2px 7px; font-size: 12px; border-radius: 6px; color: var(--mut); }
-  .toolbar button, .pair button { padding: 2px 9px; font-size: 12px; border-radius: 6px; } /* a chip's size */
+  .toolbar button, .pair button, .picks button.bed { padding: 2px 9px; font-size: 12px; border-radius: 6px; } /* a chip's size */
   #transport button { padding: 5px 12px; font-size: 14px; }
   /* compact at every width for a mouse; a touch screen gets controls a finger can hit */
   @media (pointer: coarse) {
     #transport button, #play { padding: 8px 12px; font-size: 16px; }
-    .chip, .toolbar button, .pair button, .pick .pickbtn { padding: 5px 10px; font-size: 13px; }
+    .chip, .toolbar button, .pair button, .picks button.bed, .pick .pickbtn { padding: 5px 10px; font-size: 13px; }
   }
   .chip.on { color: var(--fg); border-color: var(--mut); background: #22222a; }
   label.tempo { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; font-size: 13px; color: var(--mut); }
   label.tempo input { flex: 1; accent-color: var(--lead); }
+  #knobs { display: none; flex-wrap: wrap; align-items: center; gap: 6px 28px; margin-bottom: 10px; }
+  :root.knobs #knobs { display: flex; }
+  label.tension { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--pulse); }
+  label.tension input { width: 120px; accent-color: var(--pulse); }
+  label.tension span { min-width: 3ch; font-size: 12px; letter-spacing: 0; color: var(--fg); }
+  .knobsbtn { margin-left: auto; }
+  .knobsbtn.set::after { content: " •"; color: var(--pulse); } /* a knob is set, out of sight */
   #pattern { gap: 8px 6px; } /* four controls: at 8px the last wraps alone on a 390px phone */
   label.seed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--mut); }
   #seed { font: inherit; font-size: 12px; width: 40px; padding: 2px; text-align: center; color: var(--fg); background: var(--panel);
@@ -84,7 +91,7 @@
      drawer of the choices over the page, which stays open while they are tried */
   .pick.mood { --lane: var(--fg); }
   .busy { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--drum); }
-  .busy input { width: 80px; accent-color: var(--drum); }
+  .busy input { width: 120px; accent-color: var(--drum); }
   .busy span { min-width: 6.5em; font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--fg); } .pick.lead { --lane: var(--lead); } .pick.bass { --lane: var(--bass); } .pick.pulse { --lane: var(--pulse); } .pick.drums { --lane: var(--drum); }
   .picks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; margin-bottom: 10px; }
   .pick { position: relative; display: flex; align-items: center; gap: 6px; }
@@ -200,7 +207,8 @@
      are half a step wide and as tall, square, up to 32px: wider lanes are
      what give them room. */
   @media (min-width: 900px) {
-    :root { --other: 322px;
+    :root.knobs { --knobs: 33px; } /* the knobs row, when it shows */
+    :root { --other: calc(322px + var(--knobs, 0px));
             --cell: clamp(22px, calc((100vw - 64px - 32px - 18px) / 16), 56px);
             --drow: min(calc(var(--cell) / 2), 32px);
             --row: clamp(20px, min(calc((100dvh - var(--other) - 3 * var(--drow)) / 17), var(--cell)), 44px); }
@@ -218,6 +226,7 @@
     header #status { order: 3; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     header .toolbar { order: 5; flex-basis: 100%; }
     header .picks { order: 6; flex-basis: 100%; }
+    header #knobs { order: 7; flex-basis: 100%; }
     /* the switches ride the transport's row, at its right end; the toolbar under it is then one row in the column */
     header > .pair { order: 4; margin-bottom: 10px; gap: 18px; }
     label.tempo { flex: none; width: auto; min-width: 0; }
@@ -228,9 +237,9 @@
     .drums .c, .drums .lbl { height: var(--drow); }
     .drums .lbl { font-size: 10px; } /* the other labels' 12px does not fit a half row at the smallest cell */
     .lbl { font-size: 12px; }
-    :root.mix { --other: 370px; }
-    :root.echo { --other: 366px; } /* the ECHO strip, and the air over it */
-    :root.mix.echo { --other: 394px; }
+    :root.mix { --other: calc(370px + var(--knobs, 0px)); }
+    :root.echo { --other: calc(366px + var(--knobs, 0px)); } /* the ECHO strip, and the air over it */
+    :root.mix.echo { --other: calc(394px + var(--knobs, 0px)); }
     /* the EDN box and the help float over the top of the grid rather than
        opening under it, off the bottom of a grid that fits the window; the
        cells the EDN covers are the ones its text spells out. Esc or the
@@ -284,6 +293,11 @@
     <div class="pick bass"><span class="lab">bass</span><button class="pickbtn" title="the bass's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="basses"></div></div>
     <div class="pick pulse"><span class="lab">pulse</span><button class="pickbtn fixed" disabled title="the pulse plays the mood's own pulse sound; there is no choice of it here">mood's</button></div>
     <div class="pick drums"><span class="lab">drums</span><button class="pickbtn" title="a groove from the library on the drum lanes, in the mood's kit: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="drumsec"></div></div>
+    <button class="bed knobsbtn" id="knobsbtn" title="show the tension and busy knobs; marked while one is set away from the mood's">knobs</button>
+  </div>
+  <!-- the knobs: off the way until wanted, so the grid starts simple -->
+  <div class="knobs" id="knobs">
+    <label class="tension" title="the game's tension: fills, the mood's busy and the bed's colour follow it; the grid's drum level and tempo stay as they are">tension <input id="tension" type="range" min="0" max="100" step="5" value="0"><span id="tensionv">0%</span></label>
     <label class="busy" title="the chance each dashed drum step plays, each time it comes round; the mood's own unless moved (double-click goes back to it)">busy
       <input id="busy" type="range" min="0" max="100" step="5"><span id="busyv"></span></label>
   </div>
@@ -322,6 +336,7 @@
       <li>Tap a cell to place a note, tap it again to clear; drag to paint. One note per step in each lane.</li>
       <li>Rows are scale degrees, so the pattern stays in key when the mood changes.</li>
       <li>Drum cells are sixteenths: a tap cycles hit, accent, ghost, chance, rest.</li>
+      <li>Under <b>knobs</b>: <b>tension</b> is the game's: as it rises, dotted fills come more often, the mood's busy rises, and the bed tightens. The grid's drums keep their level, and the tempo stays the slider's.</li>
       <li>A dashed drum cell is a chance step: each time round it plays, softly, at the <b>busy</b> chance, or rests. Dotted is a fill. Most moods' own busy is 0%.</li>
       <li><kbd>alt</kbd>- or <kbd>shift</kbd>-click a cell to hear it without placing it.</li></ul></div>
     <div><h3>playing</h3><ul>
@@ -383,7 +398,7 @@
   // State lives here; the wasm side only hears about changes.
   // bassVoice "" is the mood's own bass; bass is the lane's notes
   // busy: the chance each ? drum step plays, 0..1, or null for the mood's own
-  let st = { bpm: 110, mood: "overworld", voice: "kalimba", bassVoice: "", seed: 1, bed: true, busy: null,
+  let st = { bpm: 110, mood: "overworld", voice: "kalimba", bassVoice: "", seed: 1, bed: true, busy: null, tension: 0,
              lead: Array(STEPS).fill(0), bass: Array(STEPS).fill(0), pulse: Array(STEPS).fill(false), drums: lanes() };
   let playing = false, ready = false, linkHasDrums = false;
   let seedDirty = false; // the seed field holds typing not yet taken
@@ -404,7 +419,7 @@
     const pulse = st.pulse.reduce((n, on, i) => n | (on ? 1 << i : 0), 0);
     return `#v1;t=${st.bpm};m=${st.mood};v=${st.voice};${st.bassVoice ? `bv=${st.bassVoice};` : ""}s=${st.seed};bed=${+st.bed};` +
            `L=${st.lead.join("")};B=${st.bass.join("")};P=${pulse.toString(16)};D=${drumStrings().join(",")}` +
-           (groove ? `;g=${groove}` : "") + (drumsChosen ? "" : ";dc=0") + (st.busy == null ? "" : `;bz=${Math.round(st.busy * 100)}`);
+           (groove ? `;g=${groove}` : "") + (drumsChosen ? "" : ";dc=0") + (st.busy == null ? "" : `;bz=${Math.round(st.busy * 100)}`) + (st.tension ? `;tn=${Math.round(st.tension * 100)}` : "");
   }
   function decode(h) {
     if (!h.startsWith("#v1;")) return false;
@@ -422,7 +437,8 @@
            drums: lanes(linkHasDrums ? D : null),
            bpm: Math.min(160, Math.max(60, +kv.t || 110)), mood: (kv.m?.length === 1 ? LINK_MOODS.find((m) => m[0] === kv.m) : MOODS.find((m) => m === kv.m)) || "overworld",
            voice: VOICES.includes(kv.v) || kv.v === NONE ? kv.v : "kalimba", bassVoice: (VOICES.includes(kv.bv) && kv.bv !== "pluck") || kv.bv === NONE ? kv.bv : "", seed: Math.min(MAXSEED, Math.max(1, Math.round(+kv.s) || 1)), bed: kv.bed !== "0",
-           busy: kv.bz != null && isFinite(+kv.bz) ? Math.min(1, Math.max(0, +kv.bz / 100)) : null };
+           busy: kv.bz != null && isFinite(+kv.bz) ? Math.min(1, Math.max(0, +kv.bz / 100)) : null,
+           tension: Math.min(1, Math.max(0, (+kv.tn || 0) / 100)) };
     return true;
   }
 
@@ -500,7 +516,7 @@
            ` :drums [${drumStrings().map((d) => JSON.stringify(d)).join("\n         ")}]\n :bed   ${st.bed}}`;
   };
   const settingsEDN = () =>
-    `{:mood       :${st.mood}\n :bpm        ${st.bpm}\n :seed       ${st.seed}\n :lead-voice :${st.voice}\n :bass-voice :${st.bassVoice || "pluck"}${st.busy == null ? "" : `\n :drum-busy  ${st.busy}`}}`;
+    `{:mood       :${st.mood}\n :bpm        ${st.bpm}\n :seed       ${st.seed}\n :lead-voice :${st.voice}\n :bass-voice :${st.bassVoice || "pluck"}${st.busy == null ? "" : `\n :drum-busy  ${st.busy}`}${st.tension ? `\n :tension    ${st.tension}` : ""}}`;
   function showEDN() {
     if (!document.documentElement.classList.contains("edn")) return;
     $("setedn").innerHTML = highlightEDN(settingsEDN());
@@ -683,7 +699,7 @@
     remember();
   };
   const pushParams = () => {
-    if (ready) { undertoneGrid.setParams(JSON.stringify({ bpm: st.bpm, mood: st.mood, voice: st.voice, bass: st.bassVoice, seed: st.seed, busy: st.busy })); showKey(); showBusy(); }
+    if (ready) { undertoneGrid.setParams(JSON.stringify({ bpm: st.bpm, mood: st.mood, voice: st.voice, bass: st.bassVoice, seed: st.seed, busy: st.busy, tension: st.tension })); showKey(); showBusy(); showTension(); }
     history.replaceState(null, "", encode());
     remember();
   };
@@ -806,6 +822,7 @@
   // Busyness: the slider shows the mood's own until moved; the engine hears
   // it as the tempo is heard, at most every TEMPO_MS.
   function showBusy() {
+    markKnobs();
     const v = st.busy ?? (ready ? undertoneGrid.moodBusy() : 0);
     $("busy").value = Math.round(v * 100);
     $("busyv").textContent = `${Math.round(v * 100)}%` + (st.busy == null ? " · mood's" : "");
@@ -819,6 +836,27 @@
   };
   $("busy").onchange = sendBusy;
   $("busy").ondblclick = () => { st.busy = null; sendBusy(); };
+  // The knobs row: shut at first, so the grid starts simple; remembered by
+  // this browser. Shut, its button is marked while a knob is set.
+  function showKnobs(on) {
+    document.documentElement.classList.toggle("knobs", on);
+    $("knobsbtn").classList.toggle("on", on);
+    try { localStorage.setItem("undertone-grid-knobs", on ? "1" : ""); } catch {}
+    dispatchEvent(new Event("resize"));
+  }
+  $("knobsbtn").onclick = () => showKnobs(!document.documentElement.classList.contains("knobs"));
+  { let on = false; try { on = !!localStorage.getItem("undertone-grid-knobs"); } catch {} if (on) showKnobs(true); }
+  const markKnobs = () => $("knobsbtn").classList.toggle("set", !!st.tension || st.busy != null);
+  // Tension, as busy: the engine hears it at most every TEMPO_MS.
+  function showTension() { markKnobs(); $("tension").value = Math.round(st.tension * 100); $("tensionv").textContent = `${Math.round(st.tension * 100)}%`; }
+  let tensionAt = 0, tensionTimer = 0;
+  const sendTension = () => { clearTimeout(tensionTimer); tensionTimer = 0; tensionAt = performance.now(); pushParams(); showEDN(); };
+  $("tension").oninput = (e) => {
+    st.tension = +e.target.value / 100; showTension();
+    const wait = TEMPO_MS - (performance.now() - tensionAt);
+    if (wait <= 0) sendTension(); else if (!tensionTimer) tensionTimer = setTimeout(sendTension, wait);
+  };
+  $("tension").onchange = sendTension;
   $("bed").onclick = () => { st.bed = !st.bed; paint(); pushGrid(); };
   // The MIX strip is a way of looking, not part of the pattern: it stays out
   // of the link and is remembered by this browser, where storage allows.

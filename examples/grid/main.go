@@ -16,7 +16,7 @@
 //	setGrid(json)    {lead:[16], bass:[16], pulse:[16], drums:[3], bed}: degrees 1..8, 0 = rest;
 //	                 drums are kick, clap, shaker as 32 sixteenths of X x o . and the chance steps ? f
 //	moods()          the moods setParams takes, as JSON: the engine's, and ruins after the dungeon
-//	setParams(json)  {bpm, mood: one of moods(), voice, bass, seed, busy}:
+//	setParams(json)  {bpm, mood: one of moods(), voice, bass, seed, busy, tension}:
 //	                 voice and bass name a lead instrument for the lead and bass lanes; "" keeps the mood's,
 //	                 and "none" silences the lane: its notes stay, unheard
 //	seedGrid(seed)   a starting grid derived from the current params, as JSON
@@ -79,6 +79,11 @@ type paramsJSON struct {
 	// Busy is the chance each ? step in the drums plays, 0..1; absent, the
 	// mood's own, which is 0 in every mood without a groove
 	Busy *float64 `json:"busy"`
+	// Tension is the game's tension, 0..1, as DeriveMood takes it: fills, the
+	// mood's busyness and the bed's colour follow it. The tempo it would add
+	// does not (the grid's tempo is BPM's), nor the drum gain: a grid's drums
+	// play at their own level.
+	Tension float64 `json:"tension"`
 }
 
 func (j gridJSON) grid() engine.Grid {
@@ -158,9 +163,10 @@ func derive(c paramsJSON) engine.Params {
 		// but with a raised sixth that keeps it from turning grim.
 		mood = "dungeon"
 	}
-	p, ok := engine.DeriveMood(mood, c.Seed, level, 0)
+	t := min(max(c.Tension, 0), 1)
+	p, ok := engine.DeriveMood(mood, c.Seed, level, t)
 	if !ok {
-		p = engine.DeriveOverworld(c.Seed, 2, 0)
+		p = engine.DeriveOverworld(c.Seed, 2, t)
 	}
 	// "none" mutes the lane at the mix: it still plays, unheard, so nothing
 	// else about the pattern or the bed moves.

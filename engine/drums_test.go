@@ -228,8 +228,8 @@ func TestSeedGridWritesTheGroove(t *testing.T) {
 	p, _ := DeriveMood("village", 7, 3, 0)
 	g := SeedGrid(p)
 	for d, lane := range g.Drums {
-		if len(lane) != 2*Steps || strings.Trim(lane, "Xxo.") != "" {
-			t.Errorf("drum lane %d = %q; want %d steps of X, x, o or .", d, lane, 2*Steps)
+		if len(lane) != 2*Steps || strings.Trim(lane, "Xxo.?f") != "" {
+			t.Errorf("drum lane %d = %q; want %d steps of X, x, o, ., ? or f", d, lane, 2*Steps)
 		}
 	}
 	if !strings.ContainsAny(g.Drums[0], "Xx") {
@@ -241,21 +241,17 @@ func TestSeedGridWritesTheGroove(t *testing.T) {
 	if g.Lead != h.Lead || g.Bass != h.Bass || g.Pulse != h.Pulse {
 		t.Error("seeding the drums changed the lead, bass or pulse")
 	}
-	// fills come through too: at full tension most of them play
-	fills := 0
+	// chance steps stay chance, for the grid to draw as it plays
 	for seed := uint64(1); seed <= 20; seed++ {
 		q, _ := DeriveMood("village", seed, 3, 1)
 		sg, groove := SeedGrid(q), grooveLib[q.Groove]
 		for d := range groove {
 			for i := range groove[d] {
-				if groove[d][i] == 'f' && sg.Drums[d][i] != '.' {
-					fills++
+				if c := groove[d][i]; (c == '?' || c == 'f') && sg.Drums[d][i] != c {
+					t.Fatalf("seed %d, %s lane %d step %d: %q seeded as %q, want it kept", seed, q.Groove, d, i, c, sg.Drums[d][i])
 				}
 			}
 		}
-	}
-	if fills == 0 {
-		t.Error("no seeded village grid at full tension has a fill")
 	}
 	if h.Drums != [DrumLanes]string{} {
 		t.Errorf("a mood without a groove seeded drums %q", h.Drums)
@@ -718,5 +714,42 @@ func TestThemeLeadInSurvivesATempoChange(t *testing.T) {
 	_, gain := strikes(s, 0, nowBlock+s.samplesPerRow)
 	if len(gain) < 2 || math.Abs(gain[0]-flamGrace*gain[1]) > 1e-12 || math.Abs(gain[1]-gridDrumGain*0.7) > 1e-12 {
 		t.Errorf("theme start under a tempo change struck at gains %v; want a grace, then the hit", gain)
+	}
+}
+
+// A grid's chance step plays as the generator's does: at DrumBusy, drawn
+// afresh each time it comes round, and the same again for the same seed.
+func TestGridDrawsChanceStepsEachPass(t *testing.T) {
+	lane := strings.Repeat("?", 2*Steps)
+	p, _ := DeriveMood("village", 3, 3, 0)
+	hits := func(busy float64) (n int, pattern []bool) {
+		p.DrumBusy = busy
+		for run := range 8 * rows { // eight passes
+			h := gridHit(lane, 2, run%rows, run, &p)
+			pattern = append(pattern, h.on > 0)
+			if h.on > 0 {
+				n++
+			}
+		}
+		return n, pattern
+	}
+	if n, _ := hits(0); n != 0 {
+		t.Errorf("busy 0: %d chance steps played, want none", n)
+	}
+	if n, _ := hits(1); n != 8*rows {
+		t.Errorf("busy 1: %d of %d chance steps played, want all", n, 8*rows)
+	}
+	n, a := hits(0.5)
+	if n < 8*rows/4 || n > 3*8*rows/4 {
+		t.Errorf("busy 0.5: %d of %d chance steps played, want about half", n, 8*rows)
+	}
+	if slices.Equal(a[:rows], a[rows:2*rows]) {
+		t.Error("busy 0.5: the second pass drew the first pass's steps again")
+	}
+	if _, b := hits(0.5); !slices.Equal(a, b) {
+		t.Error("busy 0.5: the same seed drew different steps")
+	}
+	if h := gridHit(lane, 2, 0, 0, &p); h.on > 0 && math.Abs(h.on-gridDrumGain*0.45) > 1e-12 {
+		t.Errorf("a chance hit at %g, want the generator's soft %g", h.on, gridDrumGain*0.45)
 	}
 }

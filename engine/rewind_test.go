@@ -98,7 +98,7 @@ func TestRewindRestartsPolymetricLanes(t *testing.T) {
 		t.Errorf("the lanes count from row %d, want this pattern's first, %d", s.runFrom, s.pat*rows)
 	}
 	for r := range rows {
-		if got, want := gridHit(g.Drums[0], r, s.pat*rows+r-s.runFrom), gridHit(g.Drums[0], r, r); got != want {
+		if got, want := gridHit(g.Drums[0], 0, r, s.pat*rows+r-s.runFrom, &s.params), gridHit(g.Drums[0], 0, r, r, &s.params); got != want {
 			t.Errorf("row %d after Rewind: the lane plays %+v, the first play's %+v", r, got, want)
 		}
 	}

@@ -305,7 +305,7 @@ func (s *Synth) flamAhead(d int) (float64, drumSound, bool) {
 	var h drumHit
 	switch g, _, from := s.nextOwner(); {
 	case g != nil:
-		h = gridHit(g.Drums[d], s.row, s.pat*rows+s.row-from)
+		h = gridHit(g.Drums[d], d, s.row, s.pat*rows+s.row-from, p)
 	case s.row != 0:
 		h = s.drums[d][s.row]
 	default: // the generator's next pattern, not drawn yet

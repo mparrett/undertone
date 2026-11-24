@@ -23,7 +23,9 @@ const DrumLanes = nDrums
 // own, which generated music leaves silent. Drums
 // replace the generator's drums, one lane each for kick, clap and shaker, in
 // groove notation: 2*Steps sixteenths of X (accent), x (hit), o (ghost), g
-// (flam) or . (rest); a short lane rests for the remainder, and a lane ending
+// (flam) or . (rest), and the generator's chance steps, ? (a soft hit at
+// DrumBusy) and f (a fill at the tension's chance), drawn afresh each time
+// they come round; a short lane rests for the remainder, and a lane ending
 // in | loops at its own length instead (polymetric). With Bed set, the
 // generator keeps playing drone, fifth, pad and air underneath.
 //
@@ -161,7 +163,7 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 		s.voices[t].gate = false
 	}
 	for d, lane := range g.Drums {
-		s.drums[d][row] = gridHit(lane, row, s.pat*rows+row-s.runFrom)
+		s.drums[d][row] = gridHit(lane, d, row, s.pat*rows+row-s.runFrom, &p)
 	}
 	s.pats[trackLead][row] = trackRow{}
 	if d := g.Lead[row]; d > 0 {
@@ -216,14 +218,15 @@ func SeedGrid(p Params) Grid {
 	if r.f() < 0.5 {
 		g.Pulse[12] = true
 	}
-	// The mood's groove, written out: its chance steps (busy steps and fills)
-	// drawn once, after everything above, so drums never shift a seed's lead
-	// or bass. Each level is written as the nearest symbol the grid has.
+	// The mood's groove, written out. Its chance steps, ? and f, stay chance,
+	// as a grid plays them; the rest (ratchets) are drawn once, after
+	// everything above, so drums never shift a seed's lead or bass, each
+	// level written as the nearest symbol the grid has.
 	if groove, ok := grooveLib[p.Groove]; ok {
 		for d, lane := range groove {
 			b := []byte(lane)
 			for i := range b {
-				if b[i] == '|' { // a polymetric lane stays one
+				if b[i] == '|' || b[i] == '?' || b[i] == 'f' { // a polymetric lane stays one; chance stays chance
 					continue
 				}
 				switch v, _, flam := stepHit(b[i], p, &r); {
@@ -256,14 +259,35 @@ func toneDegree(scale []int, fallback int, semitones ...int) int {
 	return fallback
 }
 
-// gridHit is a grid drum lane's hit at row, run rows into the grid's run. A
-// grid plays the fixed steps only, X x o and g; anything else rests.
-func gridHit(lane string, row, run int) drumHit {
-	on, off := laneStep(lane, 2*row, 2*run), laneStep(lane, 2*row+1, 2*run+1)
-	return drumHit{
-		on: gridDrumGain * drumLevel(on), off: gridDrumGain * drumLevel(off),
-		onFlam: on == 'g', offFlam: off == 'g',
+// gridHit is drum lane d's hit at row, run rows into the grid's run. A grid
+// plays its fixed steps, X x o and g, as written, and its chance steps, ? and
+// f, as the generator does, by p's busyness and tension; anything else rests.
+func gridHit(lane string, d, row, run int, p *Params) drumHit {
+	var h drumHit
+	for half := range 2 {
+		c := laneStep(lane, 2*row+half, 2*run+half)
+		v, flam := drumLevel(c), c == 'g'
+		if c == '?' || c == 'f' {
+			v, _, flam = stepHit(c, *p, chanceRng(p.Seed, d, 2*run+half))
+		}
+		if half == 0 {
+			h.on, h.onFlam = gridDrumGain*v, flam
+		} else {
+			h.off, h.offFlam = gridDrumGain*v, flam
+		}
 	}
+	return h
+}
+
+// chanceRng draws for a grid's chance step: one stream per seed, lane and
+// sixteenth of the run, so a step is drawn afresh each time it comes round,
+// and drawn the same again for the same seed, as the generator's are. The
+// multipliers spread the three apart before xorshift sees them; its first
+// output from nearby states would still be alike, so one is discarded.
+func chanceRng(seed uint64, lane, sixteenth int) *rng {
+	r := &rng{(seed*0x9e3779b97f4a7c15 ^ uint64(sixteenth)*0xbf58476d1ce4e5b9 ^ uint64(lane+1)*0x94d049bb133111eb) + grooveSalt | 1}
+	r.next()
+	return r
 }
 
 // RowAt reports which grid row was sounding at a given output frame, for a

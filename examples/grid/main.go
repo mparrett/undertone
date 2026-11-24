@@ -25,7 +25,8 @@
 //	row()            the step being heard, or -1 while stopped
 //	levels()         [lead, bass, pulse, drums, echo]: each lane's level, dry, as of the last block
 //	                 rendered, then the echo's: what the shared delay returns, all lanes' at once
-//	onsets()         [lead, bass, pulse, drums]: how many notes each lane started since the last call
+//	onsets()         [lead, bass, pulse, drums, struck]: how many notes each lane started since the last call,
+//	                 and struck, the drum sixteenths that sounded, as lane, sixteenth pairs
 //	queued()         milliseconds of audio rendered but not yet heard: how far levels and onsets lead the ear
 //	audition(json)   play a grid once, alone, without touching the pattern: a cell heard before it is placed
 //	key()            the current key and the notes of each lane's rows 1 and 8, as JSON
@@ -342,12 +343,20 @@ func main() {
 			var evs []engine.NoteEvent
 			evs, noteCursor, _ = syn.NoteEvents(noteCursor, noteBuf[:0])
 			out := []any{0, 0, 0, 0}
+			var struck []any // drum sixteenths struck, lane then sixteenth, so the page can light a chance step that played
 			for _, e := range evs {
+				if e.Kind == engine.DrumOn || e.Kind == engine.DrumOff {
+					six := 2 * e.Row
+					if e.Kind == engine.DrumOff {
+						six++
+					}
+					struck = append(struck, e.Lane, six)
+				}
 				if k, ok := lanes[e.Layer]; ok && !(k == 0 && cur.Voice == voiceNone) && !(k == 1 && cur.Bass == voiceNone) {
 					out[k] = out[k].(int) + 1
 				}
 			}
-			return out
+			return append(out, struck)
 		}),
 		"queued": js.FuncOf(func(js.Value, []js.Value) any {
 			if p := player.Load(); p != nil {

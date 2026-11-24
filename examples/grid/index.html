@@ -164,6 +164,8 @@
   /* a chance step: an outline, dashed, that plays at the busyness each pass, or not; a fill dotted */
   .drums .c.ch::after { border: 1px dashed var(--drum); opacity: .8; }
   .drums .c.fill::after { border-style: dotted; }
+  /* a chance step that played this time round, filled while the playhead is on it; one that rested stays an outline */
+  .drums .c.ch.fired::after { background: var(--drum); filter: brightness(1.35); opacity: 1; }
   .c.on.head::after { filter: brightness(1.35); }
   .grid.silent .c.on::after { opacity: .35; } /* the lane's voice is none: its notes are there, and unheard */
   /* a lane's voice just changed: its lit cells flare in the lane's colour and settle, so the eye lands on what will sound different */
@@ -330,7 +332,7 @@
       <li>Rows are scale degrees, so the pattern stays in key when the mood changes.</li>
       <li>Drum cells are sixteenths: a tap cycles hit, accent, ghost, chance, rest.</li>
       <li>Beside the bed, <b>tension</b> is the game's: as it rises, dotted fills come more often, the mood's busy rises, and the bed tightens. The grid's drums keep their level, and the tempo stays the slider's.</li>
-      <li>A dashed drum cell is a chance step: each time round it plays, softly, at the <b>busy</b> chance, or rests. Dotted is a fill. Most moods' own busy is 0%.</li>
+      <li>A dashed drum cell is a chance step: each time round it plays, softly, at the <b>busy</b> chance, or rests, and fills in under the playhead when it plays. Dotted is a fill. Most moods' own busy is 0%.</li>
       <li><kbd>alt</kbd>- or <kbd>shift</kbd>-click a cell to hear it without placing it.</li></ul></div>
     <div><h3>playing</h3><ul>
       <li><kbd>space</kbd> plays and stops; <kbd>r</kbd> goes back to the first step.</li>
@@ -919,10 +921,19 @@
 
   // ---- playhead ----
   let lastRow = -2;
+  // A struck drum sixteenth lights while the playhead is on its row. The
+  // reading and the playhead keep slightly different clocks, so one that
+  // comes due a moment before its row waits for it.
+  let early = [];
+  const light = (lane, six) => $("drums").querySelector(`.c[data-drum="${lane}"][data-i="${six}"]`)?.classList.add("fired");
+  function strike(lane, six) { if (six >> 1 === lastRow) light(lane, six); else early.push([lane, six]); }
   (function head() {
     const r = ready && playing ? undertoneGrid.row() : -1;
     if (r !== lastRow) {
       for (const c of document.querySelectorAll(".c.head")) c.classList.remove("head");
+      for (const c of document.querySelectorAll(".c.fired")) c.classList.remove("fired"); // a struck step shows for its own row
+      for (const [lane, six] of early) if (six >> 1 === r) light(lane, six);
+      early = [];
       if (r >= 0) for (const c of document.querySelectorAll(`.c[data-step="${r}"]`)) c.classList.add("head");
       lastRow = r;
     }
@@ -1068,7 +1079,12 @@
         if (stale()) measure();
         // due by the queue as it stood when read: it is still filling just after play
         q.push({ due: t + undertoneGrid.queued(), lv: undertoneGrid.levels(), hit: undertoneGrid.onsets() });
-        while (q.length && q[0].due <= t) { cur = q.shift(); cur.hit.forEach((n, k) => { hits[k] += n; }); }
+        while (q.length && q[0].due <= t) {
+          cur = q.shift();
+          for (let k = 0; k < 4; k++) hits[k] += cur.hit[k];
+          const s = cur.hit[4] || [];
+          for (let i = 0; i < s.length; i += 2) strike(s[i], s[i + 1]);
+        }
         // a restart lands with a row change near its time, or with none: on the first step already
         const restarting = jumpAt && t >= jumpAt - 50 && (r !== row || t >= jumpAt + 50);
         if (restarting) jumpAt = 0;

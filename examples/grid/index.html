@@ -684,7 +684,6 @@
     } else if (lane === "pulse") g.pulse[0] = true;
     else g[lane][0] = +c.dataset.deg;
     undertoneGrid.audition(JSON.stringify(g));
-    status.textContent = lane === "drums" ? `heard: ${DRUMS[c.dataset.drum]}` : lane === "pulse" ? "heard: pulse" : `heard: ${lane} ${c.dataset.deg}`;
   }
   document.addEventListener("pointerdown", (e) => {
     const c = cellAt(e); if (!c) return;
@@ -775,7 +774,6 @@
     drumsChosen = false; // a fresh start: the next mood brings its groove
     groove = "";
     paint(); pushGrid();
-    status.textContent = `seed ${st.seed}`;
   }
   $("dice").onclick = () => takeSeed((st.seed % MAXSEED) + 1);
   // on change, not on input: each digit typed would otherwise replace the pattern on the way
@@ -796,11 +794,10 @@
     const g = JSON.parse(out);
     st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = lanes(g.drums);
     paint(); pushGrid();
-    status.textContent = `mutation ${mutations}, by lg`;
   };
   $("share").onclick = async () => {
     history.replaceState(null, "", encode());
-    try { await navigator.clipboard.writeText(location.href); status.textContent = "link copied"; }
+    try { await navigator.clipboard.writeText(location.href); }
     catch { status.textContent = "copy the address bar to share this pattern"; }
   };
 
@@ -810,7 +807,7 @@
     on ? undertoneGrid.play() : undertoneGrid.stop();
     $("play").classList.toggle("on", on);
     $("play").innerHTML = on ? "&#10074;&#10074; stop" : "&#9654; play";
-    status.textContent = on ? `playing at ${st.bpm} bpm` : "stopped";
+    status.textContent = ""; // the play button says which
   }
   $("play").onclick = () => setPlaying(!playing);
   let stripRestart = () => {}; // set by the lane strips, which cannot see a restart in the rows
@@ -818,7 +815,6 @@
     if (!ready) return;
     undertoneGrid.restart();
     stripRestart();
-    status.textContent = playing ? "back to the first step" : "stopped at the first step";
   }
   $("restart").onclick = restart;
   addEventListener("keydown", (e) => {
@@ -1005,7 +1001,7 @@
       b.onclick = () => pickGroove(g);
       $("drumsec").appendChild(b);
     }
-    status.textContent = "ready: tap play";
+    status.textContent = "ready";
   };
   // ---- slots and undo. Five patterns kept in this browser; the one picked
   // takes every change, so there is no save. A slot holds what a link holds,
@@ -1050,7 +1046,6 @@
     const s = undo[undo.length - 1];
     restore(s); slots[slot] = s; store(SLOTKEY, JSON.stringify(slots));
     $("undo").disabled = undo.length < 2;
-    status.textContent = "undone";
   }
   $("undo").onclick = stepBack;
   addEventListener("keydown", (e) => {
@@ -1073,7 +1068,6 @@
     if (slots[i]) restore(slots[i]);
     remember(); // the slot's state is the first step back to; an empty slot takes this pattern
     paintSlots();
-    status.textContent = `slot ${i + 1}`;
   }
   for (let i = 0; i < SLOTS; i++) {
     const c = document.createElement("span"); c.className = "chip"; c.textContent = i + 1; c.dataset.v = i;
@@ -1087,7 +1081,6 @@
     pushParams();
     if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
     paint(); pushGrid();
-    status.textContent = "pattern loaded from the link";
   });
   // A groove picked here is a choice of drums, as an edit is; "the mood's"
   // goes back to the mood's own and lets a mood change bring its groove again.

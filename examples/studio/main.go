@@ -139,6 +139,8 @@ type shotJSON struct {
 	Pan     *float64 `json:"pan"`
 	DelayMS float64  `json:"delay-ms"`
 	Seed    seed     `json:"seed"`
+	Send    *float64 `json:"send"` // 1 as authored, 0 no send to the delay
+	Verb    *float64 `json:"verb"` // the same for the room
 }
 
 func (j shotJSON) shot() engine.Shot {
@@ -148,6 +150,12 @@ func (j shotJSON) shot() engine.Shot {
 	}
 	if j.Pan != nil {
 		sh.Pan = *j.Pan
+	}
+	if j.Send != nil {
+		sh.Dry = 1 - *j.Send
+	}
+	if j.Verb != nil {
+		sh.DryVerb = 1 - *j.Verb
 	}
 	switch {
 	case j.Note != nil:

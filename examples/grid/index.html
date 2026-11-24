@@ -770,7 +770,19 @@
     }
     shownKey = k.key;
   }
-  $("bpm").oninput = (e) => { st.bpm = +e.target.value; $("bpmv").textContent = st.bpm; pushParams(); showEDN(); };
+  // Each tempo the engine takes resizes the echo's delay line, which cuts
+  // the echo with a click: a drag sending every step of the slider runs them
+  // into a growl. So the number follows the drag, and the engine hears it at
+  // most every TEMPO_MS, and once more where the slider is let go.
+  const TEMPO_MS = 200;
+  let tempoAt = 0, tempoTimer = 0;
+  const sendTempo = () => { clearTimeout(tempoTimer); tempoTimer = 0; tempoAt = performance.now(); pushParams(); showEDN(); };
+  $("bpm").oninput = (e) => {
+    st.bpm = +e.target.value; $("bpmv").textContent = st.bpm;
+    const wait = TEMPO_MS - (performance.now() - tempoAt);
+    if (wait <= 0) sendTempo(); else if (!tempoTimer) tempoTimer = setTimeout(sendTempo, wait);
+  };
+  $("bpm").onchange = sendTempo;
   $("bed").onclick = () => { st.bed = !st.bed; paint(); pushGrid(); };
   // The MIX strip is a way of looking, not part of the pattern: it stays out
   // of the link and is remembered by this browser, where storage allows.

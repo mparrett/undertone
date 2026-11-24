@@ -255,12 +255,12 @@
   <div class="pick mood"><span class="lab">mood</span><button class="pickbtn" title="the mood: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="moods"></div></div>
   <div class="bar" id="backing"><span class="lab">backing</span>
     <button class="bed" id="bed" title="the generator's drone, pad and air, playing under the notes; saved in the link">bed</button></div>
+  <label class="seed" title="the seed: each gives its own pattern, and may move the key. Type one to go to it.">seed
+      <input id="seed" type="number" inputmode="numeric" min="1" max="9999" step="1" value="1"></label>
   <div class="bar" id="pattern"><span class="lab">pattern</span>
     <button id="dice" title="fill the grid with a new random pattern; it takes the next seed, so the key may move">&#8635; random</button>
     <button id="clear" title="empty the grid">clear</button>
     <button id="undo" disabled title="undo the last change (⌘Z or ctrl-Z)">&#8630; undo</button>
-    <label class="seed" title="the seed: each gives its own pattern, and may move the key. Type one to go to it.">seed
-      <input id="seed" type="number" inputmode="numeric" min="1" max="9999" step="1" value="1"></label>
     <button id="share" title="copy a link that opens this pattern">copy link</button>
     <div class="pick slots"><button class="pickbtn" title="five slots kept in this browser: picking one loads it, and every change saves to the one picked (arrows step through them)">slot 1</button><div class="bar drawer slotchips" id="slots"></div></div>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>

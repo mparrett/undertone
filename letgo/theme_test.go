@@ -3,6 +3,7 @@ package letgo
 import (
 	"bytes"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/nooga/let-go/pkg/api"
@@ -115,5 +116,39 @@ func TestPlayThemeTakesFlamsAndPolymeters(t *testing.T) {
 	}
 	if got, want := m.theme.Grids[0].Drums, [engine.DrumLanes]string{"g...x..g", "x..|"}; got != want {
 		t.Errorf("drums = %q, want %q", got, want)
+	}
+}
+
+// An end-theme sent while a theme waits on music-start applies once it
+// starts; with no theme waiting it is dropped, and a later play-theme drops
+// it too.
+func TestEndThemeWaitsWithTheTheme(t *testing.T) {
+	for _, c := range []struct {
+		name, lg string
+		ends     bool
+	}{
+		{"waiting theme", `(undertone/play-theme TH) (undertone/end-theme {:bars 1})`, true},
+		{"no theme yet", `(undertone/end-theme {:bars 1}) (undertone/play-theme TH)`, false},
+		{"replaced theme", `(undertone/play-theme TH) (undertone/end-theme {:bars 1}) (undertone/play-theme TH)`, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			m := NewMusic(engine.DeriveDungeon(1, 0, 0))
+			SetMusic(m)
+			lg, err := api.NewLetGo("endthemewait")
+			if err != nil {
+				t.Fatal(err)
+			}
+			th := `{:grids [{:lead [1 0 3] :bed false}] :then :loop}`
+			if _, err := lg.Run("(do " + strings.ReplaceAll(c.lg, "TH", th) + ")"); err != nil {
+				t.Fatal(err)
+			}
+			m.start(func(io.Reader) (output, error) { return gainTestOutput{}, nil })
+			defer m.Stop()
+			// a bar is well under 8 s at any of the moods' tempos
+			m.synth.Read(make([]byte, 4*8*engine.SampleRate))
+			if ends := !m.synth.ThemePlaying(); ends != c.ends {
+				t.Errorf("theme ended: %v, want %v", ends, c.ends)
+			}
+		})
 	}
 }

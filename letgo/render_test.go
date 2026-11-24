@@ -325,3 +325,36 @@ func TestRenderWAVUntilSilentWaitsOutATheme(t *testing.T) {
 		t.Errorf("the outro rendered to %.3f s; it sounds until %.3f s, plus the 10 ms margin", float64(got)/engine.SampleRate, float64(want)/engine.SampleRate)
 	}
 }
+
+// An :end-theme step ends a looping theme at the end of the grid it lands
+// in: anywhere in that grid gives the same render, and it differs from the
+// theme looping on.
+func TestRenderWAVEndThemeFinishesTheGrid(t *testing.T) {
+	c := renderLg(t, "renderendtheme")
+	th := `{:grids [{:lead [1 0 3 0 5] :bass [1] :bed false} {:lead [5 0 3 0 1] :bass [5] :bed false}] :then :loop}`
+	render := func(end string) vm.Value {
+		v, err := c.Run(`(undertone/render-wav nil 12.0 [[0.0 :play-theme ` + th + `]` + end + `])`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	early, late, looped := render(`[0.3 :end-theme {:grids 1}]`), render(`[1.2 :end-theme {:grids 1}]`), render(``)
+	if early != late {
+		t.Errorf("ended at 0.3 s %v, at 1.2 s %v: both are in the first grid", early, late)
+	}
+	if early == looped {
+		t.Error("end-theme changed nothing")
+	}
+	for _, bad := range []string{
+		`(undertone/render-wav nil 2.0 [[0.5 :end-theme {}]])`,
+		`(undertone/render-wav nil 2.0 [[0.5 :end-theme {:bars 1 :rows 2}]])`,
+		`(undertone/render-wav nil 2.0 [[0.5 :end-theme {:bars 0}]])`,
+		`(undertone/render-wav nil 2.0 [[0.5 :end-theme {:grids 1.5}]])`,
+		`(undertone/end-theme :grids)`,
+	} {
+		if _, err := c.Run(bad); err == nil {
+			t.Errorf("%s: want an error", bad)
+		}
+	}
+}

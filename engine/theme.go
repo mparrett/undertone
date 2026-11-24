@@ -24,6 +24,37 @@ const (
 	ThenLoop
 )
 
+// ThemeUnit is what EndTheme counts in.
+type ThemeUnit int
+
+const (
+	// ThemeRows counts sequencer rows: an eighth note each.
+	ThemeRows ThemeUnit = iota
+	// ThemeBars counts bars: 8 rows, half a grid.
+	ThemeBars
+	// ThemeGrids counts grids: one pattern, 16 rows.
+	ThemeGrids
+)
+
+// unitRows is how many rows one u spans.
+func unitRows(u ThemeUnit) int {
+	switch u {
+	case ThemeBars:
+		return rows / 2
+	case ThemeGrids:
+		return rows
+	}
+	return 1
+}
+
+// endCmd carries an EndTheme call to the audio thread; gen is the theme it
+// was meant for, the last PlayTheme before it.
+type endCmd struct {
+	n   int
+	u   ThemeUnit
+	gen int64
+}
+
 // themeCmd carries a PlayTheme call to the audio thread; gen is the call's
 // number, which ThemePlaying compares with the last theme to end.
 type themeCmd struct {
@@ -51,6 +82,21 @@ func (s *Synth) PlayTheme(t *Theme) {
 	s.themeCmd.Store(&themeCmd{t, gen})
 }
 
+// EndTheme ends the playing theme after n units, counted from the unit the
+// next row belongs to: (1, ThemeGrids) finishes the grid playing now, (1,
+// ThemeBars) the bar, and (4, ThemeRows) plays four more rows. At a unit's
+// boundary the unit about to start is the current one, so it plays whole.
+// Units count from the theme's start, which is always a pattern's, so a bar
+// or a grid is one of the theme's own. The theme then ends as its Then says,
+// except that a looping theme hands back to the generator, as ThenGenerate
+// does; one that would end sooner on its own still does. n below 1 counts as
+// 1. EndTheme applies to the theme started by the last PlayTheme before it,
+// so it is ignored if that one has finished or another has started since; a
+// second call replaces the first. Safe to call from any goroutine.
+func (s *Synth) EndTheme(n int, u ThemeUnit) {
+	s.endCmd.Store(&endCmd{max(n, 1), u, s.themeGen.Load()})
+}
+
 // ThemePlaying reports whether the last theme started with PlayTheme is still
 // to finish: false once its last grid has played (ThenGenerate,
 // ThenSilence), never false for ThenLoop. Safe to call from any goroutine.
@@ -60,6 +106,7 @@ func (s *Synth) ThemePlaying() bool { return s.themeGen.Load() != s.themeDone.Lo
 // step, so the theme's first row steps on this frame.
 func (s *Synth) startTheme(c *themeCmd) {
 	s.theme, s.themeAt, s.themeOf, s.themeFresh, s.silent = c.t, 0, c.gen, true, false
+	s.themeEnds = false
 	if c.t == nil {
 		return
 	}
@@ -67,6 +114,33 @@ func (s *Synth) startTheme(c *themeCmd) {
 		s.pat++ // the cut pattern ends here; the bed draws a fresh one
 	}
 	s.row, s.rowLeft, s.leadIn, s.cut = 0, 0, true, true
+}
+
+// markThemeEnd sets the row the playing theme ends at, for EndTheme's call c.
+// It runs on the audio thread after any PlayTheme staged in the same block,
+// so a theme started just before c is the one it ends.
+func (s *Synth) markThemeEnd(c *endCmd) {
+	if s.theme == nil || c.gen != s.themeOf {
+		return
+	}
+	size, next := unitRows(c.u), s.pat*rows+s.row
+	s.themeEndAt, s.themeEnds = next-next%size+c.n*size, true
+}
+
+// endThemeAt ends the theme before the row about to step when EndTheme's
+// count has run out there. The generator's pattern for the rest of this one
+// was built at its row 0 and only the rows already played were overwritten
+// by the theme's grid, so a mid-pattern hand-back picks it up where it is.
+func (s *Synth) endThemeAt() {
+	if s.theme == nil || !s.themeEnds || s.pat*rows+s.row < s.themeEndAt {
+		return
+	}
+	s.themeEnds = false
+	if s.theme.Then == ThenSilence {
+		s.silent = true
+	}
+	s.theme = nil
+	s.finishTheme(s.themeOf)
 }
 
 // playingGrid is the grid that owns this pattern: the theme's, the silence

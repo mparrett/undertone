@@ -26,11 +26,17 @@ func LayerNames() [NumLayers]string {
 // costs a multiply per layer per frame, and folding only once per Read
 // would publish a peak from the start of a long Read (a native buffer, a
 // WAV render) as if it had just happened.
+//
+// One more slot past the layers meters the echo: the delay's return, which
+// every layer feeds and so none can own.
 type layerMeter struct {
-	peak [NumLayers]float64
-	env  [NumLayers]float64
-	out  [NumLayers]atomic.Uint64 // env as float bits, for other goroutines
+	peak [NumLayers + 1]float64
+	env  [NumLayers + 1]float64
+	out  [NumLayers + 1]atomic.Uint64 // env as float bits, for other goroutines
 }
+
+// layerEcho is the echo's slot in layerMeter, after the layers.
+const layerEcho = NumLayers
 
 // layerFold bounds how late a peak is decayed: by 256 frames, a peak reads
 // at most 7% above where a per-sample envelope would be. The frame loop folds
@@ -69,10 +75,21 @@ func (m *layerMeter) publish(since int) {
 // in LayerNames order: a peak envelope of the layer's dry output, before
 // the music gain and the delay and reverb, and whether or not it is muted.
 // Safe to call from any goroutine.
+//
+// The echo is not among them: see EchoLevel.
 func (s *Synth) LayerLevels() [NumLayers]float64 {
 	var v [NumLayers]float64
 	for i := range v {
 		v[i] = math.Float64frombits(s.layers.out[i].Load())
 	}
 	return v
+}
+
+// EchoLevel returns the echo's level as of the end of the last Read: a peak
+// envelope, on LayerLevels' scale, of what the shared delay returns to the
+// mix. Every layer feeds the delay, so this is all of their echoes at once.
+// Unlike LayerLevels it comes after the music gain, which scales what goes
+// into the delay. Safe to call from any goroutine.
+func (s *Synth) EchoLevel() float64 {
+	return math.Float64frombits(s.layers.out[layerEcho].Load())
 }

@@ -2171,6 +2171,7 @@ func (s *Synth) frame() (int16, int16) {
 	s.dpos = (s.dpos + 1) % len(s.dl)
 	l += wl * 0.5
 	r += wr * 0.5
+	s.layers.see(layerEcho, (wl+wr)*0.5)
 	vl, vr := s.verb.process(s.bus.verb)
 	l, r = l+vl, r+vr
 	l, r = math.Tanh(l*0.8), math.Tanh(r*0.8)

@@ -14,8 +14,8 @@
 // JS surface, on window.undertoneGrid:
 //
 //	setGrid(json)    {lead:[16], bass:[16], pulse:[16], drums:[3], bed}: degrees 1..8, 0 = rest;
-//	                 drums are kick, clap, shaker as 32 sixteenths of X x o .
-//	setParams(json)  {bpm, mood: "village"|"aurora"|"meadow"|"overworld"|"ruins"|"dungeon", voice, bass, seed}:
+//	                 drums are kick, clap, shaker as 32 sixteenths of X x o . and the chance steps ? f
+//	setParams(json)  {bpm, mood: "village"|"aurora"|"meadow"|"overworld"|"ruins"|"dungeon", voice, bass, seed, busy}:
 //	                 voice and bass name a lead instrument for the lead and bass lanes; "" keeps the mood's,
 //	                 and "none" silences the lane: its notes stay, unheard
 //	seedGrid(seed)   a starting grid derived from the current params, as JSON
@@ -28,6 +28,7 @@
 //	queued()         milliseconds of audio rendered but not yet heard: how far levels and onsets lead the ear
 //	audition(json)   play a grid once, alone, without touching the pattern: a cell heard before it is placed
 //	key()            the current key and the notes of each lane's rows 1 and 8, as JSON
+//	moodBusy()       the mood's own chance for each ? drum step, which setParams' busy overrides
 //	mutate(json, n)  with -tags lg only: lg's variation of a grid for seed n
 package main
 
@@ -74,6 +75,9 @@ type paramsJSON struct {
 	Voice string  `json:"voice"`
 	Bass  string  `json:"bass"`
 	Seed  uint64  `json:"seed"`
+	// Busy is the chance each ? step in the drums plays, 0..1; absent, the
+	// mood's own, which is 0 in every mood without a groove
+	Busy *float64 `json:"busy"`
 }
 
 func (j gridJSON) grid() engine.Grid {
@@ -175,6 +179,9 @@ func derive(c paramsJSON) engine.Params {
 	}
 	if c.BPM > 0 {
 		p.BPM = min(max(c.BPM, 40), 200)
+	}
+	if c.Busy != nil {
+		p.DrumBusy = min(max(*c.Busy, 0), 1)
 	}
 	return p
 }
@@ -348,8 +355,10 @@ func main() {
 			}
 			return nil
 		}),
-		"key":     js.FuncOf(func(js.Value, []js.Value) any { return keyJSON(derive(cur)) }),
-		"initial": toJSON(g0),
+		"key": js.FuncOf(func(js.Value, []js.Value) any { return keyJSON(derive(cur)) }),
+		// the mood's own busyness, what a busy left unset plays at
+		"moodBusy": js.FuncOf(func(js.Value, []js.Value) any { c := cur; c.Busy = nil; return derive(c).DrumBusy }),
+		"initial":  toJSON(g0),
 	}
 	if extraAPI != nil {
 		extraAPI(api)

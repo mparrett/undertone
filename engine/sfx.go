@@ -326,6 +326,10 @@ const shotGapMS = 30
 type shotKey struct {
 	name string
 	note int
+	// The cuts, as held by unsend: a dry and a wet trigger of one note are
+	// different sounds, and as one key the louder took the voice, so a dry
+	// one could still echo.
+	dry, dryVerb float64
 }
 
 // recentShot is a shot that started lately, kept for shotGapMS. They live in
@@ -473,10 +477,11 @@ func (s *Synth) trigger(name string, note int, gain, pan, delayMS float64, seed 
 		return false
 	}
 	delayMS = max(delayMS, 0)
+	dry, dryVerb = clampCut(dry), clampCut(dryVerb)
 	patch := humanize(d.patch, seed)
 	unsend(patch, dry, dryVerb)
 	req := shotReq{
-		key:   shotKey{name, note},
+		key:   shotKey{name, note, dry, dryVerb},
 		patch: patch,
 		note:  note,
 		gain:  gain,
@@ -517,18 +522,20 @@ func humanize(p Patch, seed uint64) Patch {
 	return out
 }
 
-// unsend scales p's send and verb units in place by 1-dry and 1-dryVerb, each
-// cut held to 0..1 (NaN counts as 0). p is the trigger's own copy, from
-// humanize, so the registered patch is untouched; scaling here rather than in
-// the voice keeps the audio thread as it was.
-func unsend(p Patch, dry, dryVerb float64) {
-	cut := func(c float64) float64 {
-		if !(c > 0) {
-			return 0
-		}
-		return min(c, 1)
+// clampCut holds a cut to 0..1; NaN counts as 0.
+func clampCut(c float64) float64 {
+	if !(c > 0) {
+		return 0
 	}
-	dry, dryVerb = cut(dry), cut(dryVerb)
+	return min(c, 1)
+}
+
+// unsend scales p's send and verb units in place by 1-dry and 1-dryVerb, each
+// cut held to 0..1. p is the trigger's own copy, from humanize, so the
+// registered patch is untouched; scaling here rather than in the voice keeps
+// the audio thread as it was.
+func unsend(p Patch, dry, dryVerb float64) {
+	dry, dryVerb = clampCut(dry), clampCut(dryVerb)
 	if dry == 0 && dryVerb == 0 {
 		return
 	}

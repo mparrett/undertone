@@ -66,3 +66,68 @@ func TestDryLeavesTheRegisteredPatch(t *testing.T) {
 		}
 	}
 }
+
+// DryVerb cuts the room send as Dry cuts the delay's. No built-in shot has a
+// verb unit, so this registers one.
+func TestDryVerbCutsTheRoom(t *testing.T) {
+	t.Cleanup(func() {
+		shotsMu.Lock()
+		delete(shotReg, "dry-test-room")
+		shotsMu.Unlock()
+	})
+	if err := RegisterShot(ShotSpec{Name: "dry-test-room", GateMS: 10, Units: []UnitSpec{
+		{Op: "env", Args: []float64{0.001, 0.1, 0, 0.05}},
+		{Op: "osc", Shape: "sine", Args: []float64{0, 0, 1}},
+		{Op: "mul"},
+		{Op: "verb", Args: []float64{0.6}},
+		{Op: "out", Args: []float64{0.5, 0.5}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	d, _ := lookupShot("dry-test-room")
+	verb := func(dry, dryVerb float64) float64 {
+		p := humanize(d.patch, 1)
+		unsend(p, dry, dryVerb)
+		for _, u := range p {
+			if u.op == opVerb {
+				return u.p[0]
+			}
+		}
+		t.Fatal("no verb unit")
+		return 0
+	}
+	if v := verb(1, 0); v != 0.6 {
+		t.Errorf("Dry alone moved the room send to %v", v)
+	}
+	if v := verb(0, 0.5); math.Abs(v-0.3) > 1e-12 {
+		t.Errorf("DryVerb 0.5: room send %v, want 0.3", v)
+	}
+	take := func(dryVerb float64) Take {
+		return Take{Params: DeriveDungeon(7, 3, 0.5), Seconds: 2, Shots: []Shot{
+			{Name: "dry-test-room", Gain: 1, Pan: 0.5, Seed: 1, Note: 60, HasNote: true, DryVerb: dryVerb},
+		}}
+	}
+	wet, dry := tailRMS(take(0).Render(), 0.5), tailRMS(take(1).Render(), 0.5)
+	if wet < 5 || dry > wet/100 {
+		t.Errorf("room tail: wet %.1f RMS, dry %.1f: DryVerb 1 should leave next to nothing", wet, dry)
+	}
+}
+
+// A dry and a wet trigger of one note in one frame are two sounds: as one
+// repeat the louder (wet) one took the voice and the dry one echoed.
+func TestDryAndWetAreNotOneRepeat(t *testing.T) {
+	s := NewSynth(DeriveDungeon(7, 3, 0.5))
+	s.SetMusicGain(0)
+	s.TriggerShot(Shot{Name: "twang", Gain: 0.5, Note: 57, HasNote: true, Dry: 1})
+	s.TriggerShot(Shot{Name: "twang", Gain: 0.8, Note: 57, HasNote: true})
+	render(s, 64)
+	n := 0
+	for i := range s.fx.shots {
+		if s.fx.shots[i].active {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Errorf("%d voices for a dry and a wet twang, want 2", n)
+	}
+}

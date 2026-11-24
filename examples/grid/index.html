@@ -47,9 +47,6 @@
   .toolbar .bar { margin: 0; gap: 5px; }
   .toolbar .lab { flex-basis: auto; margin: 0 3px 0 0; }
   /* a lane's choice sits over its cells, lined up with them, in the lane's colour */
-  /* the lane's name in the label column, its chips from where the cells start; they wrap at the cells' width */
-  .lanechips { margin: 0 0 6px; gap: 4px; max-width: calc(32px + 16 * var(--cell) + 3 * 6px); }
-  .lanechips .lname { flex: 0 0 32px; min-width: 0; white-space: nowrap; direction: rtl; margin-right: -4px; /* a long name overflows left, as the lanes' do */ padding-right: 5px; text-align: right; font-size: 10px; color: var(--lane); align-self: flex-start; line-height: 23px; }
   /* a group's heading: a line of its own, in the lane headings' small capitals */
   .lab { flex-basis: 100%; margin-bottom: -3px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mut); }
   .pair { display: flex; gap: 24px; align-items: center; }
@@ -66,10 +63,25 @@
   #patedn.bad { border-color: var(--pulse); }
   .hint { font-size: 12px; color: var(--mut); min-height: 1.4em; }
   .hint.bad { color: var(--pulse); }
-  #key { font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--fg); margin-left: 10px; } /* on the mood's heading line */
+  #key { font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--fg); margin-left: 4px; white-space: nowrap; } /* beside the mood's chip */
   /* a voice row wears its lane's colour, and so does the lane's heading: which chips go with which cells */
-  #voices { --lane: var(--lead); } #basses { --lane: var(--bass); } #drumsec { --lane: var(--drum); }
-  .lanechips .chip.on { color: var(--lane); border-color: var(--lane); }
+  /* a lane's voice: its name and a chip naming the pick, in the lane's colour; the chip drops a
+     drawer of the choices over the page, which stays open while they are tried */
+  .pick.mood { --lane: var(--fg); } .pick.lead { --lane: var(--lead); } .pick.bass { --lane: var(--bass); } .pick.drums { --lane: var(--drum); }
+  .picks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; margin-bottom: 10px; }
+  .pick { position: relative; display: flex; align-items: center; gap: 6px; }
+  .pick .lab { flex-basis: auto; margin: 0; color: var(--lane); }
+  /* a fixed width, so a longer name does not move what follows it */
+  .pickbtn { width: 9.5em; padding: 2px 9px; font-size: 12px; border-radius: 6px; text-align: left; color: var(--lane);
+             border-color: color-mix(in srgb, var(--lane) 45%, var(--line)); overflow: hidden; text-overflow: ellipsis; }
+  .pickbtn::after { content: "▾"; float: right; color: var(--mut); }
+  .pick.open .pickbtn { border-color: var(--lane); }
+  .drawer { display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 6; margin: 0; gap: 4px;
+            width: max-content; max-width: min(440px, 90vw); padding: 8px; background: var(--bg);
+            border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 12px 32px #000c; }
+  .pick.open .drawer { display: flex; }
+  .pick.drums .drawer { left: auto; right: 0; } /* the last pick: open toward the column, not off its edge */
+  .drawer .chip.on { color: var(--lane); border-color: var(--lane); }
   .lane.of-lead span { color: var(--lead); } .lane.of-bass span { color: var(--bass); }
   .lane.of-pulse span { color: var(--pulse); } .lane.of-drums span { color: var(--drum); }
   .lbl.ref { color: var(--fg); }
@@ -141,12 +153,13 @@
      A cell's width comes from the window's width, up to 56px (72 read as
      stretched), and a row's height from what is left of its height: 17
      rows of notes and three drum rows, under --other, the body's padding,
-     the header, the four lane headers and the three chip rows (about 376px
-     as measured 2026-11-24, 46px more while the MIX strip shows). A note
-     cell is never taller than it is wide. Drum cells are half a step wide
-     and as tall, square, up to 32px: wider lanes are what give them room. */
+     the header (three rows: transport, picks, pattern) and the four lane
+     headers (about 322px as measured 2026-11-24, 48px more while the MIX
+     strip shows). A note cell is never taller than it is wide. Drum cells
+     are half a step wide and as tall, square, up to 32px: wider lanes are
+     what give them room. */
   @media (min-width: 900px) {
-    :root { --other: 376px;
+    :root { --other: 322px;
             --cell: clamp(22px, calc((100vw - 64px - 32px - 18px) / 16), 56px);
             --drow: min(calc(var(--cell) / 2), 32px);
             --row: clamp(20px, min(calc((100dvh - var(--other) - 3 * var(--drow)) / 17), var(--cell)), 44px); }
@@ -162,7 +175,8 @@
     header #transport { flex: none; flex-wrap: nowrap; margin-bottom: 10px; }
     header h1, header #status { margin-bottom: 10px; }
     header #status { order: 3; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    header .toolbar { order: 5; flex-basis: 100%; }
+    header .picks { order: 5; flex-basis: 100%; }
+    header .toolbar { order: 6; flex-basis: 100%; }
     /* the switches ride the transport's row, at its right end; the toolbar under it is then one row in the column */
     header > .pair { order: 4; margin-bottom: 10px; gap: 18px; }
     header > .pair .lab { flex-basis: auto; margin: 0 3px 0 0; }
@@ -178,7 +192,7 @@
     .drums .c, .drums .lbl { height: var(--drow); }
     .drums .lbl { font-size: 10px; } /* the other labels' 12px does not fit a half row at the smallest cell */
     .lbl { font-size: 12px; }
-    :root.mix { --other: 422px; }
+    :root.mix { --other: 370px; }
     /* the EDN box floats over the top of the grid rather than opening under
        it, off the bottom of a grid that fits the window; the cells it covers
        are the ones its text spells out. Esc or the edn button closes it. */
@@ -186,20 +200,6 @@
     :root.edn #ednsec { position: absolute; top: 0; left: 32px; right: 0; z-index: 2; margin: 0; max-width: none;
                         padding: 14px 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
                         box-shadow: 0 14px 40px #000c; }
-  }
-  /* A window wide enough for gutters beside the grid's column: each lane's
-     chips hang in the left one, beside the lane, its name over them, and
-     take no height from the cells. --other loses the three chip rows, and
-     gains the 50px by which the grooves' chips run past the drum lanes
-     (2026-11-24), which the page's foot makes room for. */
-  @media (min-width: 1430px) { /* the chips need 230px left of the 946px column */
-    :root { --other: 336px; }
-    :root.mix { --other: 382px; }
-    body { padding-bottom: 82px; }
-    .lanegroup { position: relative; }
-    /* clear of the row labels, which a looping drum lane's (kick ↻14) runs left past */
-    .lanechips { position: absolute; top: 0; right: calc(100% + 40px); width: 190px; margin: 0; justify-content: flex-end; }
-    .lanechips .lname { flex-basis: 100%; margin: 0 0 1px; padding: 0; text-align: right; line-height: 14px; direction: ltr; }
   }
   /* Whole pixels, even ones so the drum cells' half is whole too: at a
      fraction of a pixel, neighbouring cells snap to different sizes. */
@@ -225,7 +225,6 @@
   </div>
   <!-- what the whole pattern plays in and with: the mood, the pattern's own controls, and the switches -->
   <div class="toolbar">
-  <div class="bar" id="moods"><span class="lab">mood</span></div>
   <div class="bar" id="pattern"><span class="lab">pattern</span>
     <button id="dice" title="fill the grid with a new random pattern; it takes the next seed, so the key may move">&#8635; random</button>
     <label class="seed" title="the seed: each gives its own pattern, and may move the key. Type one to go to it.">seed
@@ -234,6 +233,13 @@
     <button id="share" title="copy a link that opens this pattern">copy link</button>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
+  </div>
+  <!-- the mood and each lane's voice: a chip in the lane's colour that drops its choices over the page -->
+  <div class="picks">
+    <div class="pick mood"><span class="lab">mood</span><button class="pickbtn" title="the mood: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="moods"></div></div>
+    <div class="pick lead"><span class="lab">lead</span><button class="pickbtn" title="the lead's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="voices"></div></div>
+    <div class="pick bass"><span class="lab">bass</span><button class="pickbtn" title="the bass's voice: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="basses"></div></div>
+    <div class="pick drums"><span class="lab">drums</span><button class="pickbtn" title="a groove from the library on the drum lanes, in the mood's kit: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="drumsec"></div></div>
   </div>
   <!-- two unrelated switches, each under its own heading: what is heard under the notes, and what is drawn above them -->
   <div class="pair">
@@ -249,13 +255,11 @@
 
   <div class="lane" id="mixlane"><span>MIX</span><canvas class="strip mix idle" id="mixstrip"></canvas></div>
   <div class="lanegroup">
-    <div class="bar lanechips" id="voices"><span class="lname">LEAD</span></div>
-    <div class="lane of-lead"><span></span><canvas class="strip idle" data-lane="lead"></canvas></div>
+    <div class="lane of-lead"><span>LEAD</span><canvas class="strip idle" data-lane="lead"></canvas></div>
     <div class="grid lead" id="lead"></div>
   </div>
   <div class="lanegroup">
-    <div class="bar lanechips" id="basses"><span class="lname">BASS</span></div>
-    <div class="lane of-bass"><span></span><canvas class="strip idle" data-lane="bass"></canvas></div>
+    <div class="lane of-bass"><span>BASS</span><canvas class="strip idle" data-lane="bass"></canvas></div>
     <div class="grid bass" id="bass"></div>
   </div>
   <div class="lanegroup">
@@ -263,8 +267,7 @@
     <div class="grid pulse" id="pulse"></div>
   </div>
   <div class="lanegroup">
-    <div class="bar lanechips" id="drumsec"><span class="lname">DRUMS</span></div>
-    <div class="lane of-drums"><span></span><canvas class="strip idle" data-lane="drums"></canvas></div>
+    <div class="lane of-drums"><span>DRUMS</span><canvas class="strip idle" data-lane="drums"></canvas></div>
     <div class="grid drums" id="drums"></div>
   </div>
 
@@ -404,6 +407,8 @@
     for (const b of document.querySelectorAll("#voices .chip")) b.classList.toggle("on", b.dataset.v === st.voice);
     for (const b of document.querySelectorAll("#basses .chip")) b.classList.toggle("on", b.dataset.v === st.bassVoice);
     for (const b of document.querySelectorAll("#drumsec .chip")) b.classList.toggle("on", b.dataset.v === groove);
+    const [mp, lp, bp, dp] = document.querySelectorAll(".pickbtn");
+    mp.textContent = st.mood; lp.textContent = st.voice; bp.textContent = st.bassVoice || "pluck"; dp.textContent = groove || "mood's";
     $("lead").classList.toggle("silent", st.voice === NONE); $("bass").classList.toggle("silent", st.bassVoice === NONE);
     $("bed").classList.toggle("on", st.bed);
     $("bpm").value = st.bpm; $("bpmv").textContent = st.bpm;
@@ -521,7 +526,26 @@
     showEDN();
   }
   $("ednbtn").onclick = () => showEDNBox(!document.documentElement.classList.contains("edn"));
-  addEventListener("keydown", (e) => { if (e.key === "Escape" && document.documentElement.classList.contains("edn")) showEDNBox(false); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && !openPick && document.documentElement.classList.contains("edn")) showEDNBox(false); });
+
+  // ---- the voice picks' drawers: one open at a time; it stays open while
+  // its choices are tried, and closes on its chip, Esc, or a tap elsewhere.
+  // Open, the arrow keys step through the choices.
+  let openPick = null;
+  function setPick(p) {
+    openPick = p;
+    for (const el of document.querySelectorAll(".pick")) el.classList.toggle("open", el === p);
+  }
+  for (const b of document.querySelectorAll(".pickbtn")) b.onclick = () => setPick(openPick === b.parentElement ? null : b.parentElement);
+  addEventListener("pointerdown", (e) => { if (openPick && !openPick.contains(e.target)) setPick(null); });
+  addEventListener("keydown", (e) => {
+    if (!openPick) return;
+    if (e.key === "Escape") { setPick(null); return; }
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const chips = [...openPick.querySelectorAll(".drawer .chip")], i = chips.findIndex((c) => c.classList.contains("on"));
+    chips[(i + (e.key === "ArrowRight" ? 1 : -1) + chips.length) % chips.length].click();
+  });
   $("helpbtn").onclick = () => {
     const on = document.documentElement.classList.toggle("help");
     $("helpbtn").classList.toggle("on", on);
@@ -617,7 +641,7 @@
       $(box).appendChild(b);
     }
   }
-  const keyEl = document.createElement("span"); keyEl.id = "key"; $("moods").querySelector(".lab").appendChild(keyEl);
+  const keyEl = document.createElement("span"); keyEl.id = "key"; $("moods").parentElement.appendChild(keyEl); // after the mood's chip; the drawer floats
   // Name the key, and label each melodic lane's rows 1 and 8 with their notes;
   // the rows between keep their degree numbers.
   let shownKey; // undefined until a key has been shown

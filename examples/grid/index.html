@@ -227,9 +227,11 @@
     <button id="restart" title="restart: back to the first step (r); the pattern starts over, or will when you press play" aria-label="restart">&#9198;&#xFE0E;</button>
     <label class="tempo">tempo <input id="bpm" type="range" min="60" max="160" step="1" value="110"><span id="bpmv">110</span></label>
   </div>
-  <!-- the mood and the pattern's own controls -->
+  <!-- the mood and its backing, and the pattern's own controls -->
   <div class="toolbar">
   <div class="pick mood"><span class="lab">mood</span><button class="pickbtn" title="the mood: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="moods"></div></div>
+  <div class="bar" id="backing"><span class="lab">backing</span>
+    <button class="bed" id="bed" title="the generator's drone, pad and air, playing under the notes; saved in the link">bed</button></div>
   <div class="bar" id="pattern"><span class="lab">pattern</span>
     <button id="dice" title="fill the grid with a new random pattern; it takes the next seed, so the key may move">&#8635; random</button>
     <label class="seed" title="the seed: each gives its own pattern, and may move the key. Type one to go to it.">seed
@@ -246,10 +248,8 @@
     <div class="pick pulse"><span class="lab">pulse</span><button class="pickbtn fixed" disabled title="the pulse plays the mood's own pulse sound; there is no choice of it here">mood's</button></div>
     <div class="pick drums"><span class="lab">drums</span><button class="pickbtn" title="a groove from the library on the drum lanes, in the mood's kit: choose it from the list this opens (arrows step through it)"></button><div class="bar drawer" id="drumsec"></div></div>
   </div>
-  <!-- two unrelated switches, each beside its heading: what is heard under the notes, and what is drawn above them -->
+  <!-- what is drawn above the notes -->
   <div class="pair">
-    <div class="bar"><span class="lab">backing</span>
-      <button class="bed" id="bed" title="the generator's drone, pad and air, playing under the notes; saved in the link">bed</button></div>
     <div class="bar"><span class="lab">view</span>
       <button class="bed" id="mixbtn" title="show a strip of all four lanes over one another, their colours added; not saved in the link">mix</button>
       <button class="bed" id="ednbtn" title="show the pattern and the settings as EDN over the grid (Esc closes it); not saved in the link">edn</button>

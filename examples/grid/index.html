@@ -169,6 +169,7 @@
               background: var(--bg); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px #000c; font-size: 11px; }
   #loopmenu[hidden] { display: none; }
   #loopmenu .hint { color: var(--mut); margin-right: 4px; }
+  #loopmenu .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
   .c::after { content: ""; display: block; height: 100%; border-radius: 3px; background: var(--panel);
               border: 1px solid var(--line); }
   .c.g4 { padding-left: 7px; }
@@ -810,7 +811,8 @@
 
   // A drum lane's name opens its loop lengths. A new length takes the figure from the
   // cells on screen; grid makes the lane the pass that is playing, looping with the pattern.
-  const LOOPS = [3, 5, 6, 7, 12, 14];
+  // lengths that run across the pattern, then (after a divider) ones that divide it and so repeat in step
+  const LOOPS = [3, 5, 6, 7, 12, 14], STEPLOOPS = [4, 8, 16];
   const loopMenu = document.createElement("div"); loopMenu.id = "loopmenu"; loopMenu.hidden = true; document.body.appendChild(loopMenu);
   let loopFor = null;
   function setLoop(d, n) {
@@ -823,10 +825,12 @@
   function openLoops(l) {
     const d = l.dataset.drum, cur = st.drums[d].loop?.length || 0;
     loopMenu.replaceChildren(Object.assign(document.createElement("span"), { className: "hint", textContent: `${DRUMS[d]} loops every` }));
-    for (const n of [0, ...LOOPS]) {
+    for (const n of [0, ...LOOPS, "|", ...STEPLOOPS]) {
+      if (n === "|") { loopMenu.appendChild(Object.assign(document.createElement("span"), { className: "sep" })); continue; }
       const b = document.createElement("button"); b.className = "chip" + (n === cur ? " on" : "");
       b.textContent = n ? `${n}` : `grid (${SIXTEENTHS})`;
-      b.title = n ? `loop the first ${n} cells on screen, running on across patterns` : `loop with the grid, every ${SIXTEENTHS} sixteenths: the pass that is playing, as an ordinary lane`;
+      b.title = STEPLOOPS.includes(n) ? `repeat the first ${n} cells on screen, in step: ${SIXTEENTHS / n} times a pattern, the same each pass` :
+        n ? `loop the first ${n} cells on screen, running on across patterns` : `loop with the grid, every ${SIXTEENTHS} sixteenths: the pass that is playing, as an ordinary lane`;
       b.onclick = () => { closeLoops(); if (n !== cur) setLoop(d, n); };
       loopMenu.appendChild(b);
     }

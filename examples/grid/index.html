@@ -289,6 +289,7 @@
     <button id="clear" title="empty the grid">clear</button>
     <button id="undo" disabled title="undo the last change (⌘Z or ctrl-Z)">&#8630; undo</button>
     <button id="share" title="copy a link that opens this pattern">copy link</button>
+    <button id="tostudio" hidden title="open this pattern in the studio, in a new tab: one grid of a theme, over this mood, seed, tension and bed. The studio plays it in the mood's own voices and tempo; the lead and bass voices, tempo and busy here stay here.">studio &#8599;</button>
     <div class="pick slots"><button class="pickbtn" title="five slots kept in this browser: picking one loads it, and every change saves to the one picked">slot 1</button><div class="bar drawer slotchips" id="slots"></div></div>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
@@ -921,6 +922,24 @@
     try { await navigator.clipboard.writeText(location.href); }
     catch { status.textContent = "copy the address bar to share this pattern"; }
   };
+
+  // The studio takes a theme by link (#theme=, a JSON map: its shape, not
+  // EDN, so a link stays short). This pattern goes as a one-grid theme over
+  // the bed set here; the mood and level come from the engine side, which
+  // knows that ruins is the dungeon's first level. The button shows only
+  // where a studio is served beside the grid.
+  function studioURL() {
+    const { mood, level } = JSON.parse(undertoneGrid.moodLevel());
+    const mute = [...(st.voice === NONE ? ["lead"] : []), ...(st.bassVoice === NONE ? ["bass"] : [])];
+    const theme = {
+      name: `grid: ${st.mood}, seed ${st.seed}`,
+      grids: [{ lead: st.lead.join(""), bass: st.bass.join(""), pulse: st.pulse.map((p) => (p ? "1" : "0")).join(""), drums: drumStrings(), bed: st.bed }],
+      mood, level, tension: st.tension, seed: st.seed, mute,
+    };
+    return new URL(`../studio/#theme=${encodeURIComponent(JSON.stringify(theme))}`, location.href).href;
+  }
+  $("tostudio").onclick = () => { if (ready) window.open(studioURL(), "_blank", "noopener"); };
+  fetch(new URL("../studio/", location.href), { method: "HEAD" }).then((r) => { $("tostudio").hidden = !r.ok; }, () => {});
 
   function setPlaying(on) {
     playing = on;

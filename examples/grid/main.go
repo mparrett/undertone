@@ -15,6 +15,7 @@
 //
 //	setGrid(json)    {lead:[16], bass:[16], pulse:[16], drums:[3], bed}: degrees 1..8, 0 = rest;
 //	                 drums are kick, clap, shaker as 32 sixteenths of X x o . and the chance steps ? f
+//	moodLevel()      the engine mood and level the current mood plays, as JSON {mood, level}
 //	moods()          the moods setParams takes, as JSON: the engine's, and ruins after the dungeon
 //	setParams(json)  {bpm, mood: one of moods(), voice, bass, seed, busy, tension}:
 //	                 voice and bass name a lead instrument for the lead and bass lanes; "" keeps the mood's,
@@ -154,16 +155,22 @@ var extraAPI func(api map[string]any)
 // voiceNone is the voice that silences a lane.
 const voiceNone = "none"
 
-func derive(c paramsJSON) engine.Params {
-	mood, level := c.Mood, 0
-	switch mood {
+// moodLevel is the engine mood and level the grid's mood names: the level
+// each plays at, and ruins, which is the dungeon's.
+func moodLevel(name string) (string, int) {
+	switch name {
 	case "dungeon", "overworld":
-		level = 2
+		return name, 2
 	case "ruins":
 		// The dungeon's shallowest level, where it is still dorian: minor,
 		// but with a raised sixth that keeps it from turning grim.
-		mood = "dungeon"
+		return "dungeon", 0
 	}
+	return name, 0
+}
+
+func derive(c paramsJSON) engine.Params {
+	mood, level := moodLevel(c.Mood)
 	t := min(max(c.Tension, 0), 1)
 	p, ok := engine.DeriveMood(mood, c.Seed, level, t)
 	if !ok {
@@ -388,6 +395,13 @@ func main() {
 				}
 			}
 			b, _ := json.Marshal(names)
+			return string(b)
+		}),
+		// The engine mood and level the current mood plays, for a link to a
+		// page that takes them (the studio's #theme=).
+		"moodLevel": js.FuncOf(func(js.Value, []js.Value) any {
+			m, l := moodLevel(cur.Mood)
+			b, _ := json.Marshal(map[string]any{"mood": m, "level": l})
 			return string(b)
 		}),
 		// the mood's own busyness, what a busy left unset plays at

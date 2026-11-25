@@ -40,9 +40,6 @@ type gate struct {
 	// 32768: the master meter reads the output itself, after the mix, the
 	// echo and the reverb, and the int16 clamp, so full scale is a clip.
 	peak atomic.Uint32
-	// vol is the listening volume, float64 bits: it scales what is heard,
-	// after the peak is taken, so the meter keeps reading the music itself.
-	vol atomic.Uint64
 }
 
 func (g *gate) Read(p []byte) (int, error) {
@@ -57,12 +54,6 @@ func (g *gate) Read(p []byte) (int, error) {
 		m = max(m, uint32(max(v, -v)))
 	}
 	for old := g.peak.Load(); m > old && !g.peak.CompareAndSwap(old, m); old = g.peak.Load() {
-	}
-	if v := math.Float64frombits(g.vol.Load()); v < 1 {
-		for i := 0; i+1 < n; i += 2 {
-			s := float64(int16(binary.LittleEndian.Uint16(p[i:])))
-			binary.LittleEndian.PutUint16(p[i:], uint16(int16(math.Round(s*v))))
-		}
 	}
 	return n, err
 }
@@ -170,11 +161,13 @@ func main() {
 	p0, _ := start.Derive(1, 0, 0)
 	syn := engine.NewSynth(p0)
 	src := &gate{src: syn}
-	src.vol.Store(math.Float64bits(1))
+	// the listening volume scales what is heard, after the gate takes the
+	// peak, so the meter keeps reading the music itself
+	vol := webaudio.NewVolume(src)
 
 	var player atomic.Pointer[webaudio.Player]
 	go func() {
-		p, err := webaudio.Open(src, webaudio.Options{SampleRate: engine.SampleRate})
+		p, err := webaudio.Open(vol, webaudio.Options{SampleRate: engine.SampleRate})
 		if err != nil {
 			js.Global().Call("undertoneDesignerFailed", err.Error())
 			return
@@ -239,7 +232,7 @@ func main() {
 		"outPeak": js.FuncOf(func(js.Value, []js.Value) any { return float64(src.peak.Swap(0)) / 32768 }),
 		// setVolume sets the listening volume, 0..1
 		"setVolume": js.FuncOf(func(_ js.Value, a []js.Value) any {
-			src.vol.Store(math.Float64bits(math.Max(0, math.Min(1, a[0].Float()))))
+			vol.Set(a[0].Float())
 			return nil
 		}),
 		"edn": js.FuncOf(func(_ js.Value, a []js.Value) any {

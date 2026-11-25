@@ -38,7 +38,8 @@ type gate struct {
 	on  atomic.Bool
 	// peak is the largest |sample| written since the page last took it, of
 	// 32768: the master meter reads the output itself, after the mix, the
-	// echo and the reverb, and the int16 clamp, so full scale is a clip.
+	// echo and the reverb, and the soft clip, which flattens into a peak of
+	// 32000: the output never reaches full scale, it is squashed short of it.
 	peak atomic.Uint32
 }
 

@@ -360,7 +360,10 @@ func main() {
 			var struck []any
 			from := syn.RunStart()
 			for _, e := range evs {
-				if e.Kind == engine.DrumOn || e.Kind == engine.DrumOff {
+				// a hit from before the run began (a restart, or a new run, since the
+				// last poll) belongs to a run the page no longer draws: patterns only
+				// count up, so it is one that comes before RunStart
+				if (e.Kind == engine.DrumOn || e.Kind == engine.DrumOff) && e.Pattern*16+e.Row >= from {
 					six := 2 * e.Row
 					if e.Kind == engine.DrumOff {
 						six++

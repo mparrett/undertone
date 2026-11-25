@@ -87,7 +87,8 @@ func (s *Synth) LayerLevels() [NumLayers]float64 {
 
 // EchoLevel returns the echo's level as of the end of the last Read: a peak
 // envelope, on LayerLevels' scale, of what the shared delay returns to the
-// mix. Every layer feeds the delay, so this is all of their echoes at once.
+// mix. Every layer feeds the delay, and so do one-shots played with a delay
+// send, so this is all of their echoes at once.
 // Unlike LayerLevels it comes after the music gain, which scales what goes
 // into the delay. Safe to call from any goroutine.
 func (s *Synth) EchoLevel() float64 {

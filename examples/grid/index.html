@@ -361,7 +361,7 @@
       <li>Drum cells are sixteenths: a tap cycles hit, accent, ghost, chance, rest.</li>
       <li>Beside the bed, <b>tension</b> is the game's: as it rises, dotted fills come more often, the mood's busy rises, and the bed tightens. The grid's drums keep their level, and the tempo stays the slider's.</li>
       <li>A dashed drum cell is a chance step: each time round it plays, softly, at the <b>busy</b> chance, or rests. A drum cell that plays flashes and fades, so a chance step that played fills in for a moment. Dotted is a fill. Most moods' own busy is 0%.</li>
-      <li>Click a drum lane's name to make it loop at its own length (&#x21bb;3 loops every 3 sixteenths). The loop runs on across patterns, so each pass starts it somewhere else: ticks mark where its figure starts again, and 2/3 counts the passes until it lines up with the pattern again. A tap in a looping lane edits the figure, every repeat at once; <b>plain</b> makes it an ordinary lane, as it is playing.</li>
+      <li>Click a drum lane's name to make it loop at its own length (&#x21bb;3 loops every 3 sixteenths). The loop runs on across patterns, so each pass starts it somewhere else: ticks mark where its figure starts again, and 2/3 counts the passes until it lines up with the pattern again. A tap in a looping lane edits the figure, every repeat at once; <b>grid</b> puts it back in step with the pattern, as it is playing.</li>
       <li><kbd>alt</kbd>- or <kbd>shift</kbd>-click a cell to hear it without placing it.</li></ul></div>
     <div><h3>playing</h3><ul>
       <li><kbd>space</kbd> plays and stops; <kbd>r</kbd> goes back to the first step.</li>
@@ -809,7 +809,7 @@
   addEventListener("pointercancel", () => { painting = null; });
 
   // A drum lane's name opens its loop lengths. A new length takes the figure from the
-  // cells on screen; plain makes the lane the pass that is playing.
+  // cells on screen; grid makes the lane the pass that is playing, looping with the pattern.
   const LOOPS = [3, 5, 6, 7, 12, 14];
   const loopMenu = document.createElement("div"); loopMenu.id = "loopmenu"; loopMenu.hidden = true; document.body.appendChild(loopMenu);
   let loopFor = null;
@@ -825,7 +825,8 @@
     loopMenu.replaceChildren(Object.assign(document.createElement("span"), { className: "hint", textContent: `${DRUMS[d]} loops every` }));
     for (const n of [0, ...LOOPS]) {
       const b = document.createElement("button"); b.className = "chip" + (n === cur ? " on" : "");
-      b.textContent = n ? `↻${n}` : "plain"; b.title = n ? `loop the first ${n} cells on screen` : "an ordinary lane: the pass that is playing";
+      b.textContent = n ? `${n}` : `grid (${SIXTEENTHS})`;
+      b.title = n ? `loop the first ${n} cells on screen, running on across patterns` : `loop with the grid, every ${SIXTEENTHS} sixteenths: the pass that is playing, as an ordinary lane`;
       b.onclick = () => { closeLoops(); if (n !== cur) setLoop(d, n); };
       loopMenu.appendChild(b);
     }

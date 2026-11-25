@@ -261,6 +261,9 @@
   #guide code, #guide pre { color: var(--src); }
   #guide pre { background: var(--bg); padding: 8px 10px; border-radius: 6px; overflow-x: auto; margin: 6px 0; }
   kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 11px; }
+  label.listen { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; letter-spacing: .12em; color: var(--mut); }
+  label.listen input { flex: 1; min-width: 0; accent-color: var(--mut); }
+  label.listen span { white-space: nowrap; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -288,6 +291,8 @@
   <div class="stat">
   <div class="lab">STATUS</div>
   <div id="status">loading the engine…</div>
+  <label class="listen" title="what you hear, and only that. xsofy plays its music at 0.25 (-12 dB), the mark; remembered on this browser; double-click goes back to it">VOL <input id="listenvol" type="range" min="0" max="100" step="1" value="25" list="listenmarks"><span id="listenvolv"></span></label>
+  <datalist id="listenmarks"><option value="25"></option></datalist>
   </div>
 </header>
 
@@ -1717,7 +1722,23 @@ $("gamebed").onclick = () => {
   // still the built-in notes, so reset has nothing to offer
   TITLE = XSOFY_TITLE; themeName = "the xsofy title theme"; themeLabel = "xsofy title"; showTheme(true);
 };
+  // The listening volume, as the designer has it: xsofy plays its music at
+  // 0.25, so that is where it starts, and full scale is 12 dB hotter than a
+  // player hears. What is heard only; kept per page on this browser.
+  const GAME_VOL = 25;
+  let listenVol = GAME_VOL;
+  try { const s = localStorage.getItem("undertone-studio-vol"); if (s !== null) listenVol = Math.max(0, Math.min(100, +s)); } catch {}
+  function setListenVol(v) {
+    listenVol = v; $("listenvol").value = v;
+    $("listenvolv").textContent = (v ? `${(20 * Math.log10(v / 100)).toFixed(1)} dB` : "off") + (v === GAME_VOL ? " · game" : "");
+    if (window.undertoneStudio) U().setVolume(v / 100);
+    try { localStorage.setItem("undertone-studio-vol", v); } catch {}
+  }
+  $("listenvol").oninput = () => setListenVol(+$("listenvol").value);
+  $("listenvol").ondblclick = () => setListenVol(GAME_VOL);
+setListenVol(listenVol);
 window.undertoneStudioReady = () => {
+  setListenVol(listenVol); // the engine's output starts at full scale
   for (const m of JSON.parse(U().names("mood"))) { const o = el("option", null, m); o.selected = m === "dungeon"; $("mood").append(o); }
   buildKinds(); openFirst(); measureNames(); $("themehint").textContent = NOTES_ONLY; showTheme();
   $("play").disabled = false; setPlaying(false);

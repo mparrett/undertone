@@ -15,6 +15,7 @@
 //
 //	setGrid(json)    {lead:[16], bass:[16], pulse:[16], drums:[3], bed}: degrees 1..8, 0 = rest;
 //	                 drums are kick, clap, shaker as 32 sixteenths of X x o . and the chance steps ? f
+//	setVolume(v)     the listening volume, 0..1, for the pattern and auditions alike
 //	moodLevel()      the engine mood and level the current mood plays, as JSON {mood, level}
 //	moods()          the moods setParams takes, as JSON: the engine's, and ruins after the dungeon
 //	setParams(json)  {bpm, mood: one of moods(), voice, bass, seed, busy, tension}:
@@ -103,6 +104,7 @@ func (j gridJSON) grid() engine.Grid {
 // pattern's last 200 ms still queued, and resuming it would play those first.
 type auditioner struct {
 	syn    *engine.Synth
+	vol    *webaudio.Volume // the page's listening volume, as the pattern's output has it
 	player atomic.Pointer[webaudio.Player]
 	gen    atomic.Int64 // counts auditions: a pause is for the one that armed it
 }
@@ -116,7 +118,7 @@ const auditionRing = 3 * time.Second
 // exists, so one opened inside the audition's own click would stay silent
 // until some later tap.
 func (a *auditioner) open() {
-	p, err := webaudio.Open(a.syn, webaudio.Options{SampleRate: engine.SampleRate, Queue: 60 * time.Millisecond})
+	p, err := webaudio.Open(a.vol, webaudio.Options{SampleRate: engine.SampleRate, Queue: 60 * time.Millisecond})
 	if err != nil {
 		return // the pattern's output reports a failure to open; auditions stay silent
 	}
@@ -246,7 +248,9 @@ func main() {
 	g0 := engine.SeedGrid(derive(cur))
 	syn.SetGrid(&g0)
 	src := &gate{src: syn}
-	aud := &auditioner{syn: engine.NewSynth(derive(cur))}
+	vol := webaudio.NewVolume(src)
+	asyn := engine.NewSynth(derive(cur))
+	aud := &auditioner{syn: asyn, vol: webaudio.NewVolume(asyn)}
 	go aud.open()
 
 	var player atomic.Pointer[webaudio.Player]
@@ -254,7 +258,7 @@ func main() {
 		// A shorter queue than webaudio's default: an edit is heard the next
 		// time the playhead passes it, and every millisecond queued is a
 		// millisecond the edit trails the playhead.
-		p, err := webaudio.Open(src, webaudio.Options{SampleRate: engine.SampleRate, Queue: 200 * time.Millisecond})
+		p, err := webaudio.Open(vol, webaudio.Options{SampleRate: engine.SampleRate, Queue: 200 * time.Millisecond})
 		if err != nil {
 			js.Global().Call("undertoneGridFailed", err.Error())
 			return
@@ -396,6 +400,13 @@ func main() {
 			}
 			b, _ := json.Marshal(names)
 			return string(b)
+		}),
+		// setVolume sets the listening volume, 0..1, of the pattern and the
+		// auditions alike
+		"setVolume": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			vol.Set(a[0].Float())
+			aud.vol.Set(a[0].Float())
+			return nil
 		}),
 		// The engine mood and level the current mood plays, for a link to a
 		// page that takes them (the studio's #theme=).

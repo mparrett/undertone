@@ -622,7 +622,9 @@
     if (ready) undertoneDesigner.setVolume(v > VOL_OFF ? 10 ** (v / 20) : 0);
     try { localStorage.setItem("undertone-designer-vol-db", v); } catch {}
   }
-  $("volin").oninput = () => setVol(+$("volin").value);
+  // within a dB of the game's level, land on it: the mark is a place to come back to
+  const snapVol = (v) => (Math.abs(v - GAME_VOL) <= 1 ? GAME_VOL : v);
+  $("volin").oninput = () => setVol(snapVol(+$("volin").value));
   setVol(vol);
   function meters() {
     const v = ready && playing ? JSON.parse(undertoneDesigner.levels()) : null;

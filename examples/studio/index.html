@@ -1735,7 +1735,9 @@ $("gamebed").onclick = () => {
     if (window.undertoneStudio) U().setVolume(v > VOL_OFF ? 10 ** (v / 20) : 0);
     try { localStorage.setItem("undertone-studio-vol-db", v); } catch {}
   }
-  $("listenvol").oninput = () => setListenVol(+$("listenvol").value);
+  // within a dB of the game's level, land on it: the mark is a place to come back to
+  const snapVol = (v) => (Math.abs(v - GAME_VOL) <= 1 ? GAME_VOL : v);
+  $("listenvol").oninput = () => setListenVol(snapVol(+$("listenvol").value));
   $("listenvol").ondblclick = () => setListenVol(GAME_VOL);
 setListenVol(listenVol);
 window.undertoneStudioReady = () => {

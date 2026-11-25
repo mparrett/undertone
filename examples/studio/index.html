@@ -291,8 +291,8 @@
   <div class="stat">
   <div class="lab">STATUS</div>
   <div id="status">loading the engine…</div>
-  <label class="listen" title="what you hear, and only that. xsofy plays its music at 0.25 (-12 dB), the mark; remembered on this browser; double-click goes back to it">VOL <input id="listenvol" type="range" min="0" max="100" step="1" value="25" list="listenmarks"><span id="listenvolv"></span></label>
-  <datalist id="listenmarks"><option value="25"></option></datalist>
+  <label class="listen" title="what you hear, and only that. in dB; xsofy plays its music at -12 dB (0.25), the mark, and the bottom is off; remembered on this browser; double-click goes back to it">VOL <input id="listenvol" type="range" min="-60" max="0" step="1" value="-12" list="listenmarks"><span id="listenvolv"></span></label>
+  <datalist id="listenmarks"><option value="-12"></option></datalist>
   </div>
 </header>
 
@@ -1722,17 +1722,18 @@ $("gamebed").onclick = () => {
   // still the built-in notes, so reset has nothing to offer
   TITLE = XSOFY_TITLE; themeName = "the xsofy title theme"; themeLabel = "xsofy title"; showTheme(true);
 };
-  // The listening volume, as the designer has it: xsofy plays its music at
-  // 0.25, so that is where it starts, and full scale is 12 dB hotter than a
-  // player hears. What is heard only; kept per page on this browser.
-  const GAME_VOL = 25;
+  // The listening volume, in dB, as loudness is heard: xsofy plays its
+  // music at 0.25 (-12 dB), so that is where it starts, with most of the
+  // slider below it and only the top fifth above, to full scale. The bottom
+  // is off. What is heard only; kept per page on this browser.
+  const GAME_VOL = -12, VOL_OFF = -60;
   let listenVol = GAME_VOL;
-  try { const s = localStorage.getItem("undertone-studio-vol"); if (s !== null) listenVol = Math.max(0, Math.min(100, +s)); } catch {}
+  try { const s = localStorage.getItem("undertone-studio-vol-db"); if (s !== null && s !== "" && isFinite(+s)) listenVol = Math.max(VOL_OFF, Math.min(0, +s)); } catch {}
   function setListenVol(v) {
     listenVol = v; $("listenvol").value = v;
-    $("listenvolv").textContent = (v ? `${(20 * Math.log10(v / 100)).toFixed(1)} dB` : "off") + (v === GAME_VOL ? " · game" : "");
-    if (window.undertoneStudio) U().setVolume(v / 100);
-    try { localStorage.setItem("undertone-studio-vol", v); } catch {}
+    $("listenvolv").textContent = (v > VOL_OFF ? `${v} dB` : "off") + (v === GAME_VOL ? " · game" : "");
+    if (window.undertoneStudio) U().setVolume(v > VOL_OFF ? 10 ** (v / 20) : 0);
+    try { localStorage.setItem("undertone-studio-vol-db", v); } catch {}
   }
   $("listenvol").oninput = () => setListenVol(+$("listenvol").value);
   $("listenvol").ondblclick = () => setListenVol(GAME_VOL);

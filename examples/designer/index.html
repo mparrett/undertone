@@ -177,9 +177,9 @@
     <div id="vu" title="the output, after the mix, echo and reverb: peak in dBFS, -48 to 0; the number is the peak held over 1.5 s"><span>OUT</span>
      <div class="bar"><div class="cur"></div><div class="hold"></div></div><span id="vudb">–</span>
      <span id="clip" title="lights when the output reaches full scale, and stays lit; tap to reset"></span></div>
-    <label id="vol" title="what you hear, and only that: the meter above reads the music at full level. xsofy plays its music at 0.25 (-12 dB); remembered on this browser"><span>VOL</span>
-     <input id="volin" type="range" min="0" max="100" step="1" value="25" list="volmarks"><span id="volv"></span></label>
-    <datalist id="volmarks"><option value="25"></option></datalist>
+    <label id="vol" title="what you hear, and only that: the meter above reads the music at full level. in dB; xsofy plays its music at -12 dB (0.25), the mark, and the bottom is off; remembered on this browser"><span>VOL</span>
+     <input id="volin" type="range" min="-60" max="0" step="1" value="-12" list="volmarks"><span id="volv"></span></label>
+    <datalist id="volmarks"><option value="-12"></option></datalist>
     <div class="lab" id="mixlab">MIX <small style="font-weight:400;letter-spacing:0">· tap a layer to mute it; none, then one, solos it</small></div>
     <div id="mix" title="tap a layer to mute or unmute it; none, then one layer, solos it"></div></div></div>
   </div>
@@ -610,15 +610,17 @@
     $("vudb").textContent = holdDB > -Infinity ? `${holdDB.toFixed(1)} dBFS` : "-∞ dBFS";
   }
   $("clip").onclick = () => $("clip").classList.remove("on");
-  // The listening volume, from xsofy's music gain (0.25) unless changed here.
-  const GAME_VOL = 25;
+  // The listening volume, in dB, as loudness is heard: from xsofy's music
+  // gain (0.25, -12 dB) unless changed here, with most of the slider below
+  // it and only the top fifth above, to full scale. The bottom is off.
+  const GAME_VOL = -12, VOL_OFF = -60;
   let vol = GAME_VOL;
-  try { const s = localStorage.getItem("undertone-designer-vol"); if (s !== null) vol = Math.max(0, Math.min(100, +s)); } catch {}
+  try { const s = localStorage.getItem("undertone-designer-vol-db"); if (s !== null && s !== "" && isFinite(+s)) vol = Math.max(VOL_OFF, Math.min(0, +s)); } catch {}
   function setVol(v) {
     vol = v; $("volin").value = v;
-    $("volv").textContent = (v ? `${(20 * Math.log10(v / 100)).toFixed(1)} dB` : "off") + (v === GAME_VOL ? " · game" : "");
-    if (ready) undertoneDesigner.setVolume(v / 100);
-    try { localStorage.setItem("undertone-designer-vol", v); } catch {}
+    $("volv").textContent = (v > VOL_OFF ? `${v} dB` : "off") + (v === GAME_VOL ? " · game" : "");
+    if (ready) undertoneDesigner.setVolume(v > VOL_OFF ? 10 ** (v / 20) : 0);
+    try { localStorage.setItem("undertone-designer-vol-db", v); } catch {}
   }
   $("volin").oninput = () => setVol(+$("volin").value);
   setVol(vol);
@@ -657,7 +659,7 @@
   window.undertoneDesignerFailed = (msg) => { status.textContent = "audio failed: " + msg; };
   window.undertoneDesignerReady = () => {
     ready = true;
-    undertoneDesigner.setVolume(vol / 100);
+    undertoneDesigner.setVolume(vol > VOL_OFF ? 10 ** (vol / 20) : 0);
     buildSections();
     for (const m of JSON.parse(undertoneDesigner.moods())) {
       const b = el("span", "chip", m); b.dataset.v = m; b.onclick = () => { load(m); if (!playing) setPlaying(true); }; $("moods").append(b);

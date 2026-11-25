@@ -160,6 +160,15 @@
   .lbl { font-size: 10px; color: var(--mut); white-space: nowrap; display: flex; align-items: center; justify-content: flex-end;
          padding-right: 6px; height: var(--row); }
   .c { height: var(--row); padding: 1px; cursor: pointer; }
+  /* a looping lane: a tick where its figure starts again, so the figure's repeats show, and why the
+     pass moves on (the pattern's 32 sixteenths end partway through one) */
+  .drums .c.lstart { box-shadow: inset 2px 0 0 var(--mut); }
+  .drums .lbl { cursor: pointer; } .drums .lbl:hover, .drums .lbl:focus-visible { color: var(--fg); outline: none; }
+  .drums .lbl .pass { color: var(--fg); margin-left: 4px; }
+  #loopmenu { position: absolute; z-index: 20; display: flex; gap: 4px; align-items: center; padding: 6px 8px;
+              background: var(--bg); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px #000c; font-size: 11px; }
+  #loopmenu[hidden] { display: none; }
+  #loopmenu .hint { color: var(--mut); margin-right: 4px; }
   .c::after { content: ""; display: block; height: 100%; border-radius: 3px; background: var(--panel);
               border: 1px solid var(--line); }
   .c.g4 { padding-left: 7px; }
@@ -352,6 +361,7 @@
       <li>Drum cells are sixteenths: a tap cycles hit, accent, ghost, chance, rest.</li>
       <li>Beside the bed, <b>tension</b> is the game's: as it rises, dotted fills come more often, the mood's busy rises, and the bed tightens. The grid's drums keep their level, and the tempo stays the slider's.</li>
       <li>A dashed drum cell is a chance step: each time round it plays, softly, at the <b>busy</b> chance, or rests. A drum cell that plays flashes and fades, so a chance step that played fills in for a moment. Dotted is a fill. Most moods' own busy is 0%.</li>
+      <li>Click a drum lane's name to make it loop at its own length (&#x21bb;3 loops every 3 sixteenths). The loop runs on across patterns, so each pass starts it somewhere else: ticks mark where its figure starts again, and 2/3 counts the passes until it lines up with the pattern again. A tap in a looping lane edits the figure, every repeat at once; <b>plain</b> makes it an ordinary lane, as it is playing.</li>
       <li><kbd>alt</kbd>- or <kbd>shift</kbd>-click a cell to hear it without placing it.</li></ul></div>
     <div><h3>playing</h3><ul>
       <li><kbd>space</kbd> plays and stops; <kbd>r</kbd> goes back to the first step.</li>
@@ -394,8 +404,7 @@
   const lanes = (ds) => DRUMS.map((_, d) => {
     const s = (ds && ds[d]) || "";
     if (s.length > 1 && s.endsWith("|")) {
-      const loop = s.slice(0, -1), a = [...loop.repeat(Math.ceil(SIXTEENTHS / loop.length)).slice(0, SIXTEENTHS)];
-      a.loop = loop; return a;
+      return loopLane(s.slice(0, -1));
     }
     return [...s.padEnd(SIXTEENTHS, ".").slice(0, SIXTEENTHS)];
   });
@@ -494,6 +503,16 @@
   // engine reports, and the cells draw the pass that is playing.
   const loopAt = DRUMS.map(() => 0);
   const shown = (d, i) => { const a = st.drums[d]; return a.loop ? a.loop[(loopAt[d] + +i) % a.loop.length] : a[i]; };
+  // Which pass of its cycle a loop of n sixteenths is on, and how many passes the cycle takes: pass k
+  // starts the loop at (k * SIXTEENTHS) mod n, and it is back in line after n / gcd(n, SIXTEENTHS).
+  const gcd = (a, b) => b ? gcd(b, a % b) : a;
+  const loopPass = (n, at) => {
+    const passes = n / gcd(n, SIXTEENTHS);
+    for (let k = 0; k < passes; k++) if ((k * SIXTEENTHS) % n === at) return [k, passes];
+    return [0, passes];
+  };
+  // A lane spelled from a figure: the loop over one pattern, as lanes() builds it.
+  const loopLane = (loop) => { const a = [...loop.repeat(Math.ceil(SIXTEENTHS / loop.length)).slice(0, SIXTEENTHS)]; a.loop = loop; return a; };
   function paint() {
     for (const c of document.querySelectorAll(".c")) {
       const s = +c.dataset.step, lane = c.dataset.lane;
@@ -502,6 +521,8 @@
         c.classList.toggle("ch", !!CHANCE[ch]); c.classList.toggle("fill", ch === "f");
         c.classList.toggle("on", lv > 0);
         c.classList.toggle("v1", lv === 1); c.classList.toggle("v2", lv === 2);
+        const loop = st.drums[c.dataset.drum].loop;
+        c.classList.toggle("lstart", !!loop && (loopAt[c.dataset.drum] + +c.dataset.i) % loop.length === 0);
         continue;
       }
       const on = lane === "pulse" ? st.pulse[s] : st[lane][s] === +c.dataset.deg;
@@ -509,8 +530,11 @@
     }
     for (const l of document.querySelectorAll("#drums .lbl")) { // a looping lane names its length
       const loop = st.drums[l.dataset.drum].loop;
-      l.textContent = DRUMS[l.dataset.drum] + (loop ? ` ↻${loop.length}` : "");
-      l.title = loop ? `loops every ${loop.length} sixteenths, running on across patterns; the cells show the pass that is playing. Editing a cell makes it a plain lane.` : "";
+      const d = l.dataset.drum, [k, n] = loop ? loopPass(loop.length, loopAt[d]) : [0, 1];
+      l.textContent = DRUMS[d] + (loop ? ` ↻${loop.length}` : "");
+      if (n > 1) { const p = document.createElement("span"); p.className = "pass"; p.textContent = `${k + 1}/${n}`; l.appendChild(p); }
+      l.title = loop ? `loops every ${loop.length} sixteenths, running on across patterns; the cells show the pass that is playing` +
+        (n > 1 ? `, pass ${k + 1} of the ${n} it takes to line up with the pattern again` : "") + `. Click to change the length.` : "click to make this lane loop at its own length";
     }
     for (const b of document.querySelectorAll("#moods .chip")) b.classList.toggle("on", b.dataset.v === st.mood);
     for (const b of document.querySelectorAll("#voices .chip")) b.classList.toggle("on", b.dataset.v === st.voice);
@@ -737,9 +761,13 @@
     const s = +c.dataset.step, lane = c.dataset.lane, d = +c.dataset.deg;
     if (lane === "drums") { // mode is the character a drag paints
       const d = c.dataset.drum, row = st.drums[d];
-      if (row.loop) { for (let i = 0; i < row.length; i++) row[i] = shown(d, i); delete row.loop; loopAt[d] = 0; } // the pass on screen
+      drumsChosen = true; groove = ""; // no groove's any more
+      if (row.loop) { // the cell is one step of the figure: editing it edits every repeat
+        const at = (loopAt[d] + +c.dataset.i) % row.loop.length, v = mode ?? TAP[row.loop[at]];
+        st.drums[d] = loopLane(row.loop.slice(0, at) + v + row.loop.slice(at + 1)); return v;
+      }
       const v = mode ?? TAP[row[c.dataset.i]];
-      row[c.dataset.i] = v; drumsChosen = true; groove = ""; return v; // an edited loop is the pattern it shows; no groove's any more
+      row[c.dataset.i] = v; return v;
     }
     if (lane === "pulse") {
       const v = mode ?? !st.pulse[s]; st.pulse[s] = v; return v;
@@ -758,7 +786,7 @@
     }
     const g = { lead: Array(STEPS).fill(0), bass: Array(STEPS).fill(0), pulse: Array(STEPS).fill(false), drums: DRUMS.map(() => ""), bed: false };
     if (lane === "drums") {
-      const now = st.drums[c.dataset.drum][c.dataset.i];
+      const now = shown(c.dataset.drum, c.dataset.i);
       g.drums[c.dataset.drum] = now === "." ? "x" : CHANCE[now] ? "o" : now; // a placed cell at its own level; chance as the soft hit it may be
     } else if (lane === "pulse") g.pulse[0] = true;
     else g[lane][0] = +c.dataset.deg;
@@ -779,6 +807,40 @@
   });
   addEventListener("pointerup", () => { painting = null; });
   addEventListener("pointercancel", () => { painting = null; });
+
+  // A drum lane's name opens its loop lengths. A new length takes the figure from the
+  // cells on screen; plain makes the lane the pass that is playing.
+  const LOOPS = [3, 5, 6, 7, 12, 14];
+  const loopMenu = document.createElement("div"); loopMenu.id = "loopmenu"; loopMenu.hidden = true; document.body.appendChild(loopMenu);
+  let loopFor = null;
+  function setLoop(d, n) {
+    const row = st.drums[d], now = [...Array(SIXTEENTHS)].map((_, i) => shown(d, i));
+    if (n) st.drums[d] = loopLane(now.slice(0, n).join(""));
+    else { st.drums[d] = now; }
+    loopAt[d] = 0; drumsChosen = true; groove = "";
+    paint(); pushGrid();
+  }
+  function openLoops(l) {
+    const d = l.dataset.drum, cur = st.drums[d].loop?.length || 0;
+    loopMenu.replaceChildren(Object.assign(document.createElement("span"), { className: "hint", textContent: `${DRUMS[d]} loops every` }));
+    for (const n of [0, ...LOOPS]) {
+      const b = document.createElement("button"); b.className = "chip" + (n === cur ? " on" : "");
+      b.textContent = n ? `↻${n}` : "plain"; b.title = n ? `loop the first ${n} cells on screen` : "an ordinary lane: the pass that is playing";
+      b.onclick = () => { closeLoops(); if (n !== cur) setLoop(d, n); };
+      loopMenu.appendChild(b);
+    }
+    const r = l.getBoundingClientRect();
+    loopMenu.style.left = `${r.left + scrollX}px`; loopMenu.style.top = `${r.bottom + scrollY + 4}px`;
+    loopMenu.hidden = false; loopFor = l; loopMenu.querySelector(".on")?.focus();
+  }
+  function closeLoops() { loopMenu.hidden = true; loopFor = null; }
+  for (const l of document.querySelectorAll("#drums .lbl")) {
+    l.tabIndex = 0; l.setAttribute("role", "button");
+    l.addEventListener("click", (e) => { e.stopPropagation(); loopFor === l ? closeLoops() : openLoops(l); });
+    l.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); openLoops(l); } });
+  }
+  document.addEventListener("click", (e) => { if (loopFor && !loopMenu.contains(e.target)) closeLoops(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && loopFor) { closeLoops(); e.stopPropagation(); } }, true);
 
   // ---- controls ----
   // Flare the cells of one lane that are lit now, restarting any still going. The class goes on

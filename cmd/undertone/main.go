@@ -54,6 +54,7 @@ func main() {
 	mood := flag.String("mood", "dungeon", strings.Join(engine.MoodNames(), " | ")+" (level = depth)")
 	lead := flag.String("lead", "", "lead instrument: bell|chime|clang|kalimba|reed|pluck (default: seed picks)")
 	tension := flag.Float64("tension", 0, "0..1: tempo up, pulse in, harmony sours")
+	feel := flag.Float64("feel", 0, "0..1: with -theme, how unevenly its notes are struck: accents on the strong beats, a harder note brighter, each a little different")
 	vu := flag.String("vu", "bars", "meter style: bars | compact (one cell per band) | tall (two cells, 2x range)")
 	flag.Parse()
 
@@ -68,6 +69,7 @@ func main() {
 	m, level := signedDepth(*mood, *depth)
 	*mood = m
 	p := deriveParams(*mood, uint64(seed), level, *tension, *lead)
+	p.Feel = *feel
 	s := engine.NewSynth(p)
 	leadName := p.LeadName
 	if leadName == "" {

@@ -48,6 +48,7 @@
   label.tension { margin-left: 14px; display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); }
   label.tension input { width: 120px; accent-color: var(--mut); } /* the backing's grey, not a lane's colour */
   label.tension span { min-width: 3ch; font-size: 12px; letter-spacing: 0; color: var(--fg); }
+  label.feel { color: var(--lead); } label.feel input { accent-color: var(--lead); } /* how the lead and bass are struck: the lead's colour, not the backing's grey */
   #pattern { gap: 8px 6px; } /* four controls: at 8px the last wraps alone on a 390px phone */
   label.seed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--mut); }
   #seed { font: inherit; font-size: 12px; width: 40px; padding: 2px; text-align: center; color: var(--fg); background: var(--panel);
@@ -313,6 +314,7 @@
   <div class="bar" id="backing"><span class="lab">backing</span>
     <button class="bed" id="bed" title="the generator's drone, pad and air, playing under the notes; saved in the link">bed</button>
     <label class="tension" title="the game's tension: fills, the mood's busy and the bed's colour follow it; the grid's drum level and tempo stay as they are">tension <input id="tension" type="range" min="0" max="100" step="5" value="0"><span id="tensionv">0%</span></label></div>
+    <label class="tension feel" title="feel: how unevenly the lead and bass are struck. At 0 every note is alike; raised, strong beats are louder, a harder note is brighter and rings longer, and each note differs a little in tone and tuning.">feel <input id="feel" type="range" min="0" max="100" step="5" value="0"><span id="feelv">0%</span></label>
   <label class="listen" title="what you hear, and only that. in dB; xsofy plays its music at -12 dB (0.25), the mark, and the bottom is off; remembered on this browser; double-click goes back to it">vol <input id="listenvol" type="range" min="-60" max="0" step="1" value="-12" list="listenmarks"><span id="listenvolv"></span></label>
     <datalist id="listenmarks"><option value="-12"></option></datalist>
   </div>
@@ -423,7 +425,7 @@
   // State lives here; the wasm side only hears about changes.
   // bassVoice "" is the mood's own bass; bass is the lane's notes
   // busy: the chance each ? drum step plays, 0..1, or null for the mood's own
-  let st = { bpm: 110, mood: "overworld", voice: "kalimba", bassVoice: "", seed: 1, bed: true, busy: null, tension: 0,
+  let st = { bpm: 110, mood: "overworld", voice: "kalimba", bassVoice: "", seed: 1, bed: true, busy: null, tension: 0, feel: 0,
              lead: Array(STEPS).fill(0), bass: Array(STEPS).fill(0), pulse: Array(STEPS).fill(false), drums: lanes() };
   let playing = false, ready = false, linkHasDrums = false;
   let seedDirty = false; // the seed field holds typing not yet taken
@@ -444,7 +446,7 @@
     const pulse = st.pulse.reduce((n, on, i) => n | (on ? 1 << i : 0), 0);
     return `#v1;t=${st.bpm};m=${st.mood};v=${st.voice};${st.bassVoice ? `bv=${st.bassVoice};` : ""}s=${st.seed};bed=${+st.bed};` +
            `L=${st.lead.join("")};B=${st.bass.join("")};P=${pulse.toString(16)};D=${drumStrings().join(",")}` +
-           (groove ? `;g=${groove}` : "") + (drumsChosen ? "" : ";dc=0") + (st.busy == null ? "" : `;bz=${Math.round(st.busy * 100)}`) + (st.tension ? `;tn=${Math.round(st.tension * 100)}` : "");
+           (groove ? `;g=${groove}` : "") + (drumsChosen ? "" : ";dc=0") + (st.busy == null ? "" : `;bz=${Math.round(st.busy * 100)}`) + (st.tension ? `;tn=${Math.round(st.tension * 100)}` : "") + (st.feel ? `;fl=${Math.round(st.feel * 100)}` : "");
   }
   function decode(h) {
     if (!h.startsWith("#v1;")) return false;
@@ -463,7 +465,7 @@
            bpm: Math.min(160, Math.max(60, +kv.t || 110)), mood: (kv.m?.length === 1 ? LINK_MOODS.find((m) => m[0] === kv.m) : MOODS.find((m) => m === kv.m)) || "overworld",
            voice: VOICES.includes(kv.v) || kv.v === NONE ? kv.v : "kalimba", bassVoice: (VOICES.includes(kv.bv) && kv.bv !== "pluck") || kv.bv === NONE ? kv.bv : "", seed: Math.min(MAXSEED, Math.max(1, Math.round(+kv.s) || 1)), bed: kv.bed !== "0",
            busy: kv.bz != null && isFinite(+kv.bz) ? Math.min(1, Math.max(0, +kv.bz / 100)) : null,
-           tension: Math.min(1, Math.max(0, (+kv.tn || 0) / 100)) };
+           tension: Math.min(1, Math.max(0, (+kv.tn || 0) / 100)), feel: Math.min(1, Math.max(0, (+kv.fl || 0) / 100)) };
     return true;
   }
 
@@ -561,7 +563,7 @@
            ` :drums [${drumStrings().map((d) => JSON.stringify(d)).join("\n         ")}]\n :bed   ${st.bed}}`;
   };
   const settingsEDN = () =>
-    `{:mood       :${st.mood}\n :bpm        ${st.bpm}\n :seed       ${st.seed}\n :lead-voice :${st.voice}\n :bass-voice :${st.bassVoice || "pluck"}${st.busy == null ? "" : `\n :drum-busy  ${st.busy}`}${st.tension ? `\n :tension    ${st.tension}` : ""}}`;
+    `{:mood       :${st.mood}\n :bpm        ${st.bpm}\n :seed       ${st.seed}\n :lead-voice :${st.voice}\n :bass-voice :${st.bassVoice || "pluck"}${st.busy == null ? "" : `\n :drum-busy  ${st.busy}`}${st.tension ? `\n :tension    ${st.tension}` : ""}${st.feel ? `\n :feel       ${st.feel}` : ""}}`;
   function showEDN() {
     if (!document.documentElement.classList.contains("edn")) return;
     $("setedn").innerHTML = highlightEDN(settingsEDN());
@@ -749,7 +751,7 @@
     remember();
   };
   const pushParams = () => {
-    if (ready) { undertoneGrid.setParams(JSON.stringify({ bpm: st.bpm, mood: st.mood, voice: st.voice, bass: st.bassVoice, seed: st.seed, busy: st.busy, tension: st.tension })); showKey(); showBusy(); showTension(); }
+    if (ready) { undertoneGrid.setParams(JSON.stringify({ bpm: st.bpm, mood: st.mood, voice: st.voice, bass: st.bassVoice, seed: st.seed, busy: st.busy, tension: st.tension, feel: st.feel })); showKey(); showBusy(); showTension(); showFeel(); }
     history.replaceState(null, "", encode());
     remember();
   };
@@ -939,6 +941,16 @@
     if (wait <= 0) sendTension(); else if (!tensionTimer) tensionTimer = setTimeout(sendTension, wait);
   };
   $("tension").onchange = sendTension;
+  // Feel, as tension. It is heard from the next note struck.
+  function showFeel() { $("feel").value = Math.round(st.feel * 100); $("feelv").textContent = `${Math.round(st.feel * 100)}%`; }
+  let feelAt = 0, feelTimer = 0;
+  const sendFeel = () => { clearTimeout(feelTimer); feelTimer = 0; feelAt = performance.now(); pushParams(); showEDN(); };
+  $("feel").oninput = (e) => {
+    st.feel = +e.target.value / 100; showFeel();
+    const wait = TEMPO_MS - (performance.now() - feelAt);
+    if (wait <= 0) sendFeel(); else if (!feelTimer) feelTimer = setTimeout(sendFeel, wait);
+  };
+  $("feel").onchange = sendFeel;
   $("bed").onclick = () => { st.bed = !st.bed; paint(); pushGrid(); };
   // The MIX strip is a way of looking, not part of the pattern: it stays out
   // of the link and is remembered by this browser, where storage allows.

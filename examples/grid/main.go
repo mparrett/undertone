@@ -87,6 +87,9 @@ type paramsJSON struct {
 	// does not (the grid's tempo is BPM's), nor the drum gain: a grid's drums
 	// play at their own level.
 	Tension float64 `json:"tension"`
+	// Feel is engine.Params.Feel, 0..1: how unevenly the lead and bass lanes
+	// are struck.
+	Feel float64 `json:"feel"`
 }
 
 func (j gridJSON) grid() engine.Grid {
@@ -200,6 +203,7 @@ func derive(c paramsJSON) engine.Params {
 	if c.Busy != nil {
 		p.DrumBusy = min(max(*c.Busy, 0), 1)
 	}
+	p.Feel = c.Feel
 	return p
 }
 

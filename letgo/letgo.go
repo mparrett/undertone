@@ -66,6 +66,10 @@ type Music struct {
 	// waiting for the unlock gesture): gain requests go straight to it, in
 	// the order the game made them, as they do to a playing synth.
 	opening *engine.Synth
+	// openingTheme is the theme that synth was started with, which it may
+	// already be playing: a revise-theme meanwhile goes to the synth, where
+	// replacing theme would start it over once the output is open.
+	openingTheme *engine.Theme
 
 	// theme is an undertone/play-theme that came before music-start; it
 	// starts with the music.
@@ -353,6 +357,7 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	}
 	m.opening = syn
 	opening := m.theme
+	m.openingTheme = opening
 	gen := m.paramsGen
 	if opening != nil {
 		syn.PlayTheme(opening)
@@ -371,7 +376,7 @@ func (m *Music) start(open func(io.Reader) (output, error)) vm.Value {
 	defer m.mu.Unlock()
 	waited := m.nowWaiting
 	m.starting, m.nowWaiting = false, false
-	m.opening = nil
+	m.opening, m.openingTheme = nil, nil
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "undertone/music-start:", err)
 		return vm.NIL
@@ -868,6 +873,9 @@ func installNS() {
 	}))
 	ns.Def("play-theme", native("play-theme", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().playTheme(a[0])
+	}))
+	ns.Def("revise-theme", native("revise-theme", 2, func(a []vm.Value) (vm.Value, error) {
+		return current.Load().reviseTheme(a[0], a[1])
 	}))
 	ns.Def("end-theme", native("end-theme", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().endTheme(a[0])

@@ -74,7 +74,7 @@ func (s *Synth) startOver() {
 	if s.theme != nil {
 		// From the top, the theme plays as if just started: an EndTheme
 		// counted from where it was would cut the replay short.
-		s.themeAt, s.themeFresh, s.themeEnds = 0, true, false
+		s.themeAt, s.themeFresh, s.themeEnds, s.themePass = 0, true, false, 0
 	}
 	if s.row != 0 {
 		s.pat++ // the cut pattern ends here, as in startTheme
@@ -313,39 +313,41 @@ func (s *Synth) RowAt(frame int64) int {
 func (s *Synth) Frames() int64 { return s.frames.Load() }
 
 // rowLog remembers when recent rows started: each entry packs the start
-// frame (<<8) with the row number, and pat holds the entry's pattern. It has
-// a slot more than the 64 rows it promises, since find gives up the oldest
-// slot as possibly mid-overwrite.
+// frame (<<8) with the row number, pat holds the entry's pattern and th where
+// a theme was (themeWord). It has a slot more than the 64 rows it promises,
+// since find gives up the oldest slot as possibly mid-overwrite.
 type rowLog struct {
 	at  [65]atomic.Int64
 	pat [65]atomic.Int64
+	th  [65]atomic.Int64
 	n   atomic.Int64
 }
 
-func (l *rowLog) add(frame int64, row, pat int) {
+func (l *rowLog) add(frame int64, row, pat int, th int64) {
 	n := l.n.Load()
 	i := n % int64(len(l.at))
 	l.at[i].Store(frame<<8 | int64(row))
 	l.pat[i].Store(int64(pat))
+	l.th[i].Store(th)
 	l.n.Store(n + 1)
 }
 
 // find returns the newest entry that started at or before frame. An entry's
-// two words are written one after the other, so a reader the writer laps
+// words are written one after the other, so a reader the writer laps
 // meanwhile could pair one row's frame with a later row's pattern. It reads
 // the count again after each entry, and treats an entry the writer may have
 // begun to overwrite (a whole log behind the next to be written) as gone.
-func (l *rowLog) find(frame int64) (start int64, row, pat int, ok bool) {
+func (l *rowLog) find(frame int64) (start int64, row, pat int, th int64, ok bool) {
 	size := int64(len(l.at))
 	n := l.n.Load()
 	for k := n - 1; k >= max(0, n-size); k-- {
-		e, pt := l.at[k%size].Load(), l.pat[k%size].Load()
+		e, pt, th := l.at[k%size].Load(), l.pat[k%size].Load(), l.th[k%size].Load()
 		if k <= l.n.Load()-size {
-			return 0, 0, 0, false
+			return 0, 0, 0, 0, false
 		}
 		if start := e >> 8; start <= frame {
-			return start, int(e & 0xff), int(pt), true
+			return start, int(e & 0xff), int(pt), th, true
 		}
 	}
-	return 0, 0, 0, false
+	return 0, 0, 0, 0, false
 }

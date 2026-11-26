@@ -1,5 +1,7 @@
 package engine
 
+import "sync/atomic"
+
 // Theme is authored music: grids played in order, one per pattern (two bars
 // each), then Then. A theme is written in scale degrees, so it plays in
 // whatever key and tempo the params set; set them with SetParametersNow
@@ -62,6 +64,28 @@ type themeCmd struct {
 	gen int64
 }
 
+// ThemeAt is when a ReviseTheme lands.
+type ThemeAt int
+
+const (
+	// AtNextRow lands on the next row to step, as a SetGrid does: for an
+	// editor, where a change is heard the next time the playhead passes it.
+	AtNextRow ThemeAt = iota
+	// AtNextGrid lands as the next grid starts.
+	AtNextGrid
+	// AtNextLoop lands as a ThenLoop theme next starts over: for a variation
+	// made ready during one pass and played on the next.
+	AtNextLoop
+)
+
+// reviseCmd carries a ReviseTheme call to the audio thread; gen is the theme
+// it was meant for, the last PlayTheme before it.
+type reviseCmd struct {
+	t   *Theme
+	at  ThemeAt
+	gen int64
+}
+
 var silence = Grid{} // no bed, every lane at rest
 
 // PlayTheme starts t within one block, from its first grid at the start of a
@@ -80,6 +104,74 @@ func (s *Synth) PlayTheme(t *Theme) {
 		s.finishTheme(gen)
 	}
 	s.themeCmd.Store(&themeCmd{t, gen})
+}
+
+// ReviseTheme replaces what the playing theme holds, its grids and its Then,
+// and leaves where it is playing alone: the playhead keeps its grid and row,
+// where PlayTheme would start over from the first. It is what SetGrid is to
+// one grid. t is always the whole theme.
+//
+// At AtNextRow the change is heard from the next row on. At AtNextGrid or
+// AtNextLoop it waits for that boundary; only one revision waits, a later one
+// taking its place, and an AtNextRow meanwhile does not disturb it. A waiting
+// revision also lands at a Rewind, and is dropped if the theme ends first:
+// an AtNextLoop one always is unless the theme playing loops.
+//
+// The playhead's grid number carries over: the grid playing is replaced by
+// t's at the same place, and the next is t's next. If t has fewer grids than
+// that, the number wraps into t, which is not the theme starting over: the
+// pass is counted, and an AtNextLoop revision lands, where the theme playing
+// would have reached its end. An EndTheme already counting still ends the
+// theme where it was going to.
+//
+// ReviseTheme applies to the theme started by the last PlayTheme before it,
+// and is ignored if that one has finished, or if t is nil or has no grids.
+// Safe to call from any goroutine.
+func (s *Synth) ReviseTheme(t *Theme, at ThemeAt) {
+	if t == nil || len(t.Grids) == 0 {
+		return
+	}
+	c := &reviseCmd{
+		&Theme{Grids: append([]Grid(nil), t.Grids...), Then: t.Then}, // the caller may keep editing its copy
+		at, s.themeGen.Load(),
+	}
+	if at == AtNextRow {
+		s.reviseNow.Store(c)
+	} else {
+		s.reviseLater.Store(c)
+	}
+}
+
+// takeRevisions runs on the audio thread at a block boundary, after any
+// PlayTheme staged in the same block, so a revision of the theme just
+// started is not taken for one of the theme before.
+func (s *Synth) takeRevisions() {
+	if c := s.takeRevision(&s.reviseNow); c != nil {
+		s.theme = c.t
+		s.themeAt %= len(c.t.Grids)
+	}
+	if c := s.takeRevision(&s.reviseLater); c != nil {
+		s.revise = c
+	}
+}
+
+// takeRevision empties a ReviseTheme slot and returns what it held if that is
+// for the theme playing. One for a theme this thread has yet to start stays
+// in its slot: a PlayTheme and its revision can both arrive between this
+// block's look for the theme and its look here, and the revision is taken a
+// block later, once the theme has started.
+func (s *Synth) takeRevision(slot *atomic.Pointer[reviseCmd]) *reviseCmd {
+	c := slot.Load()
+	if c == nil || c.gen > s.themeOf {
+		return nil
+	}
+	if !slot.CompareAndSwap(c, nil) {
+		return nil // replaced as we looked: the newer one is taken next block
+	}
+	if s.theme == nil || c.gen != s.themeOf {
+		return nil
+	}
+	return c
 }
 
 // EndTheme ends the playing theme after n units, counted from the unit the
@@ -108,7 +200,7 @@ func (s *Synth) ThemePlaying() bool { return s.themeGen.Load() != s.themeDone.Lo
 // step, so the theme's first row steps on this frame.
 func (s *Synth) startTheme(c *themeCmd) {
 	s.theme, s.themeAt, s.themeOf, s.themeFresh, s.silent = c.t, 0, c.gen, true, false
-	s.themeEnds = false
+	s.themeEnds, s.themePass, s.revise = false, 0, nil
 	if c.t == nil {
 		return
 	}
@@ -194,8 +286,14 @@ func (s *Synth) advanceTheme() {
 	if s.theme == nil {
 		return
 	}
-	at := s.themeNext()
+	t, at, wraps := s.themeAhead()
+	if t != s.theme {
+		s.theme, s.revise = t, nil // the waiting revision lands here
+	}
 	s.themeFresh = false
+	if wraps {
+		s.themePass++
+	}
 	if at >= 0 {
 		s.themeAt = at
 		return
@@ -207,18 +305,44 @@ func (s *Synth) advanceTheme() {
 	s.finishTheme(s.themeOf)
 }
 
-// themeNext is the grid advanceTheme moves the playing theme to, or -1 when
-// the theme ends there.
-func (s *Synth) themeNext() int {
-	switch {
-	case s.themeFresh:
-		return s.themeAt
-	case s.themeAt+1 < len(s.theme.Grids):
-		return s.themeAt + 1
-	case s.theme.Then == ThenLoop:
+// themeAhead is what the pattern about to start plays: the theme, which is
+// the waiting revision's if that lands there, and the grid of it, or -1 when
+// the theme ends there. wraps is whether the theme starts over there.
+func (s *Synth) themeAhead() (t *Theme, at int, wraps bool) {
+	t = s.theme
+	if s.themeFresh {
+		// the theme's first grid, or a Rewind's: a boundary of every kind
+		if s.revise != nil {
+			t = s.revise.t
+		}
+		return t, 0, false
+	}
+	if s.revise != nil && s.revise.at == AtNextGrid {
+		t = s.revise.t
+	}
+	switch next := s.themeAt + 1; {
+	case next < len(t.Grids):
+		return t, next, false
+	case next < len(s.theme.Grids):
+		// a revision with fewer grids, landing mid-pass: the grid number
+		// wraps into it, as it does for one landing on a row
+		return t, next % len(t.Grids), false
+	case t.Then != ThenLoop:
+		return t, -1, false
+	}
+	if s.revise != nil {
+		t = s.revise.t
+	}
+	return t, 0, true
+}
+
+// themeWord is where the theme is as the row log keeps it: the pass above
+// the grid plus one, and 0 for no theme.
+func (s *Synth) themeWord() int64 {
+	if s.theme == nil {
 		return 0
 	}
-	return -1
+	return int64(s.themePass)<<32 | int64(s.themeAt+1)
 }
 
 // Who owns a row's drums. A grid's polymetric lanes run on while the owner
@@ -234,16 +358,16 @@ const (
 // that row itself when a theme starts or the owner changes there. It reads
 // ahead, as step will find things once advanceTheme has run.
 func (s *Synth) nextOwner() (g *Grid, own, from int) {
-	theme, silent, at, fresh := s.theme != nil, s.silent, s.themeAt, false
-	if theme && s.row == 0 {
+	theme, silent, at, fresh := s.theme, s.silent, s.themeAt, false
+	if theme != nil && s.row == 0 {
 		fresh = s.themeFresh
-		if at = s.themeNext(); at < 0 {
-			theme, silent = false, s.theme.Then == ThenSilence
+		if theme, at, _ = s.themeAhead(); at < 0 {
+			theme, silent = nil, theme.Then == ThenSilence
 		}
 	}
 	switch {
-	case theme:
-		g, own = &s.theme.Grids[at], ownTheme
+	case theme != nil:
+		g, own = &theme.Grids[at], ownTheme
 	case silent:
 		g, own = &silence, ownTheme
 	default:

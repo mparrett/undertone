@@ -29,6 +29,55 @@ func (m *Music) playTheme(v vm.Value) (vm.Value, error) {
 	return vm.NIL, nil
 }
 
+// reviseTheme replaces what the playing theme holds and keeps its place
+// (engine.Synth.ReviseTheme): the theme as play-theme takes it, and when it
+// lands, :row, :grid or :loop. A theme waiting on music-start is replaced
+// whatever the when, since no place in it has played yet; one the output is
+// already rendering as it opens is revised as a playing one is.
+func (m *Music) reviseTheme(v, when vm.Value) (vm.Value, error) {
+	t, at, err := reviseArgs(v, when)
+	if err != nil {
+		return vm.NIL, fmt.Errorf("undertone/revise-theme: %w", err)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.out == nil {
+		switch {
+		case m.theme == nil:
+		case m.opening != nil && m.theme == m.openingTheme:
+			m.opening.ReviseTheme(t, at)
+		default:
+			m.theme = t
+		}
+		return vm.NIL, nil
+	}
+	m.synth.ReviseTheme(t, at)
+	return vm.NIL, nil
+}
+
+// reviseArgs reads a revise-theme's theme and when. No theme is an error
+// here, where play-theme takes nil to stop one: a revision with nothing in
+// it would be ignored, which hides a bug in the game.
+func reviseArgs(v, when vm.Value) (*engine.Theme, engine.ThemeAt, error) {
+	t, err := theme(v)
+	if err != nil {
+		return nil, 0, err
+	}
+	if t == nil {
+		return nil, 0, fmt.Errorf("takes a theme with grids; play-theme with nil stops one")
+	}
+	k, _ := when.(vm.Keyword)
+	switch string(k) {
+	case "row":
+		return t, engine.AtNextRow, nil
+	case "grid":
+		return t, engine.AtNextGrid, nil
+	case "loop":
+		return t, engine.AtNextLoop, nil
+	}
+	return nil, 0, fmt.Errorf("lands at :row, :grid or :loop, got %v", when)
+}
+
 // themeEnd is an undertone/end-theme's count.
 type themeEnd struct {
 	n int

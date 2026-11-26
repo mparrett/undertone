@@ -106,6 +106,14 @@ to the generator, `ThenSilence` rests until the next theme, and `ThenLoop`
 repeats it. `ThemePlaying` reports whether it has still to finish. A theme is
 written in scale degrees, so it plays in the key and tempo the params set.
 
+`Synth.ReviseTheme` replaces what the playing theme holds and keeps its
+place, where `PlayTheme` would start over: it is to a theme what `SetGrid`
+is to one grid. It takes the whole theme and when to land it. `AtNextRow` is
+for an editor, a change being heard the next time the playhead passes it.
+`AtNextGrid` and `AtNextLoop` wait for that boundary, so a host can make the
+next pass's variation ready during this one and never has to meet the
+boundary itself; `Position` says which grid and which pass is playing.
+
 `Synth.Rewind` starts what is playing over from the top: a grid or the
 generator from the first row of a new pattern, a theme from its first grid.
 
@@ -254,9 +262,10 @@ audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 | `undertone/glide-sfx-gain` | the same over a chosen number of seconds |
 | `undertone/set-queue` | browser only, and not in a `-w-audio` bundle (the seam owns the queue there): milliseconds of audio queued ahead of the speaker, for tuning per device without a rebuild; clamped to the ring, with the clamp reported on stderr |
 | `undertone/play-theme` | `{:grids [{:lead [1 0 3] :bass [1] :pulse [true] :drums ["X..." "" "x.x."] :bed false} ...] :then :generate}`: an authored theme, from its first grid at once; `:then` is `:generate`, `:silence` or `:loop`; nil stops it. Sent before `music-start`, it starts with the music |
+| `undertone/revise-theme` | `(undertone/revise-theme theme :row)`: replaces what the playing theme holds, `theme` as `play-theme` takes it and always whole, and keeps its place: nothing is cut and nothing starts over. `:row` lands on the next row, `:grid` as the next grid starts, `:loop` as a `:loop` theme next starts over. One `:grid` or `:loop` revision waits at a time, a later one replacing it; a `:row` one meanwhile leaves it waiting. Ignored when no theme is playing |
 | `undertone/end-theme` | `{:grids 1}`, `{:bars 1}` or `{:rows 4}`: ends the playing theme after that many units, counted from the one playing now (at a boundary, the one starting), then as its `:then` says, a `:loop` handing back to the generator. A grid is 16 rows, a bar 8, a row an eighth note. For a title theme that loops until the player starts and then finishes its phrase |
 | `undertone/theme-playing?` | whether the last theme has still to finish |
-| `undertone/position` | where the sequencer is, for a playhead: `{:row 3 :pattern 12 :frame 1234567 :pending? false :theme-pending? false :heard? true}`, or nil while stopped. `:heard?` is true when the row is the one at the speaker (the output reports its queue: the browser's webaudio), false when it is the last row rendered, ahead by the output's latency. `:pending?` is a `set-parameters` waiting for the next pattern, `:theme-pending?` a `play-theme` about to start |
+| `undertone/position` | where the sequencer is, for a playhead: `{:row 3 :pattern 12 :frame 1234567 :pending? false :theme-pending? false :heard? true :theme-grid 2 :theme-pass 0}`, or nil while stopped. `:theme-grid` is which grid of a theme the row is in, from 0, and `:theme-pass` how many times the theme had played through before; both nil outside a theme. `:heard?` is true when the row is the one at the speaker (the output reports its queue: the browser's webaudio), false when it is the last row rendered, ahead by the output's latency. `:pending?` is a `set-parameters` waiting for the next pattern, `:theme-pending?` a `play-theme` about to start |
 | `undertone/layer-levels` | how loud each layer is now: `{:drone 0.12 :fifth 0.05 :pad 0 :lead 0.2 :air 0.01 :pulse 0 :drums 0.3 :bass 0.15}`, or nil while stopped; `:bass` is a theme's grid bass, 0 in generated music. A peak envelope of each layer's dry output, letting go over about 400 ms: before the music gain and the delay and reverb, and whether or not the layer is muted, so a muted layer still shows it plays. Silent while the music is paused |
 | `undertone/levels` | the mix's meter in four bands, `{:sub :low-mid :mid :high}`, the same envelope the CLI's `-vu` draws; nil while stopped |
 | `undertone/note-events` | the notes the music started since a cursor, for a piano roll: `(undertone/note-events cursor)`, starting from 0 or nil (a cursor kept across `music-stop` and `music-start` reads the new music from its start), returns `{:next 812 :dropped 0 :now 1234567 :heard? true :events [{:layer :lead :kind :note :note 72 :gain 0.55 :row 3 :pattern 12 :frame 1230000} ...]}`; pass `:next` back next time. Drum events add `:lane` (`:kick`, `:clap` or `:shaker`, named for the default kit: a palette may put other sounds in them) and have kinds `:on`, `:off`, `:ratchet` and `:grace`; a track's are `:note`, `:retrigger` (heard 5 ms late, after the last note fades) and `:revoice` (a `set-parameters-now` moving a held note). `:now` is the frame at the speaker when `:heard?`, else the last one rendered, on the events' clock. The music keeps the last 256; a reader further behind gets the newest and `:dropped` counts the rest. Muted layers report their notes; one-shots never appear. Nil while stopped |

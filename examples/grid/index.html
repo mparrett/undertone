@@ -183,6 +183,27 @@
   .c::after { content: ""; display: block; height: 100%; border-radius: 3px; background: var(--panel);
               border: 1px solid var(--line); }
   .c.g4 { padding-left: 7px; }
+  /* next: a ghost of the four steps that play after this grid, to the right
+     of every lane, so the join can be seen while its last notes are written.
+     Not cells: it cannot be edited. Only where there is room beside the grid. */
+  .ghost { display: none; }
+  @media (min-width: 900px) {
+    html.next { --cols: 20.75; }
+    html.next .grid { position: relative; }
+    html.next .ghost { display: grid; position: absolute; left: calc(100% + 12px); top: 0; pointer-events: none;
+                       grid-template-columns: repeat(4, var(--cell)); grid-auto-rows: var(--row); opacity: .55; }
+    html.next #drums .ghost { grid-template-columns: repeat(8, calc(var(--cell) / 2)); grid-auto-rows: var(--drow); }
+    /* the grid and the ghost together sit in the middle, the header moving with them */
+    html.next main { position: relative; left: calc(-2 * var(--cell) - 6px); }
+    .ghost .g { padding: 1px; }
+    .ghost .g::after { content: ""; display: block; height: 100%; border-radius: 3px; background: var(--panel); border: 1px dashed var(--line); }
+    .lead .ghost .g.on::after { background: var(--lead); border: 1px solid var(--lead); }
+    .bass .ghost .g.on::after { background: var(--bass); border: 1px solid var(--bass); }
+    .pulse .ghost .g.on::after { background: var(--pulse); border: 1px solid var(--pulse); }
+    .drums .ghost .g.on::after { background: var(--drum); border: 1px solid var(--drum); }
+    .drums .ghost .g.ch::after { border: 1px dashed var(--drum); }
+    .ghost .tag { position: absolute; left: 2px; bottom: 100%; font-size: 10px; line-height: 14px; color: var(--mut); white-space: nowrap; }
+  }
   .c.head::after { background: #23232b; }
   .lead .c.on::after { background: var(--lead); border-color: var(--lead); }
   .bass .c.on::after { background: var(--bass); border-color: var(--bass); }
@@ -242,7 +263,7 @@
      what give them room. */
   @media (min-width: 900px) {
     :root { --other: 355px; /* 33px of it the backing row */
-            --cell: clamp(22px, calc((100vw - 64px - 32px - 18px) / 16), 56px);
+            --cell: clamp(22px, calc((100vw - 64px - 32px - 18px) / var(--cols, 16)), 56px);
             --drow: min(calc(var(--cell) / 2), 32px);
             --row: clamp(20px, min(calc((100dvh - var(--other) - var(--drows, 3) * var(--drow)) / var(--rows, 17)), var(--cell)), 44px); }
     body { padding: 0 32px 32px; }
@@ -286,7 +307,7 @@
   @supports (width: round(down, 1px, 1px)) {
     :root { --cell: clamp(17px, round(down, calc((100vw - 32px - 32px - 3 * 6px) / 16), 2px), 28px); }
     @media (min-width: 900px) {
-      :root { --cell: clamp(22px, round(down, calc((100vw - 64px - 32px - 18px) / 16), 2px), 56px);
+      :root { --cell: clamp(22px, round(down, calc((100vw - 64px - 32px - 18px) / var(--cols, 16)), 2px), 56px);
               --drow: min(round(down, calc(var(--cell) / 2), 1px), 32px);
               --row: clamp(20px, round(down, min(calc((100dvh - var(--other) - var(--drows, 3) * var(--drow)) / var(--rows, 17)), var(--cell)), 1px), 44px); }
     }
@@ -343,6 +364,7 @@
     <div class="bar"><span class="lab">view</span>
       <button class="bed" id="mixbtn" title="show a strip of all four lanes over one another, their colours added; not saved in the link">mix</button>
       <button class="bed" id="echobtn" title="show a strip of the echo: what the shared delay returns, every lane's at once; not saved in the link">echo</button>
+      <button class="bed" id="nextbtn" title="show, to the right of each lane, the four steps that play after this grid: its own first steps as it comes round, or in a chain the next slot's. To look at: it is not edited there.">next</button>
       <button class="bed" id="ednbtn" title="show the pattern and the settings as EDN over the grid (Esc closes it); not saved in the link">edn</button>
       <button class="bed" id="helpbtn" title="how it works, over the grid (Esc closes it)" aria-label="how it works">?</button></div>
   </div>
@@ -448,6 +470,7 @@
   // slot each grid last sent came from, empty while no chain plays;
   // heardSlot is the one at the speaker, or -1.
   let chain = 0, chainSlots = [], heardSlot = -1;
+  let slotsUp = false; // the slots, declared further down, are read: the ghost may look at them
   // follow: the grid shows the slot of the chain being heard, moving on with
   // it. Picking a slot by hand turns it off: that is a choice to stay.
   let follow = true;
@@ -541,6 +564,16 @@
     });
   })();
 
+  // The ghost: beside each lane, the first GHOST steps of what plays next.
+  const GHOST = 4;
+  for (const [id, rows, cols] of [["lead", DEG, GHOST], ["bass", DEG, GHOST], ["pulse", 1, GHOST], ["drums", DRUMS.length, 2 * GHOST]]) {
+    const g = document.createElement("div"); g.className = "ghost"; g.setAttribute("aria-hidden", "true");
+    const tag = document.createElement("span"); tag.className = "tag"; g.appendChild(tag);
+    for (let r = 0; r < rows; r++) for (let i = 0; i < cols; i++) {
+      const c = document.createElement("div"); c.className = "g"; c.dataset.r = r; c.dataset.i = i; g.appendChild(c);
+    }
+    $(id).appendChild(g);
+  }
   // A looping lane runs on across patterns, so each pass starts it somewhere
   // else in its loop: loopAt is where, per lane, learnt from the hits the
   // engine reports, and the cells draw the pass that is playing.
@@ -556,6 +589,33 @@
   };
   // A lane spelled from a figure: the loop over one pattern, as lanes() builds it.
   const loopLane = (loop) => { const a = [...loop.repeat(Math.ceil(SIXTEENTHS / loop.length)).slice(0, SIXTEENTHS)]; a.loop = loop; return a; };
+  // What plays after the grid on screen, and the slot it is: in a chain the
+  // next of its slots, round to the first; otherwise this grid again.
+  function nextGrid() {
+    const k = chainSlots.indexOf(slot), n = k < 0 ? -1 : chainSlots[(k + 1) % chainSlots.length];
+    const g = n >= 0 && n !== slot ? linkGrid(slots[n]?.link) : null;
+    return g ? { g, n } : { g: liveGrid(), n: slot };
+  }
+  function paintGhost() {
+    if (!document.documentElement.classList.contains("next") || !slotsUp) return;
+    const { g, n } = nextGrid();
+    for (const el of document.querySelectorAll(".ghost")) {
+      const lane = el.parentElement.id;
+      el.querySelector(".tag").textContent = `(${n + 1})`;
+      for (const c of el.querySelectorAll(".g")) {
+        const r = +c.dataset.r, i = +c.dataset.i;
+        let on = false, ch = false;
+        if (lane === "pulse") on = !!g.pulse[i];
+        else if (lane === "drums") {
+          // a lane that loops at its own length runs on from where this pattern leaves it
+          const d = g.drums[r] || "", loop = d.endsWith("|") ? d.slice(0, -1) : "";
+          const x = loop ? loop[(loopAt[r] + SIXTEENTHS + i) % loop.length] : d[i] || ".";
+          on = !!LEVEL[x]; ch = !!CHANCE[x];
+        } else on = g[lane][i] === DEG - r; // the top row is the highest degree
+        c.classList.toggle("on", on); c.classList.toggle("ch", ch);
+      }
+    }
+  }
   function paint() {
     for (const c of document.querySelectorAll(".c")) {
       const s = +c.dataset.step, lane = c.dataset.lane;
@@ -571,6 +631,7 @@
       const on = lane === "pulse" ? st.pulse[s] : st[lane][s] === +c.dataset.deg;
       c.classList.toggle("on", on);
     }
+    paintGhost();
     for (const l of document.querySelectorAll("#drums .lbl")) { // a looping lane names its length
       const loop = st.drums[l.dataset.drum].loop;
       const d = l.dataset.drum, [k, n] = loop ? loopPass(loop.length, loopAt[d]) : [0, 1];
@@ -1524,7 +1585,7 @@
     const { grids, from } = chainGrids();
     if (ready && (grids.length || chainSlots.length)) undertoneGrid.setChain(grids.length ? JSON.stringify(grids) : "", JSON.stringify(from));
     chainSlots = from;
-    showChainEDN(); paintChain();
+    showChainEDN(); paintChain(); paintGhost();
   }
   function paintChain() {
     document.documentElement.classList.toggle("chained", chain > 0);
@@ -1539,6 +1600,14 @@
     c.onclick = () => { chain = n; store(CHAINKEY, String(n)); pushChain(); };
     $("chain").appendChild(c);
   }
+  slotsUp = true;
+  const NEXTKEY = "undertone-grid-next";
+  function showNext(on) {
+    document.documentElement.classList.toggle("next", on); $("nextbtn").classList.toggle("on", on);
+    store(NEXTKEY, String(+on)); paintGhost();
+  }
+  $("nextbtn").onclick = () => showNext(!document.documentElement.classList.contains("next"));
+  { let on = true; try { on = localStorage.getItem(NEXTKEY) !== "0"; } catch {} showNext(on); }
   const FOLLOWKEY = "undertone-grid-follow";
   try { follow = localStorage.getItem(FOLLOWKEY) !== "0"; } catch {}
   function setFollow(on) { follow = on; store(FOLLOWKEY, String(+on)); paintChain(); }

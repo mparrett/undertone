@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Undertone Grid · four slots</title>
+<!-- A spike: four of the grid page's slots side by side, all editable, played
+     as one chain. It reads and writes the same slots the grid page keeps in
+     this browser, so the two are views of the same patterns. It has no undo,
+     no drum sixteenths, no loops and no voice picks: those stay on the grid
+     page. Served beside index.html, it runs the same main.wasm. -->
+<style>
+  :root {
+    --bg: #0d0d10; --panel: #15151a; --line: #26262e; --fg: #d6d1c2; --mut: #8a8576;
+    --lead: #e0b84f; --bass: #5fa8c9; --pulse: #c96a5f; --drum: #9cc46a;
+    /* twenty rows of cells and their headings fit one screen where it is tall enough */
+    --row: clamp(13px, calc((100vh - 230px) / 23), 26px);
+  }
+  *, *::after { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 ui-monospace, Menlo, monospace; }
+  h1 { font-size: 14px; letter-spacing: .2em; color: var(--mut); margin: 0; font-weight: 600; }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+  button, select { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 12px; cursor: pointer; }
+  #play { min-width: 6.5em; border-color: #3d5a47; background: #18241d; }
+  #play.on { border-color: var(--lead); background: #2a2414; }
+  #play:disabled { color: var(--mut); border-color: var(--line); background: var(--panel); }
+  label { color: var(--mut); display: flex; gap: 8px; align-items: center; }
+  label span { color: var(--fg); min-width: 3ch; font-variant-numeric: tabular-nums; }
+  input[type=range] { accent-color: var(--lead); width: 130px; }
+  .note { color: var(--mut); font-size: 12px; margin: 0 0 12px; max-width: 100ch; }
+  .note a { color: var(--fg); }
+  .seg button { border-radius: 0; padding: 3px 10px; font-size: 12px; color: var(--mut); }
+  .seg button:first-child { border-radius: 6px 0 0 6px; } .seg button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+  .seg button.on { color: var(--fg); border-color: var(--mut); background: #22222a; }
+
+  #slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; }
+  .slot { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 8px 8px 10px; }
+  .slot.heard { border-color: var(--mut); }
+  .slot h2 { display: flex; gap: 8px; align-items: baseline; font-size: 12px; font-weight: 600; margin: 0 0 6px; color: var(--mut); }
+  .slot.heard h2 b { color: var(--fg); }
+  .slot h2 .say { font-weight: 400; margin-left: auto; }
+  .slot h2 button { padding: 1px 8px; font-size: 11px; border-radius: 6px; color: var(--mut); }
+  .slot h2 button.on { color: var(--fg); border-color: var(--mut); }
+  .lane { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; margin-bottom: 8px; touch-action: none; }
+  .lane .c { height: var(--row); border-radius: 3px; background: var(--panel); border: 1px solid var(--line); }
+  .lane .c:nth-child(16n+5), .lane .c:nth-child(16n+9), .lane .c:nth-child(16n+13) { margin-left: 3px; }
+  .lane[data-lane=lead] .c.on { background: var(--lead); border-color: var(--lead); }
+  .lane[data-lane=bass] .c.on { background: var(--bass); border-color: var(--bass); }
+  .lane[data-lane=pulse] .c.on { background: var(--pulse); border-color: var(--pulse); }
+  .lane[data-lane=drums] .c.on { background: var(--drum); border-color: var(--drum); }
+  .lane[data-lane=drums] .c.soft { background: color-mix(in srgb, var(--drum) 45%, var(--panel)); border-color: var(--drum); }
+  .lane[data-lane=drums] .c.ch { border-style: dashed; border-color: var(--drum); }
+  /* a hit on the sixteenth between two cells, which this page shows and does not edit */
+  .lane[data-lane=drums] .c.off::after { content: ""; display: block; width: 4px; height: 4px; border-radius: 50%; margin: calc(var(--row) / 2 - 3px) 1px 0 auto; background: var(--drum); }
+  .lane.fixed .c { opacity: .55; cursor: default; }
+  .c.head { box-shadow: inset 0 0 0 100px #ffffff1c; }
+  .slot.empty .lane .c { opacity: .45; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>UNDERTONE · GRID · FOUR SLOTS</h1>
+  <button id="play" disabled>loading…</button>
+  <button id="restart" title="back to the first slot's first step">&#9198;&#xFE0E;</button>
+  <label>tempo <input id="bpm" type="range" min="60" max="160" step="1" value="110"><span id="bpmv">110</span></label>
+  <label>mood <select id="mood"></select></label>
+  <div class="seg" id="page"><button data-v="0" class="on">slots 1–4</button><button data-v="4">slots 5–8</button></div>
+  <span id="status" class="note" style="margin:0"></span>
+</div>
+<p class="note">A spike. These are the <a href="./">grid page</a>'s slots, four at a time: an edit here is saved to the slot, and shows there. The slots on screen play in order, round and round; empty ones are skipped. Voices, seed, tension and feel are slot 1's as the grid page set them; tempo and mood here last until the page is closed. Drums show eighths only, and a looping lane cannot be edited here.</p>
+<div id="slots"></div>
+
+<script src="wasm_exec.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const STEPS = 16, ROWS = 8, DRUMS = ["kick", "clap", "shkr"], SLOTKEY = "undertone-grid-slots";
+  const HIT = "Xxo", CHANCE = "?f";
+  let ready = false, playing = false, first = 0; // first: the slot the left panel shows
+  let slots = [];
+  const readSlots = () => { try { const a = JSON.parse(localStorage.getItem(SLOTKEY)); if (Array.isArray(a)) return a; } catch {} return []; };
+
+  // ---- a slot's link, as the grid page keeps it: #v1;k=v;... Only the
+  // lanes are rewritten here; every other key goes back as it came.
+  const parts = (link) => (link || "").startsWith("#v1;") ? link.slice(4).split(";").map((s) => { const i = s.indexOf("="); return [s.slice(0, i), s.slice(i + 1)]; }) : null;
+  const get = (kv, k) => kv.find((e) => e[0] === k)?.[1];
+  function set(kv, k, v) { const e = kv.find((e) => e[0] === k); if (e) e[1] = v; else kv.push([k, v]); }
+  const join = (kv) => "#v1;" + kv.map((e) => e.join("=")).join(";");
+  const digits = (s) => s && s.length === STEPS && /^[0-8]+$/.test(s) ? [...s].map(Number) : null;
+  // a drum lane as 32 sixteenths, or null for one that loops at its own length
+  const lane32 = (s) => s.endsWith("|") ? null : [...(s + ".".repeat(32)).slice(0, 32)];
+  function openLink(link) {
+    const kv = parts(link); if (!kv) return null;
+    const lead = digits(get(kv, "L")), bass = digits(get(kv, "B")); if (!lead || !bass) return null;
+    const p = parseInt(get(kv, "P") || "0", 16);
+    let D = []; try { D = decodeURIComponent(get(kv, "D") || "").split(","); } catch {}
+    if (D.length !== DRUMS.length || !D.every((s) => /^[Xxo.?f]*$|^[Xxo.?f]+\|$/.test(s))) D = DRUMS.map(() => "");
+    return { kv, lead, bass, pulse: [...Array(STEPS)].map((_, i) => !!(p & (1 << i))), drums: D, bed: get(kv, "bed") !== "0" };
+  }
+  function save(i) {
+    const g = pats[i], kv = g.kv;
+    set(kv, "L", g.lead.join("")); set(kv, "B", g.bass.join(""));
+    set(kv, "P", g.pulse.reduce((n, on, k) => n | (on ? 1 << k : 0), 0).toString(16));
+    set(kv, "D", g.drums.join(",")); set(kv, "bed", String(+g.bed));
+    // drums written here are a choice of drums, as an edit on the grid page is
+    const dc = kv.findIndex((e) => e[0] === "dc"); if (dc >= 0) kv.splice(dc, 1);
+    const gr = kv.findIndex((e) => e[0] === "g"); if (gr >= 0) kv.splice(gr, 1);
+    slots = readSlots(); slots[i] = { link: join(kv) };
+    try { localStorage.setItem(SLOTKEY, JSON.stringify(slots)); } catch {}
+  }
+  let pats = []; // each slot opened, or null for an empty one
+  const load = () => { slots = readSlots(); pats = [...Array(8)].map((_, i) => openLink(slots[i]?.link)); };
+  // an empty slot's first edit starts it: no notes, and the settings of the first slot that has any
+  function start(i) {
+    const from = pats.find(Boolean);
+    const kv = from ? from.kv.map((e) => [...e]) : parts("#v1;t=110;m=overworld;v=kalimba;s=1");
+    pats[i] = { kv, lead: Array(STEPS).fill(0), bass: Array(STEPS).fill(0), pulse: Array(STEPS).fill(false), drums: DRUMS.map(() => ""), bed: true };
+  }
+
+  // ---- settings: slot 1's, or the first slot's that has any
+  const settings = () => {
+    const kv = pats.find(Boolean)?.kv || [], n = (k) => +get(kv, k);
+    const m = get(kv, "m");
+    return { bpm: +$("bpm").value, mood: $("mood").value || (m?.length > 1 ? m : "overworld"), voice: get(kv, "v") || "kalimba", bass: get(kv, "bv") || "",
+             seed: n("s") || 1, busy: get(kv, "bz") == null ? null : n("bz") / 100, tension: (n("tn") || 0) / 100, feel: (n("fl") || 0) / 100 };
+  };
+  const pushParams = () => { if (ready) undertoneGrid.setParams(JSON.stringify(settings())); };
+  function pushChain() {
+    if (!ready) return;
+    const grids = [], ids = [];
+    for (let i = first; i < first + 4; i++) if (pats[i]) { const g = pats[i]; grids.push({ lead: g.lead, bass: g.bass, pulse: g.pulse, drums: g.drums, bed: g.bed }); ids.push(i); }
+    undertoneGrid.setChain(grids.length ? JSON.stringify(grids) : "", JSON.stringify(ids));
+  }
+
+  // ---- drawing
+  function build() {
+    const root = $("slots"); root.textContent = "";
+    for (let i = first; i < first + 4; i++) {
+      const el = document.createElement("section"); el.className = "slot"; el.dataset.slot = i;
+      el.innerHTML = `<h2><b>slot ${i + 1}</b><button class="bed" title="the mood's drone, fifth and pad under this slot">bed</button><span class="say"></span></h2>`;
+      const lane = (name, rows) => {
+        const d = document.createElement("div"); d.className = "lane"; d.dataset.lane = name;
+        for (let r = 0; r < rows; r++) for (let s = 0; s < STEPS; s++) {
+          const c = document.createElement("div"); c.className = "c"; c.dataset.r = r; c.dataset.s = s; d.appendChild(c);
+        }
+        el.appendChild(d);
+      };
+      lane("lead", ROWS); lane("bass", ROWS); lane("pulse", 1); lane("drums", DRUMS.length);
+      root.appendChild(el);
+    }
+    paint();
+  }
+  function paint() {
+    for (const el of document.querySelectorAll(".slot")) {
+      const i = +el.dataset.slot, g = pats[i];
+      el.classList.toggle("empty", !g);
+      el.querySelector(".say").textContent = g ? "" : "empty: draw to start it";
+      el.querySelector(".bed").classList.toggle("on", !g || g.bed);
+      for (const c of el.querySelectorAll(".c")) {
+        const lane = c.parentElement.dataset.lane, r = +c.dataset.r, s = +c.dataset.s;
+        let on = false, soft = false, ch = false, off = false;
+        if (g) {
+          if (lane === "lead" || lane === "bass") on = g[lane][s] === ROWS - r; // the top row is degree 8
+          else if (lane === "pulse") on = g.pulse[s];
+          else {
+            const a = lane32(g.drums[r]);
+            if (a) { on = a[2 * s] === "X"; soft = a[2 * s] === "x" || a[2 * s] === "o"; ch = CHANCE.includes(a[2 * s]); off = a[2 * s + 1] !== "."; }
+          }
+        }
+        c.classList.toggle("on", on); c.classList.toggle("soft", soft); c.classList.toggle("ch", ch); c.classList.toggle("off", off);
+      }
+      const dl = el.querySelector(".lane[data-lane=drums]");
+      dl.classList.toggle("fixed", !!g && g.drums.some((d) => d.endsWith("|")));
+      dl.title = dl.classList.contains("fixed") ? "a lane here loops at its own length: edit it on the grid page" : "";
+    }
+  }
+
+  // ---- editing: a press sets or clears, and a drag carries that on
+  let drag = null;
+  function edit(c) {
+    const el = c.closest(".slot"), i = +el.dataset.slot, lane = c.parentElement.dataset.lane, r = +c.dataset.r, s = +c.dataset.s;
+    if (!pats[i]) start(i);
+    const g = pats[i];
+    if (lane === "lead" || lane === "bass") {
+      const d = ROWS - r, was = g[lane][s] === d;
+      drag ??= { on: !was };
+      g[lane][s] = drag.on ? d : (was ? 0 : g[lane][s]);
+    } else if (lane === "pulse") {
+      drag ??= { on: !g.pulse[s] };
+      g.pulse[s] = drag.on;
+    } else {
+      const a = lane32(g.drums[r]); if (!a) return; // a looping lane
+      drag ??= { on: !(HIT + CHANCE).includes(a[2 * s]) };
+      a[2 * s] = drag.on ? "X" : ".";
+      g.drums[r] = a.join("");
+    }
+    save(i); paint(); pushParams(); pushChain(); // the params too: the first slot started has brought its settings
+  }
+  $("slots").addEventListener("pointerdown", (e) => {
+    const c = e.target.closest(".c"), bed = e.target.closest(".bed");
+    if (bed) { const i = +bed.closest(".slot").dataset.slot; if (!pats[i]) start(i); pats[i].bed = !pats[i].bed; save(i); paint(); pushChain(); return; }
+    if (!c) return;
+    e.preventDefault(); drag = null; edit(c);
+  });
+  $("slots").addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const c = document.elementFromPoint(e.clientX, e.clientY)?.closest?.(".c");
+    if (c && c !== drag.last) { drag.last = c; edit(c); }
+  });
+  addEventListener("pointerup", () => { drag = null; });
+  addEventListener("pointercancel", () => { drag = null; });
+  // the grid page, in another tab, changed a slot
+  addEventListener("storage", (e) => { if (e.key === SLOTKEY && !drag) { load(); paint(); pushParams(); pushChain(); } });
+
+  // ---- transport
+  function setPlaying(on) {
+    playing = on;
+    on ? undertoneGrid.play() : undertoneGrid.stop(); // from the tap itself: iOS resumes audio only inside one
+    $("play").classList.toggle("on", on);
+    $("play").innerHTML = on ? "&#10074;&#10074; stop" : "&#9654; play";
+  }
+  $("play").onclick = () => setPlaying(!playing);
+  $("restart").onclick = () => { if (ready) undertoneGrid.restart(); };
+  addEventListener("keydown", (e) => {
+    if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
+    if (e.key === " " && ready) { e.preventDefault(); setPlaying(!playing); }
+    if (e.key === "r" && ready) undertoneGrid.restart();
+  });
+  $("bpm").oninput = () => { $("bpmv").textContent = $("bpm").value; };
+  $("bpm").onchange = pushParams;
+  $("mood").onchange = pushParams;
+  for (const b of $("page").children) b.onclick = () => {
+    first = +b.dataset.v;
+    for (const o of $("page").children) o.classList.toggle("on", o === b);
+    build(); pushChain();
+  };
+
+  // ---- playhead: the column heard, in the slot heard
+  let lastAt = "";
+  (function head() {
+    const [row, id] = ready && playing ? undertoneGrid.at() : [-1, -1];
+    if (row + "," + id !== lastAt) {
+      lastAt = row + "," + id;
+      for (const c of document.querySelectorAll(".c.head")) c.classList.remove("head");
+      for (const el of document.querySelectorAll(".slot")) {
+        const on = +el.dataset.slot === id;
+        el.classList.toggle("heard", on);
+        if (on && row >= 0) for (const c of el.querySelectorAll(`.c[data-s="${row}"]`)) c.classList.add("head");
+      }
+    }
+    requestAnimationFrame(head);
+  })();
+
+  // ---- boot
+  window.undertoneGridFailed = (msg) => { $("status").textContent = "audio failed: " + msg; };
+  window.undertoneGridReady = () => {
+    ready = true;
+    for (const m of JSON.parse(undertoneGrid.moods())) { const o = document.createElement("option"); o.textContent = m; $("mood").appendChild(o); }
+    const kv = pats.find(Boolean)?.kv || [], m = get(kv, "m");
+    $("mood").value = m?.length > 1 ? m : "overworld";
+    $("bpm").value = Math.min(160, Math.max(60, +get(kv, "t") || 110)); $("bpmv").textContent = $("bpm").value;
+    pushParams(); pushChain();
+    $("play").disabled = false; $("play").innerHTML = "&#9654; play";
+  };
+  load(); build();
+  const go = new Go();
+  WebAssembly.instantiateStreaming(fetch("main.wasm", { cache: "no-cache" }), go.importObject)
+    .then((r) => go.run(r.instance))
+    .catch((e) => { $("status").textContent = "wasm failed: " + e; });
+</script>
+</body>
+</html>

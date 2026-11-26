@@ -96,3 +96,21 @@ func TestMoodTrimsFromLg(t *testing.T) {
 		t.Fatalf("a non-number :lead-db: err %v, want it named", err)
 	}
 }
+
+// set-parameters reads :feel, and a later map without it keeps it.
+func TestFeelFromLg(t *testing.T) {
+	c, m := lgRuntime(t)
+	m.params = engine.DeriveDungeon(1, 0, 0)
+	if _, err := c.Run("(undertone/set-parameters {:feel 0.6})"); err != nil {
+		t.Fatal(err)
+	}
+	if m.params.Feel != 0.6 {
+		t.Fatalf("feel %v, want 0.6", m.params.Feel)
+	}
+	if _, err := c.Run("(undertone/set-parameters {:bpm 80})"); err != nil {
+		t.Fatal(err)
+	}
+	if m.params.Feel != 0.6 {
+		t.Fatalf("a map without :feel changed it to %v", m.params.Feel)
+	}
+}

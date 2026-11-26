@@ -222,7 +222,8 @@ the other flags set. The file is a vector of grids, or `{"grids": [...],
 for the lead and bass (0 rests) and 1 for a pulse step that sounds. Every key
 is optional. Without `-dur`, a render lasts the theme and four seconds more
 for it to ring out; a looping theme renders `-dur`'s default. `-seed` takes a
-negative number as a signed 64-bit seed, as a game passes one.
+negative number as a signed 64-bit seed, as a game passes one. `-feel 0.6` plays
+the theme with that much feel (see `:feel` below).
 
 The MIDI output is the notes the sequencer starts, for a DAW to play through
 its own instruments: one channel per layer (drone 1, fifth 2, pad 3, lead 4,
@@ -323,6 +324,24 @@ mood changes and each mood keeps its own correction.
 ```clojure
 (undertone/set-parameters-now {:lead-db -3 :bass-db 2})
 ```
+
+`:feel`, 0 to 1, plays a theme's or a grid's lead and bass less evenly. At 0,
+the default, every authored note is struck alike. Raised, a note's level
+follows its place in the bar (at 1 a downbeat is about 3 dB up and an offbeat
+2 dB down), a harder note is brighter and rings longer, and each note differs
+a little from the last in level, tone and tuning (6 cents at most). It is
+seeded, so a render repeats, and it holds across mood changes as the trims do.
+Generated music is not touched, and every note still starts on its row: feel
+does not move timing yet.
+
+```clojure
+(undertone/set-parameters {:feel 0.6})
+```
+
+What "brighter" means depends on the voice. One built from partials (chime,
+kalimba) gets quieter, shorter upper partials on a soft note; one with a
+lowpass (pluck, reed) a lower cutoff. Bell and clang have neither, and take
+only the level, the ring and the tuning.
 
 The `undertone.ambience` namespace that derives full parameter maps from
 `(seed, depth, tension)` comes with the import, as above; its source is

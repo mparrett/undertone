@@ -86,10 +86,24 @@ type ustate struct {
 	// comb, room: retriggered legato, so the ring carries into the new note
 	// rather than the line being emptied, which would cut it with a click
 	held bool
+	// tf is the note's touch on this unit (feel.go): an env's decay, a
+	// lowpass's cutoff or an out's gain is multiplied by it. 1 for a note
+	// with no touch, which leaves every product the float it was.
+	tf float64
+	// tfTo is where an out's tf is gliding: a note struck over one still
+	// ringing moves an upper partial's level there rather than stepping it.
+	tfTo float64
 }
 
 type Voice struct {
-	patch    Patch
+	patch Patch
+	// touch is how the voice's next note is struck (feel.go). The sequencer
+	// sets it before it triggers or retriggers an authored note, and a note
+	// waiting in pend is struck with it when it fires. Zero for every other
+	// voice.
+	touch    touch
+	touched  bool    // the sounding note has a touch
+	detune   float64 // the sounding note's, in semitones: added to every osc and string
 	note     int
 	gain     float64
 	gate     bool
@@ -132,10 +146,20 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 	// a click at every pattern boundary (a step of 2336 against a normal
 	// largest of 402). A plucked string is struck afresh either way.
 	legato := v.active && samePatch(v.patch, patch)
+	// Touched notes differ in level, so one struck over another still
+	// ringing would step the gain, and click; it glides there instead, as a
+	// mood change's does. Untouched notes in a lane share a level, and step
+	// as they always have.
+	glide := legato && (v.touched || v.touch != (touch{}))
+	v.touched = v.touch != (touch{})
 	v.patch = patch
 	v.note = clampNote(note)
-	v.gain = gain
-	v.gainTo = gain
+	if glide {
+		v.glideGain(gain)
+	} else {
+		v.gain = gain
+		v.gainTo = gain
+	}
 	v.pend = trackRow{}
 	v.gate = true
 	v.gateRows = gateRows
@@ -145,6 +169,8 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 	}
 	v.units = v.units[:len(patch)]
 	v.lineOut = false
+	v.detune = v.touch.detune
+	chain := 0 // the outs before this unit: chain 0 is the patch's first partial
 	for i := range v.units {
 		u := &v.units[i]
 		// A unit keeps a line of its own for its next note, emptied so the
@@ -154,7 +180,7 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 		if v.line != nil && cap(ks) > 0 && &ks[:1][0] == &v.line[0] {
 			ks = nil
 		}
-		kpos, tick := u.kpos, u.tick
+		kpos, tick, tf := u.kpos, u.tick, u.tf
 		if legato {
 			*u = ustate{phase: u.phase, env: u.env, lp: u.lp, ic2: u.ic2, ks: ks}
 		} else {
@@ -164,6 +190,14 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 			u.held, u.kpos, u.tick = true, kpos, tick
 		}
 		u.sweep = 1
+		u.tf = v.touch.unit(patch[i].op, chain)
+		u.tfTo = u.tf
+		if patch[i].op == opOut {
+			chain++
+			if glide {
+				u.tf = tf
+			}
+		}
 		u.rng = seed*2862933555777941757 + uint64(i) + 3037000493
 		// a sample-and-hold lfo's first value; legato keeps the held one
 		if !legato && patch[i].op == opLfo {
@@ -401,7 +435,7 @@ func (v *Voice) run(l, r *float64, b *sends) {
 					s.env, s.stage = 1, 1
 				}
 			case 1:
-				s.env += (u.p[2] - s.env) / (u.p[1] * SampleRate)
+				s.env += (u.p[2] - s.env) / (u.p[1] * s.tf * SampleRate)
 				if s.env-u.p[2] < 1e-3 {
 					s.stage = 2
 				}
@@ -427,14 +461,14 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			if u.p[2] == 0 {
 				// no sweep: pitch is fixed for the note's life, so pow runs once
 				if !s.kset {
-					s.k = noteInc(float64(v.note) + u.p[0])
+					s.k = noteInc(float64(v.note) + u.p[0] + v.detune)
 					s.kset = true
 				}
 				inc = s.k
 			} else if u.p[3] < minLineSweep {
 				// too quick a sweep for the line below to follow: a shot
 				// spec may ask for one that is over within a few samples
-				inc = noteInc(float64(v.note) + u.p[0] + u.p[2]*s.sweep)
+				inc = noteInc(float64(v.note) + u.p[0] + v.detune + u.p[2]*s.sweep)
 				s.sweep -= s.sweep / (u.p[3]*SampleRate + 1)
 			} else {
 				// A sweep's pitch is worked out every 16th sample and runs
@@ -445,7 +479,7 @@ func (v *Voice) run(l, r *float64, b *sends) {
 				// by the same factor each sample as it did when it was
 				// stepped each sample.
 				if s.tick == 0 {
-					base := float64(v.note) + u.p[0]
+					base := float64(v.note) + u.p[0] + v.detune
 					if !s.kset {
 						s.k = noteInc(base + u.p[2]*s.sweep)
 						s.kset = true
@@ -493,7 +527,7 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			stack[sp-1] *= stack[sp]
 		case opLpf:
 			if !s.kset {
-				s.k = 1 - math.Exp(-2*math.Pi*u.p[0]/SampleRate)
+				s.k = 1 - math.Exp(-2*math.Pi*u.p[0]*s.tf/SampleRate)
 				s.kset = true
 			}
 			c := s.k
@@ -623,7 +657,7 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			// of a tone in the top octave. Kept so a sound made with it can
 			// still be had; TestPluckRawIsV020 holds it to that code.
 			if len(s.ks) == 0 { // a new note: strike the string
-				freq := 440 * math.Pow(2, (float64(v.note)+u.p[0]-69)/12)
+				freq := 440 * math.Pow(2, (float64(v.note)+u.p[0]+v.detune-69)/12)
 				var n int
 				if u.op == opPluckRaw {
 					// bounded as a float: converting a period too long for
@@ -739,8 +773,19 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			b.verb += stack[sp-1] * u.p[0] * v.gain
 		case opOut:
 			sp--
-			*l += stack[sp] * u.p[0] * (1 - u.p[1]) * v.gain
-			*r += stack[sp] * u.p[0] * u.p[1] * v.gain
+			// tf scales the unit's gain first, so that the last product,
+			// the one arm64 fuses into the add, is the one it always was
+			if s.tf != s.tfTo {
+				// about 3 ms to arrive, then exactly there
+				if d := s.tfTo - s.tf; math.Abs(d) < 1e-4 {
+					s.tf = s.tfTo
+				} else {
+					s.tf += d / 32
+				}
+			}
+			g := u.p[0] * s.tf
+			*l += stack[sp] * g * (1 - u.p[1]) * v.gain
+			*r += stack[sp] * g * u.p[1] * v.gain
 		}
 	}
 	v.active = alive
@@ -1214,6 +1259,12 @@ type Params struct {
 	// fifth's voice; SetParametersNow fades notes already sounding to the new
 	// level.
 	LeadDB, PadDB, BassDB float64
+	// Feel plays authored notes, a grid's or a theme's lead and bass, less
+	// evenly, 0..1 (feel.go): louder on the strong beats, a harder note
+	// brighter and longer, and each note a little different in tone and
+	// tuning. 0 plays every note alike, as before Feel. Generated music is
+	// not touched.
+	Feel float64
 	// bassGain is the bass lane's gain when ApplyBass chose its voice; zero
 	// plays gridBassGain.
 	bassGain float64
@@ -1532,15 +1583,18 @@ type Synth struct {
 	paramSeq      atomic.Uint64            // the last seq handed to a parameter change
 	applied       uint64                   // seq of the change in params; the audio thread's own
 	samplesPerRow int
-	rowLeft       int
-	row, pat      int
-	voices        []Voice
-	pats          [nTracks][rows]trackRow
-	dl, dr        []float64 // delay lines
-	dpos          int
-	bus           sends // this frame's delay and reverb sends
-	verb          *reverb
-	fx            sfx // one-shot lane (sfx.go); the sequencer never sees it
+	// touch is how each authored note of the pattern is struck, by lane and
+	// row (feel.go); applyGrid fills it, and a fresh pattern clears it.
+	touch    [2][rows]touch
+	rowLeft  int
+	row, pat int
+	voices   []Voice
+	pats     [nTracks][rows]trackRow
+	dl, dr   []float64 // delay lines
+	dpos     int
+	bus      sends // this frame's delay and reverb sends
+	verb     *reverb
+	fx       sfx // one-shot lane (sfx.go); the sequencer never sees it
 
 	// drum lanes (drums.go), silent in moods without a groove
 	drums   [nDrums][rows]drumHit
@@ -1992,9 +2046,10 @@ func (s *Synth) applyNow(c *paramCmd) {
 	}
 	s.pats = buildPatterns(s.params, pat)
 	s.drums = buildDrums(s.params, pat)
+	s.touch = [2][rows]touch{}
 	if g := s.playingGrid(); g != nil {
 		for r := 0; r <= row; r++ {
-			s.applyGrid(g, r)
+			s.applyGridAt(g, pat, r)
 		}
 	}
 	for t := range s.voices {
@@ -2021,6 +2076,7 @@ func (s *Synth) revoice(t, pat, row int) {
 				v.glideGain(tr.gain)
 			}
 		} else {
+			s.setTouch(t, r)
 			v.retrigger(tr, left, s.params.Seed+uint64(pat*rows+r))
 			s.noteAt(t, NoteRevoice, tr.note, tr.gain, r, pat)
 		}
@@ -2041,6 +2097,7 @@ func (s *Synth) step() {
 		}
 		s.pats = buildPatterns(s.params, s.pat)
 		s.drums = buildDrums(s.params, s.pat)
+		s.touch = [2][rows]touch{}
 	}
 	if g := s.playingGrid(); g != nil {
 		s.applyGrid(g, s.row)
@@ -2052,6 +2109,9 @@ func (s *Synth) step() {
 		v := &s.voices[t]
 		tr := s.pats[t][s.row]
 		seed := s.params.Seed + uint64(s.pat*rows+s.row)
+		if tr.note != 0 {
+			s.setTouch(t, s.row)
+		}
 		switch {
 		case tr.note != 0 && (v.pend.note != 0 || v.gain != v.gainTo || v.active && !samePatch(v.patch, tr.patch)):
 			// mid-fade, a trigger would step the gain; on a new patch it
@@ -2349,6 +2409,10 @@ func (p Params) sanitized() Params {
 		p.Grit = 0
 	}
 	p.Grit = min(p.Grit, 1)
+	if !(p.Feel >= 0) {
+		p.Feel = 0
+	}
+	p.Feel = min(p.Feel, 1)
 	if math.IsNaN(p.Open) {
 		p.Open = 0
 	}

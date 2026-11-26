@@ -202,6 +202,7 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 	flt(lgm, "lead-db", &p.LeadDB)
 	flt(lgm, "pad-db", &p.PadDB)
 	flt(lgm, "bass-db", &p.BassDB)
+	flt(lgm, "feel", &p.Feel)
 	flt(lgm, "mood-lead-db", &p.MoodLeadDB)
 	flt(lgm, "mood-pad-db", &p.MoodPadDB)
 	if setMute {

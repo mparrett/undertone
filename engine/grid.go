@@ -149,7 +149,12 @@ var gridBassVoiceGain = map[string]float64{
 }
 
 // applyGrid overwrites this row of the generated pattern with the grid's.
-func (s *Synth) applyGrid(g *Grid, row int) {
+func (s *Synth) applyGrid(g *Grid, row int) { s.applyGridAt(g, s.pat, row) }
+
+// applyGridAt is applyGrid for a row of pattern pat, which applyNow redraws
+// after the sequencer has moved on to the next: a chance step and a note's
+// touch are drawn by where they fall in the run, so they must be told.
+func (s *Synth) applyGridAt(g *Grid, pat, row int) {
 	p := s.params
 	lead, bass := GridBases(p)
 	for _, t := range []int{0, trackFifth, 2, 4} {
@@ -163,7 +168,7 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 		s.voices[t].gate = false
 	}
 	for d, lane := range g.Drums {
-		s.drums[d][row] = gridHit(lane, d, row, s.pat*rows+row-s.runFrom, &p)
+		s.drums[d][row] = gridHit(lane, d, row, pat*rows+row-s.runFrom, &p)
 	}
 	s.pats[trackLead][row] = trackRow{}
 	if d := g.Lead[row]; d > 0 {
@@ -172,6 +177,7 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 			gain = 0.55 // a voice added without measuring it
 		}
 		s.pats[trackLead][row] = trackRow{degreeNote(p, lead, d), gain * trimGain(p.LeadDB, p.MoodLeadDB), p.LeadGate, p.Palette.Lead}
+		s.feel(laneLead, pat, row)
 	}
 	s.pats[trackBass][row] = trackRow{}
 	if d := g.Bass[row]; d > 0 {
@@ -180,6 +186,7 @@ func (s *Synth) applyGrid(g *Grid, row int) {
 			gain = gridBassGain
 		}
 		s.pats[trackBass][row] = trackRow{degreeNote(p, bass, d), gain * dbGain(p.BassDB), 2, p.Palette.bass()}
+		s.feel(laneBass, pat, row)
 	}
 	s.pats[trackPulse][row] = trackRow{}
 	if g.Pulse[row] {

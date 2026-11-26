@@ -94,8 +94,29 @@ func TestLateMSShape(t *testing.T) {
 	}
 }
 
-// A slow row has room for the whole lateness; a very fast one is held to a
-// third of the row, so a note has always started before its lane steps again.
+// A row shorter than any tempo allows still holds a note's lateness to a
+// third of it, so the note has started before its lane steps again.
+func TestLateIsHeldToAThirdOfTheRow(t *testing.T) {
+	p := DeriveOverworld(3, 2, 0)
+	p.Feel = 1
+	s := NewSynth(p)
+	s.samplesPerRow = 600
+	held := 0
+	for row := range rows {
+		s.feel(laneBass, 0, row)
+		if d := s.lateBy[laneBass][row]; d > 200 {
+			t.Errorf("row %d: %d frames late in a row of 600", row, d)
+		} else if d == 200 {
+			held++
+		}
+	}
+	if held == 0 {
+		t.Error("no row's lateness reached the limit, so the limit went untested")
+	}
+}
+
+// At the slowest and fastest tempos Params allows, every lateness fits its
+// row with room to spare, and nothing is left waiting a row later.
 func TestLateFitsTheRow(t *testing.T) {
 	for _, bpm := range []float64{60, 400} {
 		p := DeriveOverworld(3, 2, 0)
@@ -175,5 +196,75 @@ func TestRestartDropsAWaitingNote(t *testing.T) {
 	s.startOver()
 	if s.late[laneLead].left != 0 || s.late[laneBass].left != 0 {
 		t.Errorf("a note of the cut pattern is still waiting: %+v", s.late)
+	}
+}
+
+// A mood change while a note waits does not strike the note before it
+// afresh in the new voice: the waiting note brings the new voice in, once.
+func TestMoodChangeWhileWaitingStrikesOnce(t *testing.T) {
+	p := DeriveOverworld(3, 2, 0)
+	p.Feel = 1
+	g := &Grid{}
+	g.Bass[3], g.Bass[4] = 1, 5 // the bass's gate is two rows: row 3's is still open at row 4
+	s := NewSynth(p)
+	s.SetGrid(g)
+	buf := make([]byte, 4)
+	for s.stepRow != 4 {
+		s.Read(buf)
+	}
+	if s.late[laneBass].left == 0 {
+		t.Fatal("no bass note waiting on row 4")
+	}
+	q := s.params
+	ApplyBass(&q, "bell")
+	s.applyNow(&paramCmd{p: q.owned()})
+	if v := &s.voices[trackBass]; v.pend.note != 0 || !samePatch(v.patch, p.Palette.bass()) {
+		t.Errorf("row 3's note was struck again in the new voice")
+	}
+	for range s.samplesPerRow / 2 {
+		s.Read(buf)
+	}
+	evs, _, _ := s.NoteEvents(0, nil)
+	var got []NoteEvent
+	for _, e := range evs {
+		if e.Layer == 7 && e.Row >= 3 {
+			got = append(got, e)
+		}
+	}
+	if len(got) != 2 || got[0].Row != 3 || got[1].Row != 4 || got[1].Kind == NoteRevoice {
+		t.Fatalf("bass events from row 3 on: %+v, want row 3's note and row 4's, once each", got)
+	}
+	if v := &s.voices[trackBass]; !samePatch(v.patch, q.Palette.bass()) && !samePatch(v.pend.patch, q.Palette.bass()) {
+		t.Error("row 4's note did not bring the new voice in")
+	}
+}
+
+// Notes on consecutive rows join with Feel as they do without: the one
+// sounding keeps its gate until the late one starts, with no release between.
+func TestConsecutiveNotesJoinWithFeel(t *testing.T) {
+	p := DeriveOverworld(3, 2, 0)
+	ApplyLead(&p, "reed")
+	p.LeadGate, p.Feel = 1, 1
+	g := &Grid{}
+	g.Lead[2], g.Lead[3] = 3, 4
+	s := NewSynth(p)
+	s.SetGrid(g)
+	buf := make([]byte, 4)
+	for s.stepRow != 3 {
+		s.Read(buf)
+	}
+	v := &s.voices[trackLead]
+	for s.late[laneLead].left > 1 {
+		if !v.gate {
+			t.Fatalf("row 2's note was let go %d frames before row 3's starts", s.late[laneLead].left)
+		}
+		s.Read(buf)
+	}
+	// and a note with nothing after it still ends when its gate runs out
+	for s.stepRow != 5 {
+		s.Read(buf)
+	}
+	if v.gate {
+		t.Error("row 3's note, one row long, is still held at row 5")
 	}
 }

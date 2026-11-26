@@ -81,7 +81,10 @@ func (s *Synth) feel(lane, pat, row int) {
 	s.pats[laneTrack[lane]][row].gain *= level
 	s.touch[lane][row] = touch{bright - 1, ring - 1, f * feelDetuneIm * u()}
 	ms := f * lateMS(s.params.Seed, lane, pat*rows+row)
-	// well short of a row, so a lane's note has started before its next steps
+	// Well short of a row, so a lane's note has started before its next
+	// steps. No tempo Params allows has a row this short: at 400 bpm a third
+	// of a row is the 25 ms the amounts above add up to. It holds the
+	// promise if they are ever raised.
 	s.lateBy[lane][row] = min(int(ms*SampleRate/1000), s.samplesPerRow/3)
 }
 

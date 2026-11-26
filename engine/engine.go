@@ -2068,9 +2068,15 @@ func (s *Synth) applyNow(c *paramCmd) {
 // the latest one there, if its gate has not run out.
 func (s *Synth) revoice(t, pat, row int) {
 	v := &s.voices[t]
-	from := row
-	if s.waiting(t, row) {
-		from-- // this row's note has yet to start; what sounds is what came before
+	// This row's note may have yet to start (feel.go). What sounds is then
+	// what came before, and it is about to be replaced: it takes a new level
+	// if it is still the redrawn pattern's note, and is otherwise left to
+	// ring until the waiting note starts. Striking it afresh, in a new
+	// voice, would sound it for a few ms and push the waiting note back
+	// behind a fade.
+	from, waiting := row, s.waiting(t, row)
+	if waiting {
+		from--
 	}
 	for r := from; r >= 0; r-- {
 		tr := s.pats[t][r]
@@ -2086,12 +2092,15 @@ func (s *Synth) revoice(t, pat, row int) {
 			if v.gainTo != tr.gain {
 				v.glideGain(tr.gain)
 			}
-		} else {
+		} else if !waiting {
 			s.setTouch(t, r)
 			v.retrigger(tr, left, s.params.Seed+uint64(pat*rows+r))
 			s.noteAt(t, NoteRevoice, tr.note, tr.gain, r, pat)
 		}
 		return
+	}
+	if waiting {
+		return // nothing to release: the waiting note takes the voice over
 	}
 	v.gate = false
 }
@@ -2122,7 +2131,11 @@ func (s *Synth) step() {
 		tr := s.pats[t][s.row]
 		seed := s.params.Seed + uint64(s.pat*rows+s.row)
 		if tr.note != 0 && s.holdLate(t, tr, seed) {
-			tr = trackRow{} // it starts in a moment; until then the row is a rest
+			// It starts in a moment and takes the voice over then. The note
+			// sounding keeps its gate till it does: counted down here, a
+			// note of one row would be let go at the step, and dip before
+			// the next came in, where without Feel the two join.
+			continue
 		}
 		switch {
 		case tr.note != 0:

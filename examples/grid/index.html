@@ -123,6 +123,7 @@
   #chainedn { margin: 0; overflow-x: auto; }
   /* with a chain on, the slots are always in view: a click picks one */
   .chained .pick.slots .pickbtn { display: none; }
+  .chained #pattern .lab { display: none; } /* room for the slots and follow on the one line */
   .chained .pick.slots .drawer { display: flex; position: static; width: auto; max-width: none; padding: 0; border: 0; background: none; box-shadow: none; }
   .lane.of-lead span { color: var(--lead); } .lane.of-bass span { color: var(--bass); }
   .lane.of-pulse span { color: var(--pulse); } .lane.of-drums span { color: var(--drum); }
@@ -315,6 +316,7 @@
     <button id="tostudio" hidden title="open this pattern in the studio, in a new tab: one grid of a theme, or the chain's grids while a chain is on, over this mood, seed, tension and bed. The studio plays it in the mood's own voices and tempo; the lead and bass voices, tempo and busy here stay here.">studio &#8599;</button>
     <div class="pick slots"><button class="pickbtn" title="eight slots kept in this browser: picking one loads it, and every change saves to the one picked">slot 1</button><div class="bar drawer slotchips" id="slots"></div></div>
     <div class="pick chain"><button class="pickbtn" title="chain: play slots 1 to the number picked, one after another and round again, in place of the one slot. Empty slots are skipped, and a slot picked from past the chain's end plays alone. Every slot plays in the mood, voices, tempo and seed on screen; the notes, drums and bed are its own. The grid stays on the slot picked, and shows the playhead while that slot is the one playing.">chain off</button><div class="bar drawer" id="chain"></div></div>
+    <button class="bed" id="follow" hidden title="follow: the grid shows whichever slot of the chain is playing, and moves on with it. Off, it stays on the slot picked. Picking a slot turns it off.">follow</button>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
   </div>
@@ -446,6 +448,9 @@
   // slot each grid last sent came from, empty while no chain plays;
   // heardSlot is the one at the speaker, or -1.
   let chain = 0, chainSlots = [], heardSlot = -1;
+  // follow: the grid shows the slot of the chain being heard, moving on with
+  // it. Picking a slot by hand turns it off: that is a choice to stay.
+  let follow = true;
   let seedDirty = false; // the seed field holds typing not yet taken
   // Set once the drum lanes hold a choice, even an empty one: an edit, clear,
   // or a link that carries them. Until then a mood change brings its groove.
@@ -1167,6 +1172,8 @@
     // In a chain the grid shows the picked slot, so the playhead and the
     // struck steps are drawn only while that slot is the one heard.
     if (heard !== heardSlot) { heardSlot = heard; paintChain(); }
+    // not mid-drag: the cells under the pointer would become another slot's
+    if (follow && chainSlots.length && heard >= 0 && heard !== slot && !painting) pickSlot(heard, true);
     if (chainSlots.length && heard !== slot) { r = -1; early = []; }
     if (r !== lastRow) {
       for (const c of document.querySelectorAll(".c.head")) c.classList.remove("head");
@@ -1477,7 +1484,8 @@
       c.title = slots[i] ? "load this slot" : "an empty slot: picking it starts it as a copy of this pattern";
     }
   }
-  function pickSlot(i) {
+  function pickSlot(i, following) {
+    if (!following && chain) setFollow(false);
     if (i === slot) return;
     slots = readSlots();
     // from one slot of the chain to another, the settings on screen stay
@@ -1520,6 +1528,7 @@
   }
   function paintChain() {
     document.documentElement.classList.toggle("chained", chain > 0);
+    $("follow").hidden = !chain; $("follow").classList.toggle("on", follow);
     document.querySelector(".pick.chain .pickbtn").textContent = !chain ? "chain off" : `chain 1–${chain}` + (slot >= chain ? `, not slot ${slot + 1}` : "");
     for (const c of document.querySelectorAll("#chain .chip")) c.classList.toggle("on", +c.dataset.v === chain);
     paintSlots();
@@ -1530,6 +1539,10 @@
     c.onclick = () => { chain = n; store(CHAINKEY, String(n)); pushChain(); };
     $("chain").appendChild(c);
   }
+  const FOLLOWKEY = "undertone-grid-follow";
+  try { follow = localStorage.getItem(FOLLOWKEY) !== "0"; } catch {}
+  function setFollow(on) { follow = on; store(FOLLOWKEY, String(+on)); paintChain(); }
+  $("follow").onclick = () => setFollow(!follow);
   paintChain();
   // An address that differs only after the # does not reload the page, so a
   // link pasted over this one arrives here and nowhere else.

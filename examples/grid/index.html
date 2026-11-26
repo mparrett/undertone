@@ -188,13 +188,14 @@
      Not cells: it cannot be edited. Only where there is room beside the grid. */
   .ghost, .here { display: none; }
   @media (min-width: 900px) {
-    html.next { --cols: 20.75; }
+    html.next { --cell: calc((16 * var(--cell16) - 12px) / 20); }
+    @supports (width: round(down, 1px, 1px)) { html.next { --cell: round(down, calc((16 * var(--cell16) - 12px) / 20), 2px); } }
     html.next .grid { position: relative; }
     html.next .ghost { display: grid; position: absolute; left: calc(100% + 12px); top: 0; pointer-events: none;
                        grid-template-columns: repeat(4, var(--cell)); grid-auto-rows: var(--row); opacity: .55; }
     html.next #drums .ghost { grid-template-columns: repeat(8, calc(var(--cell) / 2)); grid-auto-rows: var(--drow); }
     /* the grid and the ghost together sit in the middle, the header moving with them */
-    html.next main { position: relative; left: calc(-2 * var(--cell) - 6px); }
+    html.next .lanegroup { position: relative; left: calc(-2 * var(--cell) - 6px); } /* half the ghost and its gap */
     .ghost .g { padding: 1px; }
     .ghost .g::after { content: ""; display: block; height: 100%; border-radius: 3px; background: var(--panel); border: 1px dashed var(--line); }
     .lead .ghost .g.on::after { background: var(--lead); border: 1px solid var(--lead); }
@@ -266,16 +267,17 @@
      what give them room. */
   @media (min-width: 900px) {
     :root { --other: 355px; /* 33px of it the backing row */
-            /* no wider than half again a row's height (a row being what the window's height
-               leaves each, the drums taken as 48px): the width left over stays empty, where
-               stretched to fill it a cell was twice as wide as tall */
-            --cell: clamp(22px, min(calc((100vw - 64px - 32px - 18px) / var(--cols, 16)), calc(1.5 * (100dvh - var(--other) - 48px) / var(--rows, 17))), 56px);
+            /* --cell16 is a cell with the grid's 16 steps filling the column. The column keeps
+               that width whatever is shown in it: with the ghost on, its four steps and their
+               12px gap go inside, and every cell narrows to make the room. */
+            --cell16: clamp(22px, calc((100vw - 64px - 32px - 18px) / 16), 56px);
+            --cell: var(--cell16);
             --drow: min(calc(var(--cell) / 2), 32px);
             --row: clamp(20px, min(calc((100dvh - var(--other) - var(--drows, 3) * var(--drow)) / var(--rows, 17)), var(--cell)), 44px); }
     body { padding: 0 32px 32px; }
     main { max-width: none; }
     /* the bar's background runs edge to edge; its contents line up with the grid's column under it */
-    header { --col: max(calc(32px + 16 * var(--cell) + 3 * 6px), 946px); /* its rows were laid out for the 946px the grid had at its widest, and wrap in less */
+    header { --col: calc(32px + 16 * var(--cell16) + 3 * 6px);
              position: sticky; top: 0; z-index: 3; background: var(--bg); margin: 0 -32px 14px;
              padding: 16px max(32px, calc((100% + 64px - var(--col)) / 2)) 0;
              display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; border-bottom: 1px solid var(--line); }
@@ -313,7 +315,7 @@
   @supports (width: round(down, 1px, 1px)) {
     :root { --cell: clamp(17px, round(down, calc((100vw - 32px - 32px - 3 * 6px) / 16), 2px), 28px); }
     @media (min-width: 900px) {
-      :root { --cell: clamp(22px, round(down, min(calc((100vw - 64px - 32px - 18px) / var(--cols, 16)), calc(1.5 * (100dvh - var(--other) - 48px) / var(--rows, 17))), 2px), 56px);
+      :root { --cell16: clamp(22px, round(down, calc((100vw - 64px - 32px - 18px) / 16), 2px), 56px);
               --drow: min(round(down, calc(var(--cell) / 2), 1px), 32px);
               --row: clamp(20px, round(down, min(calc((100dvh - var(--other) - var(--drows, 3) * var(--drow)) / var(--rows, 17)), var(--cell)), 1px), 44px); }
     }

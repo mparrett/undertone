@@ -156,8 +156,9 @@ func TestVoiceTakesItsTouch(t *testing.T) {
 	v.touch = touch{}
 	v.trigger(chime, 72, 1, 1, 2)
 	for i := range chime {
-		if v.units[i].tf != 1 {
-			t.Fatalf("unit %d keeps factor %v after a plain note", i, v.units[i].tf)
+		// an out glides there from the touched note's level; the rest are there at once
+		if u := v.units[i]; u.tfTo != 1 || (chime[i].op != opOut && u.tf != 1) {
+			t.Fatalf("unit %d keeps factor %v (to %v) after a plain note", i, u.tf, u.tfTo)
 		}
 	}
 	if v.detune != 0 {
@@ -208,5 +209,75 @@ func TestFeelDoesNotAllocate(t *testing.T) {
 	}
 	if n := readAllocs() - before; n != 0 {
 		t.Errorf("%d allocations inside Synth.Read with feel, want 0", n)
+	}
+}
+
+// A touched note struck over one still ringing glides to its level: the
+// gain and an upper partial's level both arrive within a few milliseconds,
+// with no step in one sample. An untouched note steps, as it always has.
+func TestTouchedNoteGlidesOverARingingOne(t *testing.T) {
+	var v Voice
+	v.touch = touch{bright: -0.2}
+	v.trigger(chime, 72, 4, 0.8, 1)
+	var l, r float64
+	var b sends
+	for range 2000 {
+		v.run(&l, &r, &b)
+	}
+	v.touch = touch{bright: 0.2}
+	v.trigger(chime, 74, 4, 1.4, 2)
+	if v.gain != 0.8 || v.gainTo != 1.4 {
+		t.Fatalf("gain %v gliding to %v, want 0.8 to 1.4", v.gain, v.gainTo)
+	}
+	out := -1
+	for i, u := range chime {
+		if u.op == opOut {
+			out = i // the last out: an upper partial
+		}
+	}
+	if u := v.units[out]; math.Abs(u.tf-0.64) > 1e-12 || math.Abs(u.tfTo-1.44) > 1e-12 {
+		t.Fatalf("upper partial at %v gliding to %v, want 0.64 to 1.44", u.tf, u.tfTo)
+	}
+	for range 2 * fadeFrames {
+		v.run(&l, &r, &b)
+	}
+	if u := v.units[out]; v.gain != 1.4 || u.tf != u.tfTo {
+		t.Errorf("after the glide: gain %v, upper partial %v of %v", v.gain, u.tf, u.tfTo)
+	}
+
+	var plain Voice
+	plain.trigger(chime, 72, 4, 0.8, 1)
+	plain.run(&l, &r, &b)
+	plain.trigger(chime, 74, 4, 1.4, 2)
+	if plain.gain != 1.4 {
+		t.Errorf("an untouched note's gain is %v at once, want 1.4", plain.gain)
+	}
+}
+
+// A SetParametersNow with nothing changed, landing in a pattern's last row,
+// leaves the note sounding there at its level: the redraw draws that note's
+// touch as the step did, by the pattern it is in, not the one coming.
+func TestFeelRedrawKeepsTheLastRowsNote(t *testing.T) {
+	p := DeriveOverworld(3, 2, 0)
+	p.Feel = 1
+	g := &Grid{}
+	g.Lead[rows-1] = 3
+	s := NewSynth(p)
+	s.SetGrid(g)
+	buf := make([]byte, 4)
+	for s.stepRow != rows-1 || s.row != 0 { // into the last row: the sequencer is on the next pattern
+		s.Read(buf)
+	}
+	for range fadeFrames {
+		s.Read(buf)
+	}
+	v := &s.voices[trackLead]
+	want, touched := v.gain, s.touch[laneLead][rows-1]
+	s.applyNow(&paramCmd{p: s.params})
+	if v.gainTo != want {
+		t.Errorf("the sounding note glides from %v to %v after a redraw with nothing changed", want, v.gainTo)
+	}
+	if got := s.touch[laneLead][rows-1]; got != touched {
+		t.Errorf("the note's touch was redrawn as %+v, was %+v", got, touched)
 	}
 }

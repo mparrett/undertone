@@ -60,15 +60,15 @@ func feelRng(seed uint64, lane, at int) *rng {
 
 const feelSalt = 0x66_65_65_6c // "feel"
 
-// feel gives the note applyGrid has just written to lane at row its touch:
+// feel gives the note applyGrid has just written to lane at row of pat its touch:
 // it scales the note's gain and records how it is to be struck. With Feel 0
 // it does nothing, and the note's gain is the float it always was.
-func (s *Synth) feel(lane, row int) {
+func (s *Synth) feel(lane, pat, row int) {
 	f := s.params.Feel
 	if f == 0 {
 		return
 	}
-	r := feelRng(s.params.Seed, lane, s.pat*rows+row)
+	r := feelRng(s.params.Seed, lane, pat*rows+row)
 	u := func() float64 { return 2*r.f() - 1 } // -1..1
 	level := 1 + f*feelDepth*(feelMetric[row%8]-feelCentre)
 	level *= 1 + f*feelLevelIm*u()

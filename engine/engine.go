@@ -90,6 +90,9 @@ type ustate struct {
 	// lowpass's cutoff or an out's gain is multiplied by it. 1 for a note
 	// with no touch, which leaves every product the float it was.
 	tf float64
+	// tfTo is where an out's tf is gliding: a note struck over one still
+	// ringing moves an upper partial's level there rather than stepping it.
+	tfTo float64
 }
 
 type Voice struct {
@@ -99,6 +102,7 @@ type Voice struct {
 	// waiting in pend is struck with it when it fires. Zero for every other
 	// voice.
 	touch    touch
+	touched  bool    // the sounding note has a touch
 	detune   float64 // the sounding note's, in semitones: added to every osc and string
 	note     int
 	gain     float64
@@ -142,10 +146,20 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 	// a click at every pattern boundary (a step of 2336 against a normal
 	// largest of 402). A plucked string is struck afresh either way.
 	legato := v.active && samePatch(v.patch, patch)
+	// Touched notes differ in level, so one struck over another still
+	// ringing would step the gain, and click; it glides there instead, as a
+	// mood change's does. Untouched notes in a lane share a level, and step
+	// as they always have.
+	glide := legato && (v.touched || v.touch != (touch{}))
+	v.touched = v.touch != (touch{})
 	v.patch = patch
 	v.note = clampNote(note)
-	v.gain = gain
-	v.gainTo = gain
+	if glide {
+		v.glideGain(gain)
+	} else {
+		v.gain = gain
+		v.gainTo = gain
+	}
 	v.pend = trackRow{}
 	v.gate = true
 	v.gateRows = gateRows
@@ -166,7 +180,7 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 		if v.line != nil && cap(ks) > 0 && &ks[:1][0] == &v.line[0] {
 			ks = nil
 		}
-		kpos, tick := u.kpos, u.tick
+		kpos, tick, tf := u.kpos, u.tick, u.tf
 		if legato {
 			*u = ustate{phase: u.phase, env: u.env, lp: u.lp, ic2: u.ic2, ks: ks}
 		} else {
@@ -177,8 +191,12 @@ func (v *Voice) trigger(patch Patch, note, gateRows int, gain float64, seed uint
 		}
 		u.sweep = 1
 		u.tf = v.touch.unit(patch[i].op, chain)
+		u.tfTo = u.tf
 		if patch[i].op == opOut {
 			chain++
+			if glide {
+				u.tf = tf
+			}
 		}
 		u.rng = seed*2862933555777941757 + uint64(i) + 3037000493
 		// a sample-and-hold lfo's first value; legato keeps the held one
@@ -757,6 +775,14 @@ func (v *Voice) run(l, r *float64, b *sends) {
 			sp--
 			// tf scales the unit's gain first, so that the last product,
 			// the one arm64 fuses into the add, is the one it always was
+			if s.tf != s.tfTo {
+				// about 3 ms to arrive, then exactly there
+				if d := s.tfTo - s.tf; math.Abs(d) < 1e-4 {
+					s.tf = s.tfTo
+				} else {
+					s.tf += d / 32
+				}
+			}
 			g := u.p[0] * s.tf
 			*l += stack[sp] * g * (1 - u.p[1]) * v.gain
 			*r += stack[sp] * g * u.p[1] * v.gain
@@ -2023,7 +2049,7 @@ func (s *Synth) applyNow(c *paramCmd) {
 	s.touch = [2][rows]touch{}
 	if g := s.playingGrid(); g != nil {
 		for r := 0; r <= row; r++ {
-			s.applyGrid(g, r)
+			s.applyGridAt(g, pat, r)
 		}
 	}
 	for t := range s.voices {

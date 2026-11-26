@@ -40,7 +40,7 @@ working vocabulary. `engine/` is the source of truth for anything in code font.
 | **Generator** | Builds each pattern's notes from `Params` and a seeded rng (`buildPatterns`, `buildDrums`). This is what makes the ambience generated rather than scored. |
 | **Grid** | A hand-written pattern played in place of the generator (`SetGrid`). Melodic lanes hold scale degrees, so it stays in key when the mood changes. |
 | **Bed** | A `Grid` flag. With it set, the generator keeps playing drone, pad and air under the grid. This is the "layer" case. Without it, only the grid plays. |
-| **authored theme** | A tune a game wants played as written: a title theme, a boss phrase or an outro. A `Theme` is a list of grids played in order (`PlayTheme`, from Go or lg), then `ThenGenerate`, `ThenSilence` or `ThenLoop`. |
+| **authored theme** | A tune a game wants played as written: a title theme, a boss phrase or an outro. A `Theme` is a list of grids played in order (`PlayTheme`, from Go or lg), then `ThenGenerate`, `ThenSilence` or `ThenLoop`. `ReviseTheme` replaces its grids while it plays and keeps the playhead where it is. |
 | **replace / layer** | The two ways authored music meets the generator. Replace means the grid takes those tracks. Layer means a `Bed` underneath. |
 | **Arranger** | Deferred (#46). It would merge generated and authored rows once an authored melody must answer to tension. Until then, the grid simply replaces rows. |
 | **groove** | A drum pattern in text (`X x o .` plus ratchets), picked by seed from the mood's list. |
@@ -79,6 +79,6 @@ working vocabulary. `engine/` is the source of truth for anything in code font.
 |---|---|
 | **sample** | One number for where a speaker should be at one instant. Each channel gets one per frame. |
 | **frame** | One stereo pair of samples, and the slot they are held for: 1/44,100 s, about 22.7 µs (`SampleRate` counts frames per second). Producing one is one pass of the engine: every voice runs its patch once, then the buses and the `tanh`. `Read` writes four bytes per frame. |
-| **block** | 128 frames, about 2.9 ms. `SetParametersNow` and `PlayTheme` are picked up on block boundaries (`nowBlock`). |
+| **block** | 128 frames, about 2.9 ms. `SetParametersNow`, `PlayTheme` and `ReviseTheme` are picked up on block boundaries (`nowBlock`). |
 | **control rate** | Every 16 frames. `grit` and `open` glide a step, and the units they scale recompute their constants, so that work isn't done per sample. |
 | **render ahead** | The engine computes samples in batches, far faster than real time, and the host plays them out at the steady rate. A frame's computation doesn't happen during its own 22.7 µs. |

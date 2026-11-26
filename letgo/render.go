@@ -95,9 +95,9 @@ func (r *scripted) Read(p []byte) (int, error) {
 }
 
 // parseScript reads [[seconds op arg] ...], where op is :set-parameters,
-// :set-parameters-now, :play-theme, :end-theme, :trigger or :cut and arg is what
-// that native
-// takes. Steps run in time order, within the render.
+// :set-parameters-now, :play-theme, :revise-theme, :end-theme, :trigger or :cut
+// and arg is what that native takes: for :revise-theme, which takes two, the
+// vector [theme when]. Steps run in time order, within the render.
 func parseScript(v vm.Value, p engine.Params, seconds float64) ([]step, error) {
 	if v == vm.NIL {
 		return nil, nil
@@ -150,6 +150,16 @@ func parseScript(v vm.Value, p engine.Params, seconds float64) ([]step, error) {
 				return nil, fmt.Errorf("step %d: %w", i, err)
 			}
 			apply = func(s *engine.Synth) { s.PlayTheme(th) }
+		case "revise-theme":
+			pair, ok := asVec(arg)
+			if !ok || len(pair) != 2 {
+				return nil, fmt.Errorf("step %d: :revise-theme takes [theme when]", i)
+			}
+			th, at, err := reviseArgs(pair[0], pair[1])
+			if err != nil {
+				return nil, fmt.Errorf("step %d: %w", i, err)
+			}
+			apply = func(s *engine.Synth) { s.ReviseTheme(th, at) }
 		case "end-theme":
 			e, err := endThemeArgs(arg)
 			if err != nil {
@@ -173,7 +183,7 @@ func parseScript(v vm.Value, p engine.Params, seconds float64) ([]step, error) {
 			}
 			apply = func(s *engine.Synth) { s.Cut(group, fadeMS) }
 		default:
-			return nil, fmt.Errorf("step %d: op must be :set-parameters, :set-parameters-now, :play-theme, :end-theme, :trigger or :cut, got %v", i, call[1])
+			return nil, fmt.Errorf("step %d: op must be :set-parameters, :set-parameters-now, :play-theme, :revise-theme, :end-theme, :trigger or :cut, got %v", i, call[1])
 		}
 		steps = append(steps, step{int(t * engine.SampleRate), apply})
 	}

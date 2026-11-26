@@ -65,6 +65,7 @@ func TestConcurrentControlWhileRendering(t *testing.T) {
 			}
 			s.ThemePlaying()
 		},
+		func(i int) { s.ReviseTheme(theme, ThemeAt(i%3)) },
 		func(i int) {
 			s.SetMusicGain(float64(i%5) / 4)
 			s.GlideMusicGain(float64(i%3)/2, 0.01)

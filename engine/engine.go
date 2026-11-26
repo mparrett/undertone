@@ -1652,12 +1652,17 @@ type Synth struct {
 	themeAt             int
 	themeOf             int64
 	themeFresh          bool // the theme's first grid has not stepped yet
-	silent              bool
-	now                 atomic.Pointer[paramCmd] // staged for the next block (SetParametersNow)
-	nframe              int64                    // frames rendered, synthesis-side
-	frames              atomic.Int64             // nframe as of the end of the last Read
-	rowLog              rowLog
-	notes               noteRing // notes started, for a host to draw (notes.go)
+	themePass           int  // how many times the theme has played through
+	// staged by ReviseTheme: one to land at the next row, and one waiting
+	// for a grid or a loop, which the audio thread keeps in revise
+	reviseNow, reviseLater atomic.Pointer[reviseCmd]
+	revise                 *reviseCmd
+	silent                 bool
+	now                    atomic.Pointer[paramCmd] // staged for the next block (SetParametersNow)
+	nframe                 int64                    // frames rendered, synthesis-side
+	frames                 atomic.Int64             // nframe as of the end of the last Read
+	rowLog                 rowLog
+	notes                  noteRing // notes started, for a host to draw (notes.go)
 	// the row stepped last, which the drum countdowns fire within: not
 	// s.row-1 after a theme cuts the pattern short
 	stepRow, stepPat int
@@ -2122,7 +2127,7 @@ func (s *Synth) step() {
 	if g := s.playingGrid(); g != nil {
 		s.applyGrid(g, s.row)
 	}
-	s.rowLog.add(s.nframe, s.row, s.pat)
+	s.rowLog.add(s.nframe, s.row, s.pat, s.themeWord())
 	s.stepRow, s.stepPat = s.row, s.pat
 	s.stepDrums()
 	s.strikeLate() // none can be left, a wait being shorter than a row; were one, it would not be lost
@@ -2185,6 +2190,7 @@ func (s *Synth) frame() (int16, int16) {
 		if c := s.endCmd.Swap(nil); c != nil {
 			s.markThemeEnd(c)
 		}
+		s.takeRevisions()
 		// after a theme staged in the same block, so that one starts from
 		// its first grid either way
 		if s.rewind.Swap(false) {

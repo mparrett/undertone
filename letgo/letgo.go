@@ -869,6 +869,9 @@ func installNS() {
 	ns.Def("play-theme", native("play-theme", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().playTheme(a[0])
 	}))
+	ns.Def("revise-theme", native("revise-theme", 2, func(a []vm.Value) (vm.Value, error) {
+		return current.Load().reviseTheme(a[0], a[1])
+	}))
 	ns.Def("end-theme", native("end-theme", 1, func(a []vm.Value) (vm.Value, error) {
 		return current.Load().endTheme(a[0])
 	}))

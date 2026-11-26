@@ -16,6 +16,12 @@ type Position struct {
 	// PositionAt sees Pending clear up to one output queue before the change
 	// is heard.
 	Pending, ThemePending bool
+	// Theme is whether a theme played this row. Grid is then which of its
+	// grids, from 0, and Pass how many times the theme had played through
+	// before: 0 until a ThenLoop theme first starts over. A Rewind counts
+	// from 0 again; a ReviseTheme does not.
+	Theme      bool
+	Grid, Pass int
 }
 
 // Position returns the last row the synth stepped; ok is false before the
@@ -35,7 +41,7 @@ func (s *Synth) RunStart() int { return int(s.runStart.Load()) }
 // for a frame before the first row or older than the last 64 rows. Safe to
 // call from any goroutine.
 func (s *Synth) PositionAt(frame int64) (Position, bool) {
-	start, row, pat, ok := s.rowLog.find(frame)
+	start, row, pat, th, ok := s.rowLog.find(frame)
 	if !ok {
 		return Position{}, false
 	}
@@ -44,5 +50,8 @@ func (s *Synth) PositionAt(frame int64) (Position, bool) {
 		Row: row, Pattern: pat, Frame: start,
 		Pending:      s.staged() != nil,
 		ThemePending: c != nil && c.t != nil,
+		Theme:        th != 0,
+		Grid:         max(int(th&0xffffffff)-1, 0),
+		Pass:         int(th >> 32),
 	}, true
 }

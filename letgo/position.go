@@ -41,7 +41,13 @@ func (m *Music) position() vm.Value {
 	if !ok {
 		return vm.NIL
 	}
+	var grid, pass vm.Value = vm.NIL, vm.NIL
+	if p.Theme {
+		grid, pass = vm.Int(p.Grid), vm.Int(p.Pass)
+	}
 	return vm.NewPersistentMap([]vm.Value{
+		vm.Keyword("theme-grid"), grid,
+		vm.Keyword("theme-pass"), pass,
 		vm.Keyword("row"), vm.Int(p.Row),
 		vm.Keyword("pattern"), vm.Int(p.Pattern),
 		vm.Keyword("frame"), vm.Int(p.Frame),

@@ -263,13 +263,16 @@
      what give them room. */
   @media (min-width: 900px) {
     :root { --other: 355px; /* 33px of it the backing row */
-            --cell: clamp(22px, calc((100vw - 64px - 32px - 18px) / var(--cols, 16)), 56px);
+            /* no wider than half again a row's height (a row being what the window's height
+               leaves each, the drums taken as 48px): the width left over stays empty, where
+               stretched to fill it a cell was twice as wide as tall */
+            --cell: clamp(22px, min(calc((100vw - 64px - 32px - 18px) / var(--cols, 16)), calc(1.5 * (100dvh - var(--other) - 48px) / var(--rows, 17))), 56px);
             --drow: min(calc(var(--cell) / 2), 32px);
             --row: clamp(20px, min(calc((100dvh - var(--other) - var(--drows, 3) * var(--drow)) / var(--rows, 17)), var(--cell)), 44px); }
     body { padding: 0 32px 32px; }
     main { max-width: none; }
     /* the bar's background runs edge to edge; its contents line up with the grid's column under it */
-    header { --col: calc(32px + 16 * var(--cell) + 3 * 6px);
+    header { --col: max(calc(32px + 16 * var(--cell) + 3 * 6px), 946px); /* its rows were laid out for the 946px the grid had at its widest, and wrap in less */
              position: sticky; top: 0; z-index: 3; background: var(--bg); margin: 0 -32px 14px;
              padding: 16px max(32px, calc((100% + 64px - var(--col)) / 2)) 0;
              display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; border-bottom: 1px solid var(--line); }
@@ -307,7 +310,7 @@
   @supports (width: round(down, 1px, 1px)) {
     :root { --cell: clamp(17px, round(down, calc((100vw - 32px - 32px - 3 * 6px) / 16), 2px), 28px); }
     @media (min-width: 900px) {
-      :root { --cell: clamp(22px, round(down, calc((100vw - 64px - 32px - 18px) / var(--cols, 16)), 2px), 56px);
+      :root { --cell: clamp(22px, round(down, min(calc((100vw - 64px - 32px - 18px) / var(--cols, 16)), calc(1.5 * (100dvh - var(--other) - 48px) / var(--rows, 17))), 2px), 56px);
               --drow: min(round(down, calc(var(--cell) / 2), 1px), 32px);
               --row: clamp(20px, round(down, min(calc((100dvh - var(--other) - var(--drows, 3) * var(--drow)) / var(--rows, 17)), var(--cell)), 1px), 44px); }
     }

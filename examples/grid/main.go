@@ -15,6 +15,9 @@
 //
 //	setGrid(json)    {lead:[16], bass:[16], pulse:[16], drums:[3], bed}: degrees 1..8, 0 = rest;
 //	                 drums are kick, clap, shaker as 32 sixteenths of X x o . and the chance steps ? f
+//	setChain(json)   an array of grids, as setGrid takes one: plays them in order, round and round, in
+//	                 place of setGrid's. The first call starts from the first grid; later ones replace
+//	                 the grids and keep the place. "" goes back to setGrid's grid
 //	setVolume(v)     the listening volume, 0..1, for the pattern and auditions alike
 //	moodLevel()      the engine mood and level the current mood plays, as JSON {mood, level}
 //	moods()          the moods setParams takes, as JSON: the engine's, and ruins after the dungeon
@@ -25,6 +28,7 @@
 //	play() / stop()  call from the tap handler: iOS resumes audio only inside one
 //	restart()        start the pattern over from its first step; while stopped, the next play starts there
 //	row()            the step being heard, or -1 while stopped
+//	at()             [row, grid]: row(), and which of setChain's grids it is in, -1 for none
 //	levels()         [lead, bass, pulse, drums, echo]: each lane's level, dry, as of the last block
 //	                 rendered, then the echo's: what the shared delay returns, all lanes' at once
 //	onsets()         [lead, bass, pulse, drums, struck]: how many notes each lane started since the last call,
@@ -279,6 +283,7 @@ func main() {
 	// the lanes the page draws, by LayerNames index
 	lanes := map[int]int{3: 0, 7: 1, 5: 2, engine.DrumsLayer: 3}
 
+	chained := false // setChain's grids are playing, not setGrid's
 	api := map[string]any{
 		"setGrid": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			var j gridJSON
@@ -287,6 +292,30 @@ func main() {
 			}
 			g := j.grid()
 			syn.SetGrid(&g)
+			return nil
+		}),
+		"setChain": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			var list []gridJSON
+			json.Unmarshal([]byte(a[0].String()), &list) // "" leaves it empty
+			if len(list) == 0 {
+				if chained {
+					syn.PlayTheme(nil)
+				}
+				chained = false
+				return nil
+			}
+			t := &engine.Theme{Then: engine.ThenLoop}
+			for _, j := range list {
+				t.Grids = append(t.Grids, j.grid())
+			}
+			// A chain already playing is revised: an edit to one grid must not
+			// send the listener back to the first.
+			if chained && syn.ThemePlaying() {
+				syn.ReviseTheme(t, engine.AtNextRow)
+			} else {
+				syn.PlayTheme(t)
+			}
+			chained = true
 			return nil
 		}),
 		"setParams": js.FuncOf(func(_ js.Value, a []js.Value) any {
@@ -342,6 +371,20 @@ func main() {
 			// what is heard now: rendered minus what is still queued
 			heard := syn.Frames() - int64(p.Queued().Seconds()*engine.SampleRate)
 			return syn.RowAt(heard)
+		}),
+		"at": js.FuncOf(func(js.Value, []js.Value) any {
+			p := player.Load()
+			if p == nil || !src.on.Load() {
+				return []any{-1, -1}
+			}
+			pos, ok := syn.PositionAt(syn.Frames() - int64(p.Queued().Seconds()*engine.SampleRate))
+			switch {
+			case !ok:
+				return []any{-1, -1}
+			case !pos.Theme:
+				return []any{pos.Row, -1}
+			}
+			return []any{pos.Row, pos.Grid}
 		}),
 		"levels": js.FuncOf(func(js.Value, []js.Value) any {
 			l := syn.LayerLevels()

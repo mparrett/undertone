@@ -72,7 +72,7 @@
   .ednbox { flex: 1 1 190px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
   .ednbox:first-child { flex: 2.2 1 300px; } /* the pattern: a lane's 16 values on a line */
   .ednbox .lab { flex-basis: auto; margin: 0; }
-  #patedn, #patednhl, #setedn { font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+  #patedn, #patednhl, #setedn, #chainedn { font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--fg); background: var(--panel); border: 1px solid var(--line);
                      border-radius: 8px; padding: 8px 10px; margin: 0; width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
   #patedn.bad { border-color: var(--pulse); }
   /* the pattern's text, coloured as the designer and studio colour EDN: a
@@ -116,6 +116,11 @@
   #undo:disabled { opacity: .35; cursor: default; }
   #undo:not(:disabled) { color: var(--fg); border-color: var(--mut); }
   .slotchips .chip.empty { opacity: .5; border-style: dashed; }
+  /* the chain: its slots are underlined in the slots' drawer, and the one heard is filled */
+  .pick.chain { --lane: var(--fg); } .pick.chain .pickbtn { width: auto; font-variant-numeric: tabular-nums; } .pick.chain .pickbtn::after { margin-left: 8px; }
+  .slotchips .chip.linked { box-shadow: 0 2px 0 var(--mut); }
+  .slotchips .chip.heard { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  #chainedn { margin: 0; overflow-x: auto; }
   .lane.of-lead span { color: var(--lead); } .lane.of-bass span { color: var(--bass); }
   .lane.of-pulse span { color: var(--pulse); } .lane.of-drums span { color: var(--drum); }
   .lbl.ref { color: var(--fg); }
@@ -304,8 +309,9 @@
     <button id="clear" title="empty the grid">clear</button>
     <button id="undo" disabled title="undo the last change (⌘Z or ctrl-Z)">&#8630; undo</button>
     <button id="share" title="copy a link that opens this pattern">copy link</button>
-    <button id="tostudio" hidden title="open this pattern in the studio, in a new tab: one grid of a theme, over this mood, seed, tension and bed. The studio plays it in the mood's own voices and tempo; the lead and bass voices, tempo and busy here stay here.">studio &#8599;</button>
-    <div class="pick slots"><button class="pickbtn" title="five slots kept in this browser: picking one loads it, and every change saves to the one picked">slot 1</button><div class="bar drawer slotchips" id="slots"></div></div>
+    <button id="tostudio" hidden title="open this pattern in the studio, in a new tab: one grid of a theme, or the chain's grids while a chain is on, over this mood, seed, tension and bed. The studio plays it in the mood's own voices and tempo; the lead and bass voices, tempo and busy here stay here.">studio &#8599;</button>
+    <div class="pick slots"><button class="pickbtn" title="eight slots kept in this browser: picking one loads it, and every change saves to the one picked">slot 1</button><div class="bar drawer slotchips" id="slots"></div></div>
+    <div class="pick chain"><button class="pickbtn" title="chain: play slots 1 to the number picked, one after another and round again, in place of the one slot. Empty slots are skipped. Every slot plays in the mood, voices, tempo and seed on screen; the notes, drums and bed are its own. The grid stays on the slot picked, and shows the playhead while that slot is the one playing.">chain off</button><div class="bar drawer" id="chain"></div></div>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
   </div>
@@ -369,6 +375,7 @@
     <div><h3>playing</h3><ul>
       <li><kbd>space</kbd> plays and stops; <kbd>r</kbd> goes back to the first step.</li>
       <li>Edits are heard the next time the playhead passes them.</li>
+      <li><b>slot</b> keeps eight patterns in this browser. <b>chain</b> plays slots 1 to the number picked one after another, round and round, in the settings on screen; the grid stays on the slot picked, and an edit is heard the next time round without the chain starting over. With <b>edn</b> open the chain shows as a theme.</li>
       <li>A pick in the header opens its choices; <kbd>&larr;</kbd> <kbd>&rarr;</kbd> step through them while it is open, and <kbd>esc</kbd> closes it.</li>
       <li>A bass voice plays at the level of the pluck it replaces.</li>
       <li>Every note echoes 3 steps later, and again every 3, each fainter: an echo can sound like a note of its own.</li>
@@ -387,6 +394,9 @@
     <div class="ednbox"><span class="lab">settings</span>
       <pre id="setedn"></pre>
       <div class="hint">What the controls are set to. To look at: it is not read back.</div></div>
+    <div class="ednbox" id="chainbox" hidden><span class="lab">chain, as a theme</span>
+      <pre id="chainedn"></pre>
+      <div class="hint">The chain's slots as <code>undertone/play-theme</code> takes them. To look at: it is not read back.</div></div>
   </div>
  </section>
 </main>
@@ -428,6 +438,10 @@
   let st = { bpm: 110, mood: "overworld", voice: "kalimba", bassVoice: "", seed: 1, bed: true, busy: null, tension: 0, feel: 0,
              lead: Array(STEPS).fill(0), bass: Array(STEPS).fill(0), pulse: Array(STEPS).fill(false), drums: lanes() };
   let playing = false, ready = false, linkHasDrums = false;
+  // The chain: slots 1..chain play in order, and 0 plays the picked slot
+  // alone. chainSlots is the slot each grid last sent came from, empty while
+  // no chain plays; heardSlot is the one at the speaker, or -1.
+  let chain = 0, chainSlots = [], heardSlot = -1;
   let seedDirty = false; // the seed field holds typing not yet taken
   // Set once the drum lanes hold a choice, even an empty one: an edit, clear,
   // or a link that carries them. Until then a mood change brings its groove.
@@ -448,19 +462,36 @@
            `L=${st.lead.join("")};B=${st.bass.join("")};P=${pulse.toString(16)};D=${drumStrings().join(",")}` +
            (groove ? `;g=${groove}` : "") + (drumsChosen ? "" : ";dc=0") + (st.busy == null ? "" : `;bz=${Math.round(st.busy * 100)}`) + (st.tension ? `;tn=${Math.round(st.tension * 100)}` : "") + (st.feel ? `;fl=${Math.round(st.feel * 100)}` : "");
   }
-  function decode(h) {
-    if (!h.startsWith("#v1;")) return false;
+  // linkParts reads a link's lanes: its keys, the lead, bass and pulse, and
+  // the drum strings, null where the link has none that can be played. null
+  // for what is not a link.
+  function linkParts(h) {
+    if (!h?.startsWith("#v1;")) return null;
     const kv = Object.fromEntries(h.slice(4).split(";").map((s) => s.split("=")));
     const digits = (s) => s && s.length === STEPS && /^[0-8]+$/.test(s) ? [...s].map(Number) : null;
     const L = digits(kv.L), B = digits(kv.B);
-    if (!L || !B) return false;
+    if (!L || !B) return null;
     const p = parseInt(kv.P || "0", 16);
     let D = [];
     try { D = decodeURIComponent(kv.D || "").split(","); } catch {} // a stray % in a hand-edited link: no drums, not a dead page
-    linkHasDrums = D.length === DRUMS.length && D.every((s) => /^[Xxo.?f]*$|^[Xxo.?f]+\|$/.test(s));
+    const drums = D.length === DRUMS.length && D.every((s) => /^[Xxo.?f]*$|^[Xxo.?f]+\|$/.test(s)) ? D : null;
+    return { kv, L, B, P: [...Array(STEPS)].map((_, i) => !!(p & (1 << i))), drums };
+  }
+  // linkGrid is a link's grid as the engine takes one, for a slot the chain
+  // plays without loading it. A link from before links carried drums plays
+  // none here: its drums were the mood's, drawn when it was opened.
+  function linkGrid(h) {
+    const l = linkParts(h);
+    return l && { lead: l.L, bass: l.B, pulse: l.P, drums: l.drums || DRUMS.map(() => ""), bed: l.kv.bed !== "0" };
+  }
+  function decode(h) {
+    const l = linkParts(h);
+    if (!l) return false;
+    const { kv, L, B } = l, D = l.drums;
+    linkHasDrums = !!D;
     drumsChosen = linkHasDrums && kv.dc !== "0";
     groove = linkHasDrums && ready && JSON.parse(undertoneGrid.grooves()).includes(kv.g) ? kv.g : "";
-    st = { ...st, lead: L, bass: B, pulse: [...Array(STEPS)].map((_, i) => !!(p & (1 << i))),
+    st = { ...st, lead: L, bass: B, pulse: l.P,
            drums: lanes(linkHasDrums ? D : null),
            bpm: Math.min(160, Math.max(60, +kv.t || 110)), mood: (kv.m?.length === 1 ? LINK_MOODS.find((m) => m[0] === kv.m) : MOODS.find((m) => m === kv.m)) || "overworld",
            voice: VOICES.includes(kv.v) || kv.v === NONE ? kv.v : "kalimba", bassVoice: (VOICES.includes(kv.bv) && kv.bv !== "pluck") || kv.bv === NONE ? kv.bv : "", seed: Math.min(MAXSEED, Math.max(1, Math.round(+kv.s) || 1)), bed: kv.bed !== "0",
@@ -570,6 +601,16 @@
     // Not over text being typed: a rewrite would move the cursor and undo what is half there.
     // A box that only has the cursor is rewritten: a cell painted meanwhile must show in it.
     if (!ednDirty && !ednApplying) { $("patedn").value = patternEDN(); patHint(""); }
+    showChainEDN();
+  }
+  // The chain as the map undertone/play-theme takes, a lane to a line.
+  function showChainEDN() {
+    $("chainbox").hidden = !chain;
+    if (!chain || !document.documentElement.classList.contains("edn")) return;
+    const v = (a) => `[${a.join(" ")}]`;
+    const one = (g) => `{:lead  ${v(g.lead)}\n          :bass  ${v(g.bass)}\n          :pulse ${v(g.pulse)}` +
+      (g.drums.some(Boolean) ? `\n          :drums [${g.drums.map((d) => JSON.stringify(d)).join(" ")}]` : "") + `\n          :bed   ${g.bed}}`;
+    $("chainedn").innerHTML = highlightEDN(`{:grids [${chainGrids().grids.map(one).join("\n         ")}]\n :then :loop}`);
   }
   function patHint(err) {
     $("patedn").classList.toggle("bad", !!err); $("patednhint").classList.toggle("bad", !!err);
@@ -746,10 +787,12 @@
   let gridGen = 0;
   const pushGrid = () => {
     gridGen++;
-    if (ready) undertoneGrid.setGrid(JSON.stringify({ lead: st.lead, bass: st.bass, pulse: st.pulse, drums: drumStrings(), bed: st.bed }));
+    if (ready) undertoneGrid.setGrid(JSON.stringify(liveGrid()));
     history.replaceState(null, "", encode());
     remember();
+    pushChain(); // after remember: the picked slot is kept by then, should it have been empty
   };
+  const liveGrid = () => ({ lead: st.lead, bass: st.bass, pulse: st.pulse, drums: drumStrings(), bed: st.bed });
   const pushParams = () => {
     if (ready) { undertoneGrid.setParams(JSON.stringify({ bpm: st.bpm, mood: st.mood, voice: st.voice, bass: st.bassVoice, seed: st.seed, busy: st.busy, tension: st.tension, feel: st.feel })); showKey(); showBusy(); showTension(); showFeel(); }
     history.replaceState(null, "", encode());
@@ -1018,7 +1061,7 @@
     const mute = [...(st.voice === NONE ? ["lead"] : []), ...(st.bassVoice === NONE ? ["bass"] : [])];
     const theme = {
       name: `grid: ${st.mood}, seed ${st.seed}`,
-      grids: [{ lead: st.lead.join(""), bass: st.bass.join(""), pulse: st.pulse.map((p) => (p ? "1" : "0")).join(""), drums: drumStrings(), bed: st.bed }],
+      grids: (chain ? chainGrids().grids : [liveGrid()]).map((g) => ({ lead: g.lead.join(""), bass: g.bass.join(""), pulse: g.pulse.map((p) => (p ? "1" : "0")).join(""), drums: g.drums, bed: g.bed })),
       mood, level, tension: st.tension, seed: st.seed, mute,
     };
     return new URL(`../studio/#theme=${encodeURIComponent(JSON.stringify(theme))}`, location.href).href;
@@ -1115,7 +1158,12 @@
     if (six >> 1 === lastRow) light(lane, six); else early.push([lane, six]);
   }
   (function head() {
-    const r = ready && playing ? undertoneGrid.row() : -1;
+    let [r, g] = ready && playing ? undertoneGrid.at() : [-1, -1];
+    // In a chain the grid shows the picked slot, so the playhead and the
+    // struck steps are drawn only while that slot is the one heard.
+    const heard = g >= 0 ? chainSlots[g] ?? -1 : -1;
+    if (heard !== heardSlot) { heardSlot = heard; paintChain(); }
+    if (chainSlots.length && heard !== slot) { r = -1; early = []; }
     if (r !== lastRow) {
       for (const c of document.querySelectorAll(".c.head")) c.classList.remove("head");
       for (const [lane, six] of early) if (six >> 1 === r) light(lane, six);
@@ -1356,13 +1404,13 @@
     }
     status.textContent = "ready";
   };
-  // ---- slots and undo. Five patterns kept in this browser; the one picked
+  // ---- slots and undo. Eight patterns kept in this browser; the one picked
   // takes every change, so there is no save. A slot holds what a link holds,
   // and the groove picked, and loading one goes the way a link does. Picking
   // an empty slot starts it as a copy of what is playing. Undo steps back
   // through this session's changes to the slot; a burst of them (a drag
   // across cells, a slide of the tempo) is one step.
-  const SLOTS = 5, SLOTKEY = "undertone-grid-slots", CURKEY = "undertone-grid-slot";
+  const SLOTS = 8, SLOTKEY = "undertone-grid-slots", CURKEY = "undertone-grid-slot";
   const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} }; // storage may be blocked
   let slots = [], slot = 0;
   try { slots = JSON.parse(localStorage.getItem(SLOTKEY)) || []; slot = Math.min(SLOTS - 1, Math.max(0, +localStorage.getItem(CURKEY) || 0)); } catch {}
@@ -1370,7 +1418,7 @@
   // storage as it is now and change only this tab's slot in it.
   const readSlots = () => { try { const a = JSON.parse(localStorage.getItem(SLOTKEY)); if (Array.isArray(a)) return a; } catch {} return slots; };
   function keep(s) { slots = readSlots(); slots[slot] = s; store(SLOTKEY, JSON.stringify(slots)); }
-  addEventListener("storage", (e) => { if (e.key === SLOTKEY) { slots = readSlots(); paintSlots(); } });
+  addEventListener("storage", (e) => { if (e.key === SLOTKEY) { slots = readSlots(); paintSlots(); pushChain(); } });
   let undo = [], lastAt = 0, restoring = false;
   const snap = () => ({ link: encode() }); // the link carries the groove and the drums' choice
   // pushGrid and pushParams call this after every change
@@ -1415,6 +1463,7 @@
     for (const c of document.querySelectorAll("#slots .chip")) {
       const i = +c.dataset.v;
       c.classList.toggle("on", i === slot); c.classList.toggle("empty", !slots[i]);
+      c.classList.toggle("linked", i < chain); c.classList.toggle("heard", i === heardSlot);
       c.title = slots[i] ? "load this slot" : "an empty slot: picking it starts it as a copy of this pattern";
     }
   }
@@ -1425,13 +1474,49 @@
     undo = []; lastAt = 0;
     if (slots[i]) restore(slots[i]);
     remember(); // the slot's state is the first step back to; an empty slot takes this pattern
+    pushChain(); // an empty slot of the chain now has a pattern to play
     paintSlots();
   }
   for (let i = 0; i < SLOTS; i++) {
     const c = document.createElement("span"); c.className = "chip"; c.textContent = i + 1; c.dataset.v = i;
     c.onclick = () => pickSlot(i); $("slots").appendChild(c);
   }
-  paintSlots();
+  // ---- the chain: slots 1..chain as one looping theme. The engine is sent
+  // every grid of it at each change and keeps its place (setChain), so an
+  // edit is heard on the next row whichever slot is playing. Only the
+  // lanes and the bed are a slot's own in a chain: the settings are the
+  // picked slot's, as on screen.
+  const CHAINKEY = "undertone-grid-chain";
+  try { chain = Math.min(SLOTS, Math.max(0, Math.round(+localStorage.getItem(CHAINKEY)) || 0)); if (chain < 2) chain = 0; } catch {}
+  // the chain's grids and the slot each came from: the picked slot as it is
+  // on screen, the others as they were kept
+  function chainGrids() {
+    const grids = [], from = [];
+    for (let i = 0; i < chain; i++) {
+      const g = i === slot ? liveGrid() : linkGrid(slots[i]?.link);
+      if (g) { grids.push(g); from.push(i); }
+    }
+    return { grids, from };
+  }
+  function pushChain() {
+    if (!ready) return;
+    const { grids, from } = chainGrids();
+    if (grids.length || chainSlots.length) undertoneGrid.setChain(grids.length ? JSON.stringify(grids) : "");
+    chainSlots = from;
+    showChainEDN();
+  }
+  function paintChain() {
+    document.querySelector(".pick.chain .pickbtn").textContent = !chain ? "chain off" : `chain 1–${chain}` + (heardSlot >= 0 ? `, on ${heardSlot + 1}` : "");
+    for (const c of document.querySelectorAll("#chain .chip")) c.classList.toggle("on", +c.dataset.v === chain);
+    paintSlots();
+  }
+  for (const n of [0, ...Array.from({ length: SLOTS - 1 }, (_, k) => k + 2)]) {
+    const c = document.createElement("span"); c.className = "chip"; c.textContent = n ? `1–${n}` : "off"; c.dataset.v = n;
+    c.title = n ? `play slots 1 to ${n} in order, round and round` : "play the picked slot alone";
+    c.onclick = () => { chain = n; store(CHAINKEY, String(n)); pushChain(); paintChain(); };
+    $("chain").appendChild(c);
+  }
+  paintChain();
   // An address that differs only after the # does not reload the page, so a
   // link pasted over this one arrives here and nowhere else.
   addEventListener("hashchange", () => {

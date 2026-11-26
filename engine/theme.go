@@ -116,6 +116,7 @@ func (s *Synth) startTheme(c *themeCmd) {
 		s.pat++ // the cut pattern ends here; the bed draws a fresh one
 	}
 	s.row, s.rowLeft, s.leadIn, s.cut = 0, 0, true, true
+	s.late = [2]lateNote{} // a note of the cut pattern, not yet started, never does
 }
 
 // markThemeEnd sets the row the playing theme ends at, for EndTheme's call c.

@@ -268,6 +268,9 @@ func TestFeelRedrawKeepsTheLastRowsNote(t *testing.T) {
 	for s.stepRow != rows-1 || s.row != 0 { // into the last row: the sequencer is on the next pattern
 		s.Read(buf)
 	}
+	for s.late[laneLead].left != 0 { // the note starts a little after its row
+		s.Read(buf)
+	}
 	for range fadeFrames {
 		s.Read(buf)
 	}

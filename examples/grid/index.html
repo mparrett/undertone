@@ -206,6 +206,14 @@
     /* the slot on screen, over its first step as the ghost's is over its own: (1) … (2) reads as from and to */
     html.next .here { display: block; position: absolute; left: 34px; bottom: 100%; z-index: 1; pointer-events: none;
                       font-size: 10px; line-height: 14px; color: var(--fg); white-space: nowrap; }
+    /* the slot changing: its number swells and settles, and the ghost shows at full strength
+       for a moment, so that a change made by follow is not missed */
+    @keyframes slotflash { from { color: #fff; transform: scale(1.8); } }
+    @keyframes ghostflash { from { opacity: 1; } }
+    .here, .ghost .tag { transform-origin: left bottom; }
+    .here.flash, .ghost .tag.flash { animation: slotflash .7s ease-out; }
+    .ghost.flash { animation: ghostflash .7s ease-out; }
+    @media (prefers-reduced-motion: reduce) { .here.flash, .ghost .tag.flash, .ghost.flash { animation: none; } }
     .ghost .tag { position: absolute; left: 2px; bottom: 100%; font-size: 10px; line-height: 14px; color: var(--mut); white-space: nowrap; }
   }
   .c.head::after { background: #23232b; }
@@ -608,10 +616,16 @@
   function paintGhost() {
     if (!document.documentElement.classList.contains("next") || !slotsUp) return;
     const { g, n } = nextGrid();
-    for (const el of document.querySelectorAll(".here")) el.textContent = `(${slot + 1})`;
+    // not the first time, when there was nothing to change from
+    const name = (el, text, ...also) => {
+      if (el.textContent === text) return;
+      const first = !el.textContent; el.textContent = text;
+      if (!first) for (const e of [el, ...also]) { e.classList.remove("flash"); void e.offsetWidth; e.classList.add("flash"); }
+    };
+    for (const el of document.querySelectorAll(".here")) name(el, `(${slot + 1})`);
     for (const el of document.querySelectorAll(".ghost")) {
       const lane = el.parentElement.id;
-      el.querySelector(".tag").textContent = `(${n + 1})`;
+      name(el.querySelector(".tag"), `(${n + 1})`, el);
       for (const c of el.querySelectorAll(".g")) {
         const r = +c.dataset.r, i = +c.dataset.i;
         let on = false, ch = false;

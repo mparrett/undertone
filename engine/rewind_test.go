@@ -98,7 +98,7 @@ func TestRewindRestartsPolymetricLanes(t *testing.T) {
 		t.Errorf("the lanes count from row %d, want this pattern's first, %d", s.runFrom, s.pat*rows)
 	}
 	for r := range rows {
-		if got, want := gridHit(g.Drums[0], r, s.pat*rows+r-s.runFrom), gridHit(g.Drums[0], r, r); got != want {
+		if got, want := gridHit(g.Drums[0], 0, r, s.pat*rows+r-s.runFrom, &s.params), gridHit(g.Drums[0], 0, r, r, &s.params); got != want {
 			t.Errorf("row %d after Rewind: the lane plays %+v, the first play's %+v", r, got, want)
 		}
 	}
@@ -147,5 +147,43 @@ func TestParamsNowDuringARewindsFlamLeadDoesNotRevoiceTheCutPattern(t *testing.T
 	render(s, s.samplesPerRow)
 	if got, want := s.voices[trackLead].note, leadAt(s, 3); got != want || s.cut {
 		t.Errorf("after the held row stepped: lead %d, cut %v; want row 0's %d", got, s.cut, want)
+	}
+}
+
+// RunStart tells a host where a polymetric lane is: each of the lane's hits,
+// placed by its row and pattern counted from RunStart, falls on a step the
+// lane plays, pass after pass, though the lane does not fit the pattern.
+func TestRunStartPlacesAPolymetricLane(t *testing.T) {
+	p, _ := DeriveMood("village", 1, 3, 0)
+	s := NewSynth(p)
+	playedRMS(s, 2) // the generator first, so the grid's run starts past row 0
+	lane := "x..|"  // three sixteenths: two patterns' 32 never line up with it
+	g := Grid{}
+	g.Drums[0] = lane
+	s.SetGrid(&g)
+	_, cursor, _ := s.NoteEvents(0, nil)
+	playedRMS(s, 8)
+	evs, _, _ := s.NoteEvents(cursor, nil)
+	from, n, unaligned := s.RunStart(), len(lane)-1, 0
+	for _, e := range evs {
+		if e.Layer != layerDrums || e.Lane != 0 || (e.Kind != DrumOn && e.Kind != DrumOff) {
+			continue
+		}
+		six := 2 * (e.Pattern*rows + e.Row - from)
+		if e.Kind == DrumOff {
+			six++
+		}
+		if six < 0 {
+			continue // a generator hit from before the grid
+		}
+		if c := lane[six%n]; c != 'x' {
+			t.Fatalf("a hit at pattern %d row %d (%v) falls %d sixteenths into the run, on %q", e.Pattern, e.Row, e.Kind, six, c)
+		}
+		if lane[(2*e.Row+six%2)%n] != 'x' {
+			unaligned++ // where the pattern's own sixteenth would have put it
+		}
+	}
+	if unaligned == 0 {
+		t.Error("every hit fell where the pattern's own sixteenth puts it: the test does not tell RunStart from 0")
 	}
 }

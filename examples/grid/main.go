@@ -14,19 +14,25 @@
 // JS surface, on window.undertoneGrid:
 //
 //	setGrid(json)    {lead:[16], bass:[16], pulse:[16], drums:[3], bed}: degrees 1..8, 0 = rest;
-//	                 drums are kick, clap, shaker as 32 sixteenths of X x o .
-//	setParams(json)  {bpm, mood: "village"|"aurora"|"meadow"|"overworld"|"ruins"|"dungeon", voice, bass, seed}:
+//	                 drums are kick, clap, shaker as 32 sixteenths of X x o . and the chance steps ? f
+//	setVolume(v)     the listening volume, 0..1, for the pattern and auditions alike
+//	moodLevel()      the engine mood and level the current mood plays, as JSON {mood, level}
+//	moods()          the moods setParams takes, as JSON: the engine's, and ruins after the dungeon
+//	setParams(json)  {bpm, mood: one of moods(), voice, bass, seed, busy, tension}:
 //	                 voice and bass name a lead instrument for the lead and bass lanes; "" keeps the mood's,
 //	                 and "none" silences the lane: its notes stay, unheard
 //	seedGrid(seed)   a starting grid derived from the current params, as JSON
 //	play() / stop()  call from the tap handler: iOS resumes audio only inside one
 //	restart()        start the pattern over from its first step; while stopped, the next play starts there
 //	row()            the step being heard, or -1 while stopped
-//	levels()         [lead, bass, pulse, drums]: each lane's level, dry, as of the last block rendered
-//	onsets()         [lead, bass, pulse, drums]: how many notes each lane started since the last call
+//	levels()         [lead, bass, pulse, drums, echo]: each lane's level, dry, as of the last block
+//	                 rendered, then the echo's: what the shared delay returns, all lanes' at once
+//	onsets()         [lead, bass, pulse, drums, struck]: how many notes each lane started since the last call,
+//	                 and struck, the drum sixteenths that sounded, as lane, sixteenth, sixteenth-of-the-run triples
 //	queued()         milliseconds of audio rendered but not yet heard: how far levels and onsets lead the ear
 //	audition(json)   play a grid once, alone, without touching the pattern: a cell heard before it is placed
 //	key()            the current key and the notes of each lane's rows 1 and 8, as JSON
+//	moodBusy()       the mood's own chance for each ? drum step, which setParams' busy overrides
 //	mutate(json, n)  with -tags lg only: lg's variation of a grid for seed n
 package main
 
@@ -73,6 +79,14 @@ type paramsJSON struct {
 	Voice string  `json:"voice"`
 	Bass  string  `json:"bass"`
 	Seed  uint64  `json:"seed"`
+	// Busy is the chance each ? step in the drums plays, 0..1; absent, the
+	// mood's own, which is 0 in every mood without a groove
+	Busy *float64 `json:"busy"`
+	// Tension is the game's tension, 0..1, as DeriveMood takes it: fills, the
+	// mood's busyness and the bed's colour follow it. The tempo it would add
+	// does not (the grid's tempo is BPM's), nor the drum gain: a grid's drums
+	// play at their own level.
+	Tension float64 `json:"tension"`
 }
 
 func (j gridJSON) grid() engine.Grid {
@@ -90,6 +104,7 @@ func (j gridJSON) grid() engine.Grid {
 // pattern's last 200 ms still queued, and resuming it would play those first.
 type auditioner struct {
 	syn    *engine.Synth
+	vol    *webaudio.Volume // the page's listening volume, as the pattern's output has it
 	player atomic.Pointer[webaudio.Player]
 	gen    atomic.Int64 // counts auditions: a pause is for the one that armed it
 }
@@ -103,7 +118,7 @@ const auditionRing = 3 * time.Second
 // exists, so one opened inside the audition's own click would stay silent
 // until some later tap.
 func (a *auditioner) open() {
-	p, err := webaudio.Open(a.syn, webaudio.Options{SampleRate: engine.SampleRate, Queue: 60 * time.Millisecond})
+	p, err := webaudio.Open(a.vol, webaudio.Options{SampleRate: engine.SampleRate, Queue: 60 * time.Millisecond})
 	if err != nil {
 		return // the pattern's output reports a failure to open; auditions stay silent
 	}
@@ -142,19 +157,26 @@ var extraAPI func(api map[string]any)
 // voiceNone is the voice that silences a lane.
 const voiceNone = "none"
 
-func derive(c paramsJSON) engine.Params {
-	mood, level := c.Mood, 0
-	switch mood {
+// moodLevel is the engine mood and level the grid's mood names: the level
+// each plays at, and ruins, which is the dungeon's.
+func moodLevel(name string) (string, int) {
+	switch name {
 	case "dungeon", "overworld":
-		level = 2
+		return name, 2
 	case "ruins":
 		// The dungeon's shallowest level, where it is still dorian: minor,
 		// but with a raised sixth that keeps it from turning grim.
-		mood = "dungeon"
+		return "dungeon", 0
 	}
-	p, ok := engine.DeriveMood(mood, c.Seed, level, 0)
+	return name, 0
+}
+
+func derive(c paramsJSON) engine.Params {
+	mood, level := moodLevel(c.Mood)
+	t := min(max(c.Tension, 0), 1)
+	p, ok := engine.DeriveMood(mood, c.Seed, level, t)
 	if !ok {
-		p = engine.DeriveOverworld(c.Seed, 2, 0)
+		p = engine.DeriveOverworld(c.Seed, 2, t)
 	}
 	// "none" mutes the lane at the mix: it still plays, unheard, so nothing
 	// else about the pattern or the bed moves.
@@ -174,6 +196,9 @@ func derive(c paramsJSON) engine.Params {
 	}
 	if c.BPM > 0 {
 		p.BPM = min(max(c.BPM, 40), 200)
+	}
+	if c.Busy != nil {
+		p.DrumBusy = min(max(*c.Busy, 0), 1)
 	}
 	return p
 }
@@ -223,7 +248,9 @@ func main() {
 	g0 := engine.SeedGrid(derive(cur))
 	syn.SetGrid(&g0)
 	src := &gate{src: syn}
-	aud := &auditioner{syn: engine.NewSynth(derive(cur))}
+	vol := webaudio.NewVolume(src)
+	asyn := engine.NewSynth(derive(cur))
+	aud := &auditioner{syn: asyn, vol: webaudio.NewVolume(asyn)}
 	go aud.open()
 
 	var player atomic.Pointer[webaudio.Player]
@@ -231,7 +258,7 @@ func main() {
 		// A shorter queue than webaudio's default: an edit is heard the next
 		// time the playhead passes it, and every millisecond queued is a
 		// millisecond the edit trails the playhead.
-		p, err := webaudio.Open(src, webaudio.Options{SampleRate: engine.SampleRate, Queue: 200 * time.Millisecond})
+		p, err := webaudio.Open(vol, webaudio.Options{SampleRate: engine.SampleRate, Queue: 200 * time.Millisecond})
 		if err != nil {
 			js.Global().Call("undertoneGridFailed", err.Error())
 			return
@@ -269,6 +296,19 @@ func main() {
 			p := derive(cur)
 			p.Seed = uint64(a[0].Int())
 			return toJSON(engine.SeedGrid(p))
+		}),
+		// grooves() lists the groove library; grooveDrums(name, seed) is that
+		// groove written out as SeedGrid writes a mood's, chances drawn from
+		// the seed and polymetric lanes kept.
+		"grooves": js.FuncOf(func(js.Value, []js.Value) any {
+			b, _ := json.Marshal(engine.GrooveNames())
+			return string(b)
+		}),
+		"grooveDrums": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			p := derive(cur)
+			p.Groove, p.Seed = a[0].String(), uint64(a[1].Int())
+			b, _ := json.Marshal(engine.SeedGrid(p).Drums)
+			return string(b)
 		}),
 		"play": js.FuncOf(func(js.Value, []js.Value) any {
 			src.on.Store(true)
@@ -308,18 +348,33 @@ func main() {
 			if cur.Bass == voiceNone {
 				l[7] = 0
 			}
-			return []any{l[3], l[7], l[5], l[engine.DrumsLayer]} // LayerNames order: lead 3, bass 7, pulse 5
+			return []any{l[3], l[7], l[5], l[engine.DrumsLayer], syn.EchoLevel()} // LayerNames order: lead 3, bass 7, pulse 5
 		}),
 		"onsets": js.FuncOf(func(js.Value, []js.Value) any {
 			var evs []engine.NoteEvent
 			evs, noteCursor, _ = syn.NoteEvents(noteCursor, noteBuf[:0])
 			out := []any{0, 0, 0, 0}
+			// drum sixteenths struck, as lane, sixteenth of the pattern and
+			// sixteenth of the run: the page lights a step that played, and
+			// a looping lane draws where in its loop the run has got to
+			var struck []any
+			from := syn.RunStart()
 			for _, e := range evs {
+				// a hit from before the run began (a restart, or a new run, since the
+				// last poll) belongs to a run the page no longer draws: patterns only
+				// count up, so it is one that comes before RunStart
+				if (e.Kind == engine.DrumOn || e.Kind == engine.DrumOff) && e.Pattern*16+e.Row >= from {
+					six := 2 * e.Row
+					if e.Kind == engine.DrumOff {
+						six++
+					}
+					struck = append(struck, e.Lane, six, 2*(e.Pattern*16+e.Row-from)+six%2)
+				}
 				if k, ok := lanes[e.Layer]; ok && !(k == 0 && cur.Voice == voiceNone) && !(k == 1 && cur.Bass == voiceNone) {
 					out[k] = out[k].(int) + 1
 				}
 			}
-			return out
+			return append(out, struck)
 		}),
 		"queued": js.FuncOf(func(js.Value, []js.Value) any {
 			if p := player.Load(); p != nil {
@@ -334,8 +389,38 @@ func main() {
 			}
 			return nil
 		}),
-		"key":     js.FuncOf(func(js.Value, []js.Value) any { return keyJSON(derive(cur)) }),
-		"initial": toJSON(g0),
+		"key": js.FuncOf(func(js.Value, []js.Value) any { return keyJSON(derive(cur)) }),
+		// The engine's moods, so the page's list cannot fall behind the
+		// engine's as it once did, and ruins, the dungeon's shallowest level,
+		// which the grid offers as a mood of its own.
+		"moods": js.FuncOf(func(js.Value, []js.Value) any {
+			var names []string
+			for _, n := range engine.MoodNames() {
+				names = append(names, n)
+				if n == "dungeon" {
+					names = append(names, "ruins")
+				}
+			}
+			b, _ := json.Marshal(names)
+			return string(b)
+		}),
+		// setVolume sets the listening volume, 0..1, of the pattern and the
+		// auditions alike
+		"setVolume": js.FuncOf(func(_ js.Value, a []js.Value) any {
+			vol.Set(a[0].Float())
+			aud.vol.Set(a[0].Float())
+			return nil
+		}),
+		// The engine mood and level the current mood plays, for a link to a
+		// page that takes them (the studio's #theme=).
+		"moodLevel": js.FuncOf(func(js.Value, []js.Value) any {
+			m, l := moodLevel(cur.Mood)
+			b, _ := json.Marshal(map[string]any{"mood": m, "level": l})
+			return string(b)
+		}),
+		// the mood's own busyness, what a busy left unset plays at
+		"moodBusy": js.FuncOf(func(js.Value, []js.Value) any { c := cur; c.Busy = nil; return derive(c).DrumBusy }),
+		"initial":  toJSON(g0),
 	}
 	if extraAPI != nil {
 		extraAPI(api)

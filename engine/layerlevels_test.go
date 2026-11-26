@@ -110,3 +110,24 @@ func TestLayerMeterDecaysWithinALongRead(t *testing.T) {
 		}
 	}
 }
+
+// One lead note on the grid's first step, nothing else: the echo's level
+// stays dark until the delay returns the note, three rows on, and then lights.
+func TestEchoLevelLightsWhenTheDelayReturns(t *testing.T) {
+	p, _ := DeriveMood("overworld", 1, 2, 0)
+	s := NewSynth(p)
+	var g Grid
+	g.Lead[0] = 5
+	s.SetGrid(&g)
+	render(s, s.samplesPerRow/2)
+	if lead := s.LayerLevels()[3]; lead < 1e-3 {
+		t.Fatalf("lead level %g: the note did not play", lead)
+	}
+	render(s, s.samplesPerRow*2) // half a row short of the echo
+	before := s.EchoLevel()
+	render(s, s.samplesPerRow) // past the third row
+	after := s.EchoLevel()
+	if before > 1e-4 || after < 1e-3 {
+		t.Errorf("echo level %g before the delay's period, %g after; want dark, then lit", before, after)
+	}
+}

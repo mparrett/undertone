@@ -36,6 +36,7 @@
 //	notes()                  the bed's notes since the last call, flat: layer (a LayerNames
 //	                         index), MIDI note, gain for each
 //	position()               [row, pattern] the bed has rendered to, or null
+//	setVolume(v)             the listening volume, 0..1; renders and measures are not scaled
 //	theme(json)              play grids through the bed's voices ({lead, bass, pulse, drums, bed}),
 //	                         as a vector of them or {grids, then: generate|silence|loop}; "" stops
 //	themeCheck(json)         "" or what is wrong with that theme, without playing it
@@ -227,10 +228,11 @@ func main() {
 		return t.UntilSilentHash(engine.SilentFloorDB)
 	}
 	src := &gate{src: syn}
+	vol := webaudio.NewVolume(src) // what is heard; renders and measures read the synth, not this
 
 	var player atomic.Pointer[webaudio.Player]
 	go func() {
-		p, err := webaudio.Open(src, webaudio.Options{SampleRate: engine.SampleRate})
+		p, err := webaudio.Open(vol, webaudio.Options{SampleRate: engine.SampleRate})
 		if err != nil {
 			js.Global().Call("undertoneStudioFailed", err.Error())
 			return
@@ -436,6 +438,9 @@ func main() {
 			return ""
 		}),
 		"themePlaying": js.FuncOf(func(_ js.Value, _ []js.Value) any { return syn.ThemePlaying() }),
+		// setVolume sets the listening volume, 0..1: what is heard, not
+		// what a render or a measurement reads
+		"setVolume": js.FuncOf(func(_ js.Value, a []js.Value) any { vol.Set(a[0].Float()); return nil }),
 		"trigger": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			shots, err := take(a[0].String())
 			if err != nil {

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Undertone Designer</title>
+<title>Undertone Mood Designer</title>
 <style>
   :root { --bg: #0d0d10; --panel: #15151a; --line: #26262e; --fg: #d6d1c2; --mut: #8a8576; --err: #c96a5f;
           /* one hue per kind of section, shared with the grid's lanes */
@@ -75,6 +75,18 @@
   #mix .chip i { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--sec); }
   .card.muted { opacity: .55; }
   .card.muted .hd span { color: var(--mut); }
+  /* the master meter: the output after everything, in dBFS */
+  #vu { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mut); }
+  #vu .bar { position: relative; flex: 1; height: 10px; border-radius: 3px; overflow: hidden;
+             background: linear-gradient(to right, #3d6b4f 0%, #7aa36a 75%, #c9a94f 75% 93.75%, #c96a5f 93.75%); }
+  #vu .cur { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; background: var(--panel); }
+  #vu .hold { position: absolute; top: 0; bottom: 0; width: 2px; left: 0; background: var(--fg); opacity: 0; }
+  #vu #vudb { min-width: 6.5em; text-align: right; font-variant-numeric: tabular-nums; }
+  #vu #clip { width: 10px; height: 10px; border-radius: 50%; background: var(--line); cursor: pointer; }
+  #vu #clip.on { background: var(--err); }
+  #vol { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mut); }
+  #vol input { flex: 1; accent-color: var(--mut); }
+  #vol #volv { min-width: 9.5em; text-align: right; font-variant-numeric: tabular-nums; }
   #now { flex: 1; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
   /* docked, the dock rides the bottom edge, so play is in reach from any
      section: always on a phone, and on a wide screen once its slot in the top
@@ -150,7 +162,7 @@
 <main class="loading">
  <div class="top">
   <div class="from">
-   <h1>UNDERTONE · DESIGNER</h1>
+   <h1>UNDERTONE · MOOD DESIGNER</h1>
    <p class="sub">shape a mood; hear it at any level; take it away as EDN</p>
    <div class="ctl">
     <div class="lab">START FROM</div>
@@ -162,6 +174,12 @@
   <div class="playing">
    <div id="status">loading the engine…</div>
    <div id="dockslot"><div id="dock"><div class="row"><button id="play" disabled>loading…</button><div id="now">–</div></div>
+    <div id="vu" title="the output, after the mix, echo and reverb: peak in dBFS, -48 to 0; the number is the peak held over 1.5 s"><span>OUT</span>
+     <div class="bar"><div class="cur"></div><div class="hold"></div></div><span id="vudb">–</span>
+     <span id="clip" title="lights when the output presses against its ceiling, where the soft clip squashes the mix, and stays lit; tap to reset"></span></div>
+    <label id="vol" title="what you hear, and only that: the meter above reads the music at full level. in dB; xsofy plays its music at -12 dB (0.25), the mark, and the bottom is off; remembered on this browser"><span>VOL</span>
+     <input id="volin" type="range" min="-60" max="0" step="1" value="-12" list="volmarks"><span id="volv"></span></label>
+    <datalist id="volmarks"><option value="-12"></option></datalist>
     <div class="lab" id="mixlab">MIX <small style="font-weight:400;letter-spacing:0">· tap a layer to mute it; none, then one, solos it</small></div>
     <div id="mix" title="tap a layer to mute or unmute it; none, then one layer, solos it"></div></div></div>
   </div>
@@ -575,8 +593,45 @@
   // The loop runs only while playing: stopped, it clears the bars and ends.
   const chips = [...document.querySelectorAll("#mix .chip")];
   let metering = false;
+  // The master meter: peak in dB, falling back at 24 dB/s, its highest held
+  // for 1.5 s. The scale runs -48 to 0 dBFS, yellow from -12, red from -3.
+  const VU_FLOOR = -48, vuCur = document.querySelector("#vu .cur"), vuHold = document.querySelector("#vu .hold");
+  let vuDB = -Infinity, holdDB = -Infinity, holdAt = 0, vuT = 0;
+  const vuPct = (db) => Math.max(0, Math.min(100, (db - VU_FLOOR) / -VU_FLOOR * 100));
+  // The engine's output soft-clips (tanh) into a peak of 32000, so it never reaches full scale: the
+  // light comes on where the curve has flattened hard, at 0.97 of that peak.
+  const CEILING = 0.97 * 32000 / 32768;
+  function master(on) {
+    const t = performance.now(), dt = vuT ? (t - vuT) / 1000 : 0; vuT = on ? t : 0;
+    if (!on) { vuDB = holdDB = -Infinity; vuCur.style.width = "100%"; vuHold.style.opacity = 0; $("vudb").textContent = "–"; return; }
+    const pk = undertoneDesigner.outPeak(), db = pk > 0 ? 20 * Math.log10(pk) : -Infinity;
+    vuDB = Math.max(db, vuDB - 24 * dt);
+    if (db >= holdDB || t - holdAt > 1500) { holdDB = db; holdAt = t; }
+    if (pk >= CEILING) $("clip").classList.add("on");
+    vuCur.style.width = `${100 - vuPct(vuDB)}%`;
+    vuHold.style.left = `calc(${vuPct(holdDB)}% - 2px)`; vuHold.style.opacity = holdDB > VU_FLOOR ? 1 : 0;
+    $("vudb").textContent = holdDB > -Infinity ? `${holdDB.toFixed(1)} dBFS` : "-∞ dBFS";
+  }
+  $("clip").onclick = () => $("clip").classList.remove("on");
+  // The listening volume, in dB, as loudness is heard: from xsofy's music
+  // gain (0.25, -12 dB) unless changed here, with most of the slider below
+  // it and only the top fifth above, to full scale. The bottom is off.
+  const GAME_VOL = -12, VOL_OFF = -60;
+  let vol = GAME_VOL;
+  try { const s = localStorage.getItem("undertone-designer-vol-db"); if (s !== null && s !== "" && isFinite(+s)) vol = Math.max(VOL_OFF, Math.min(0, +s)); } catch {}
+  function setVol(v) {
+    vol = v; $("volin").value = v;
+    $("volv").textContent = (v > VOL_OFF ? `${v} dB` : "off") + (v === GAME_VOL ? " · game" : "");
+    if (ready) undertoneDesigner.setVolume(v > VOL_OFF ? 10 ** (v / 20) : 0);
+    try { localStorage.setItem("undertone-designer-vol-db", v); } catch {}
+  }
+  // within a dB of the game's level, land on it: the mark is a place to come back to
+  const snapVol = (v) => (Math.abs(v - GAME_VOL) <= 1 ? GAME_VOL : v);
+  $("volin").oninput = () => setVol(snapVol(+$("volin").value));
+  setVol(vol);
   function meters() {
     const v = ready && playing ? JSON.parse(undertoneDesigner.levels()) : null;
+    master(!!v);
     chips.forEach((c, i) => {
       c.firstElementChild.style.width = `${!v || muted.has(LAYERS[i]) ? 0 : Math.min(100, Math.sqrt(v[i]) * 140)}%`;
     });
@@ -609,6 +664,7 @@
   window.undertoneDesignerFailed = (msg) => { status.textContent = "audio failed: " + msg; };
   window.undertoneDesignerReady = () => {
     ready = true;
+    undertoneDesigner.setVolume(vol > VOL_OFF ? 10 ** (vol / 20) : 0);
     buildSections();
     for (const m of JSON.parse(undertoneDesigner.moods())) {
       const b = el("span", "chip", m); b.dataset.v = m; b.onclick = () => { load(m); if (!playing) setPlaying(true); }; $("moods").append(b);

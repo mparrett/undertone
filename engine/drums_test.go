@@ -8,11 +8,17 @@ import (
 	"testing"
 )
 
-// Every groove is three lanes of two bars of 16ths, in the step alphabet.
+// Every groove is three lanes of two bars of 16ths, in the step alphabet,
+// or a polymetric loop of any length ending in |.
 func TestGroovesAreWellFormed(t *testing.T) {
 	for name, g := range grooveLib {
 		for d, lane := range g {
-			if len(lane) != 2*rows {
+			if loop, ok := strings.CutSuffix(lane, "|"); ok {
+				if loop == "" || strings.Contains(loop, "|") {
+					t.Errorf("%s lane %d: polymetric lane %q, want steps then one |", name, d, lane)
+				}
+				lane = loop
+			} else if len(lane) != 2*rows {
 				t.Errorf("%s lane %d: %d steps, want %d", name, d, len(lane), 2*rows)
 			}
 			if i := strings.IndexFunc(lane, func(c rune) bool { return !strings.ContainsRune("Xxo.?frR", c) }); i >= 0 {
@@ -222,8 +228,8 @@ func TestSeedGridWritesTheGroove(t *testing.T) {
 	p, _ := DeriveMood("village", 7, 3, 0)
 	g := SeedGrid(p)
 	for d, lane := range g.Drums {
-		if len(lane) != 2*Steps || strings.Trim(lane, "Xxo.") != "" {
-			t.Errorf("drum lane %d = %q; want %d steps of X, x, o or .", d, lane, 2*Steps)
+		if len(lane) != 2*Steps || strings.Trim(lane, "Xxo.?f") != "" {
+			t.Errorf("drum lane %d = %q; want %d steps of X, x, o, ., ? or f", d, lane, 2*Steps)
 		}
 	}
 	if !strings.ContainsAny(g.Drums[0], "Xx") {
@@ -235,21 +241,17 @@ func TestSeedGridWritesTheGroove(t *testing.T) {
 	if g.Lead != h.Lead || g.Bass != h.Bass || g.Pulse != h.Pulse {
 		t.Error("seeding the drums changed the lead, bass or pulse")
 	}
-	// fills come through too: at full tension most of them play
-	fills := 0
+	// chance steps stay chance, for the grid to draw as it plays
 	for seed := uint64(1); seed <= 20; seed++ {
 		q, _ := DeriveMood("village", seed, 3, 1)
 		sg, groove := SeedGrid(q), grooveLib[q.Groove]
 		for d := range groove {
 			for i := range groove[d] {
-				if groove[d][i] == 'f' && sg.Drums[d][i] != '.' {
-					fills++
+				if c := groove[d][i]; (c == '?' || c == 'f') && sg.Drums[d][i] != c {
+					t.Fatalf("seed %d, %s lane %d step %d: %q seeded as %q, want it kept", seed, q.Groove, d, i, c, sg.Drums[d][i])
 				}
 			}
 		}
-	}
-	if fills == 0 {
-		t.Error("no seeded village grid at full tension has a fill")
 	}
 	if h.Drums != [DrumLanes]string{} {
 		t.Errorf("a mood without a groove seeded drums %q", h.Drums)
@@ -575,6 +577,66 @@ func TestPolymetricGrooveLaneRunsFromTheFirstPattern(t *testing.T) {
 	}
 }
 
+// drift is the kick's one and the ghost into the next phrase, and nothing
+// else when the chance hit misses; drift-poly lays a top lane over it that
+// loops every six 16ths, so it falls differently in each pattern.
+func TestDriftGrooves(t *testing.T) {
+	p, _ := DeriveMood("aurora", 1, 2, 0)
+	p.DrumGain, p.DrumBusy = 1, 0
+	hitsAt := func(lane [rows]drumHit) []int {
+		var at []int
+		for i := range 2 * rows {
+			if h := lane[i/2]; (i%2 == 0 && h.on > 0) || (i%2 == 1 && h.off > 0) {
+				at = append(at, i)
+			}
+		}
+		return at
+	}
+	for _, name := range []string{"drift", "drift-poly"} {
+		p.Groove = name
+		d := buildDrums(p, 0)
+		if got := hitsAt(d[0]); !slices.Equal(got, []int{0, 30}) {
+			t.Errorf("%s kick at %v, want [0 30]", name, got)
+		}
+		if got := hitsAt(d[1]); got != nil {
+			t.Errorf("%s clap at %v, want none", name, got)
+		}
+	}
+	p.Groove = "drift"
+	if got := hitsAt(buildDrums(p, 0)[2]); got != nil {
+		t.Errorf("drift top at %v, want none", got)
+	}
+	p.Groove = "drift-poly"
+	var first []int
+	for pat := range 3 {
+		got := hitsAt(buildDrums(p, pat)[2])
+		var want []int
+		for i := range 2 * rows {
+			if (2*rows*pat+i)%6 == 0 {
+				want = append(want, i)
+			}
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("drift-poly top in pattern %d at %v, want %v", pat, got, want)
+		}
+		if pat == 0 {
+			first = got
+		} else if slices.Equal(got, first) {
+			t.Errorf("drift-poly top in pattern %d repeats pattern 0's %v: not polymetric", pat, got)
+		}
+	}
+}
+
+// limp's lanes loop together at fourteen 16ths, a bar of 7/8, so the bar
+// stays one bar as it slides across patterns.
+func TestLimpIsOneSevenEightBar(t *testing.T) {
+	for d, lane := range grooveLib["limp"] {
+		if loop, ok := strings.CutSuffix(lane, "|"); !ok || len(loop) != 14 {
+			t.Errorf("limp lane %d is %q, want 14 steps then |", d, lane)
+		}
+	}
+}
+
 // A tempo change landing near a grace point still plays the grace exactly
 // once: a speed-up that jumps the frames left in the row past the lead, and
 // a slow-down that brings them back above it after the grace has struck.
@@ -652,5 +714,42 @@ func TestThemeLeadInSurvivesATempoChange(t *testing.T) {
 	_, gain := strikes(s, 0, nowBlock+s.samplesPerRow)
 	if len(gain) < 2 || math.Abs(gain[0]-flamGrace*gain[1]) > 1e-12 || math.Abs(gain[1]-gridDrumGain*0.7) > 1e-12 {
 		t.Errorf("theme start under a tempo change struck at gains %v; want a grace, then the hit", gain)
+	}
+}
+
+// A grid's chance step plays as the generator's does: at DrumBusy, drawn
+// afresh each time it comes round, and the same again for the same seed.
+func TestGridDrawsChanceStepsEachPass(t *testing.T) {
+	lane := strings.Repeat("?", 2*Steps)
+	p, _ := DeriveMood("village", 3, 3, 0)
+	hits := func(busy float64) (n int, pattern []bool) {
+		p.DrumBusy = busy
+		for run := range 8 * rows { // eight passes
+			h := gridHit(lane, 2, run%rows, run, &p)
+			pattern = append(pattern, h.on > 0)
+			if h.on > 0 {
+				n++
+			}
+		}
+		return n, pattern
+	}
+	if n, _ := hits(0); n != 0 {
+		t.Errorf("busy 0: %d chance steps played, want none", n)
+	}
+	if n, _ := hits(1); n != 8*rows {
+		t.Errorf("busy 1: %d of %d chance steps played, want all", n, 8*rows)
+	}
+	n, a := hits(0.5)
+	if n < 8*rows/4 || n > 3*8*rows/4 {
+		t.Errorf("busy 0.5: %d of %d chance steps played, want about half", n, 8*rows)
+	}
+	if slices.Equal(a[:rows], a[rows:2*rows]) {
+		t.Error("busy 0.5: the second pass drew the first pass's steps again")
+	}
+	if _, b := hits(0.5); !slices.Equal(a, b) {
+		t.Error("busy 0.5: the same seed drew different steps")
+	}
+	if h := gridHit(lane, 2, 0, 0, &p); h.on > 0 && math.Abs(h.on-gridDrumGain*0.45) > 1e-12 {
+		t.Errorf("a chance hit at %g, want the generator's soft %g", h.on, gridDrumGain*0.45)
 	}
 }

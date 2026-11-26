@@ -81,6 +81,62 @@ var grooveLib = map[string]groove{
 		"....X..o....X..R....X..o....X.rR",
 		"x?o?x?R?x?o?x?r?x?o?x?R?x?o?x?R?",
 	},
+	// drift: momentum without a beat, for ambient moods. One soft hit on
+	// the one, a chance hit in the middle of the second bar, and a ghost on
+	// the and of four that pulls into the next phrase. No backbeat, no top,
+	// no fills.
+	"drift": {
+		"X.......................?.....o.",
+		"................................",
+		"................................",
+	},
+	// drift-poly: drift under a top lane of dotted eighths, three 16ths
+	// against the pattern's 32, so its accent lands somewhere else each
+	// time the pulse comes round. Every other tick is a chance, so it
+	// thins out when the mood is less busy.
+	"drift-poly": {
+		"X.......................?.....o.",
+		"................................",
+		"o..?..|",
+	},
+	// patter: dotted eighths on the backbeat lane, three 16ths apart, the
+	// figure resetting each bar (3+3+3+3+4) so it cascades and then lands;
+	// a light kick under it, no top
+	"patter": {
+		"X...............o...............",
+		"x..o..x..o..x...x..o..x..o..x.f.",
+		"................................",
+	},
+	// cross3: three against four. A quarter-note kick with ghosts on two
+	// and four, and a top lane looping every three 16ths, so its accents
+	// walk across the beat and meet the kick again every three beats
+	"cross3": {
+		"X...o...x...o...X...o...x...o...",
+		"................................",
+		"x..|",
+	},
+	// cross5: cross3's kick under a five-16th top, which comes round to the
+	// kick only every five beats: slower to resolve, more unsettled
+	"cross5": {
+		"X...o...x...o...X...o...x...o...",
+		"................................",
+		"x.?o.|",
+	},
+	// limp: a faked 7/8, every lane looping at fourteen 16ths grouped
+	// 2+2+3 (4+4+6), so the bar comes round early against the melody's
+	// 4/4 and the long group gives each cycle its stumble
+	"limp": {
+		"X...x...x.....|",
+		"...........o..|",
+		"x.o.x.o.x.o.o.|",
+	},
+	// trudge: a sparse half-time, the backbeat on three rather than two
+	// and four, a second kick pushing into it, the top only ticking
+	"trudge": {
+		"X.........x.....X...............",
+		"........X...............X.......",
+		"o...?...o...?...o...?...o...?.f.",
+	},
 }
 
 // drumHit is a lane's two 16ths within one row: on the row, and the off 16th
@@ -249,7 +305,7 @@ func (s *Synth) flamAhead(d int) (float64, drumSound, bool) {
 	var h drumHit
 	switch g, _, from := s.nextOwner(); {
 	case g != nil:
-		h = gridHit(g.Drums[d], s.row, s.pat*rows+s.row-from)
+		h = gridHit(g.Drums[d], d, s.row, s.pat*rows+s.row-from, p)
 	case s.row != 0:
 		h = s.drums[d][s.row]
 	default: // the generator's next pattern, not drawn yet

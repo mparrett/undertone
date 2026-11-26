@@ -1558,6 +1558,7 @@ type Synth struct {
 	// owner of the last row stepped (ownGen, ownGrid, ownTheme) and the row
 	// its grid's polymetric lanes count from
 	owner, runFrom int
+	runStart       atomic.Int64 // runFrom, for RunStart to read from another goroutine
 	// the next row has no row before it to lead its flams in from: the
 	// synth's first, or a theme's
 	leadIn bool
@@ -2031,6 +2032,7 @@ func (s *Synth) revoice(t, pat, row int) {
 func (s *Synth) step() {
 	s.endThemeAt()
 	_, s.owner, s.runFrom = s.nextOwner()
+	s.runStart.Store(int64(s.runFrom))
 	s.cut = false
 	if s.row == 0 {
 		s.advanceTheme()
@@ -2171,6 +2173,7 @@ func (s *Synth) frame() (int16, int16) {
 	s.dpos = (s.dpos + 1) % len(s.dl)
 	l += wl * 0.5
 	r += wr * 0.5
+	s.layers.see(layerEcho, (wl+wr)*0.5)
 	vl, vr := s.verb.process(s.bus.verb)
 	l, r = l+vl, r+vr
 	l, r = math.Tanh(l*0.8), math.Tanh(r*0.8)

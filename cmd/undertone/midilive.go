@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,48 +27,141 @@ type midiSink interface {
 // due.
 const liveAhead = 60 * time.Millisecond
 
-// liveChannels are the channels -midi-live sends, all of them unless -layer
-// names some: a receiver that plays every channel on one instrument, as Slab
-// does, gets one clean part rather than the whole mix piled on it.
-var liveChannels = func() (c [16]bool) {
-	for i := range c {
-		c[i] = true
+// liveLayers are the layers -midi-live sends, all of them unless -layer names
+// some: a receiver that plays every channel on one instrument, as Slab does,
+// gets one clean part rather than the whole mix piled on it.
+var liveLayers = func() (l [engine.NumLayers]bool) {
+	for i := range l {
+		l[i] = true
 	}
-	return c
+	return l
 }()
 
-// setLayers limits liveChannels to the named layers, comma-separated.
+// setLayers limits liveLayers to the named layers, comma-separated.
 func setLayers(list string) error {
 	if list == "" {
 		return nil
 	}
-	var c [16]bool
+	var l [engine.NumLayers]bool
 	names := engine.LayerNames()
 	for _, n := range strings.Split(list, ",") {
 		n = strings.TrimSpace(n)
 		i := slices.Index(names[:], n)
-		switch {
-		case i < 0:
+		if i < 0 {
 			return fmt.Errorf("-layer %q: want %s", n, strings.Join(names[:], ", "))
-		case i == engine.DrumsLayer:
-			c[drumChannel] = true
-		default:
-			c[i] = true
 		}
+		l[i] = true
 	}
-	liveChannels = c
+	liveLayers = l
 	return nil
 }
 
+// layerChannel is the channel a layer's notes are on, as noteMapper sends
+// them.
+func layerChannel(layer int) byte {
+	if layer == engine.DrumsLayer {
+		return drumChannel
+	}
+	return byte(layer)
+}
+
+// liveSource is one virtual source and the channels it gets all-notes-off on
+// at the end.
+type liveSource struct {
+	name  string
+	sink  midiSink
+	chans []byte
+}
+
+// liveRoute says which source each channel's messages go to: nil drops them.
+type liveRoute struct {
+	sources []liveSource
+	byChan  [16]midiSink
+}
+
+// sourceName is a layer's source under -midi-split.
+func sourceName(layer int) string { return "undertone " + engine.LayerNames()[layer] }
+
+// openRoute opens the sources -midi-live sends to. Without split it is the
+// one "undertone" source, a channel per layer. With split it is a source per
+// layer in layers, named for it, each layer on the channel it has without
+// split: a receiver that picks a source gets the layer alone, and one that
+// reads only channels hears what it did before. A layer -layer leaves out
+// gets no source, so a receiver lists only the sources that play.
+func openRoute(split bool, layers [engine.NumLayers]bool, open func(string) (midiSink, error)) (*liveRoute, error) {
+	r := &liveRoute{}
+	if !split {
+		sink, err := open("undertone")
+		if err != nil {
+			return nil, err
+		}
+		// all-notes-off goes to every channel this tool uses, filtered by
+		// -layer or not, as it did before sources could split.
+		var chans []byte
+		for ch := byte(0); ch < engine.NumLayers; ch++ {
+			chans = append(chans, ch)
+		}
+		r.sources = []liveSource{{"undertone", sink, append(chans, drumChannel)}}
+		for i, on := range layers {
+			if on {
+				r.byChan[layerChannel(i)] = sink
+			}
+		}
+		return r, nil
+	}
+	for i, on := range layers {
+		if !on {
+			continue
+		}
+		name := sourceName(i)
+		sink, err := open(name)
+		if err != nil {
+			r.close()
+			return nil, err
+		}
+		ch := layerChannel(i)
+		r.sources = append(r.sources, liveSource{name, sink, []byte{ch}})
+		r.byChan[ch] = sink
+	}
+	return r, nil
+}
+
+// send sends data to its channel's source, or drops it.
+func (r *liveRoute) send(data [3]byte) error {
+	if sink := r.byChan[data[0]&0x0f]; sink != nil {
+		return sink.send(data)
+	}
+	return nil
+}
+
+func (r *liveRoute) close() {
+	for _, s := range r.sources {
+		s.sink.close()
+	}
+}
+
+// names quotes the sources' names for a message.
+func (r *liveRoute) names() string {
+	q := make([]string, len(r.sources))
+	for i, s := range r.sources {
+		q[i] = strconv.Quote(s.name)
+	}
+	return strings.Join(q, ", ")
+}
+
 // playMIDILive renders s in real time, without audio, and sends its notes
-// to a virtual MIDI source until interrupted.
-func playMIDILive(s *engine.Synth, p engine.Params, desc string) error {
-	out, err := openVirtualSource("undertone")
+// to virtual MIDI sources (see openRoute) until interrupted.
+func playMIDILive(s *engine.Synth, p engine.Params, desc string, split bool) error {
+	out, err := openRoute(split, liveLayers, openVirtualSource)
 	if err != nil {
 		return err
 	}
 	defer out.close()
-	fmt.Printf("playing %s to MIDI source \"undertone\" — ctrl-c to stop\n", desc)
+	noun := "source"
+	if len(out.sources) > 1 {
+		noun = "sources"
+	}
+	fmt.Printf("playing %s to MIDI %s %s — ctrl-c to stop\n", desc, noun, out.names())
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
@@ -99,10 +193,6 @@ func playMIDILive(s *engine.Synth, p engine.Params, desc string) error {
 			if m.frame > now {
 				break
 			}
-			if !liveChannels[m.data[0]&0x0f] {
-				n++
-				continue
-			}
 			if err := out.send(m.data); err != nil {
 				return err
 			}
@@ -128,9 +218,9 @@ func resync(start time.Time, now, rendered int64) (time.Time, int64) {
 	return start.Add(time.Duration(float64(lag) / engine.SampleRate * float64(time.Second))), rendered
 }
 
-// allOff ends the notes still sounding and sends all-notes-off on each
-// channel this tool uses, so nothing hangs in the receiver.
-func allOff(out midiSink, m *noteMapper) error {
+// allOff ends the notes still sounding and sends all-notes-off on every
+// source, on each channel it carries, so nothing hangs in the receiver.
+func allOff(out *liveRoute, m *noteMapper) error {
 	for i := range m.held {
 		m.release(i, 0)
 	}
@@ -139,8 +229,13 @@ func allOff(out midiSink, m *noteMapper) error {
 			out.send(msg.data)
 		}
 	}
-	for ch := byte(0); ch < engine.NumLayers; ch++ {
-		out.send([3]byte{0xb0 | ch, 123, 0})
+	var err error
+	for _, s := range out.sources {
+		for _, ch := range s.chans {
+			if e := s.sink.send([3]byte{0xb0 | ch, 123, 0}); err == nil {
+				err = e
+			}
+		}
 	}
-	return out.send([3]byte{0xb0 | drumChannel, 123, 0})
+	return err
 }

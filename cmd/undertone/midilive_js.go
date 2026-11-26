@@ -10,6 +10,6 @@ import (
 // anyway.
 func setLayers(string) error { return nil }
 
-func playMIDILive(*engine.Synth, engine.Params, string) error {
+func playMIDILive(*engine.Synth, engine.Params, string, bool) error {
 	return errors.New("-midi-live is not available in the browser")
 }

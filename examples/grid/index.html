@@ -121,6 +121,9 @@
   .slotchips .chip.linked { box-shadow: 0 2px 0 var(--mut); }
   .slotchips .chip.heard { background: var(--fg); color: var(--bg); border-color: var(--fg); }
   #chainedn { margin: 0; overflow-x: auto; }
+  /* with a chain on, the slots are always in view: a click picks one */
+  .chained .pick.slots .pickbtn { display: none; }
+  .chained .pick.slots .drawer { display: flex; position: static; width: auto; max-width: none; padding: 0; border: 0; background: none; box-shadow: none; }
   .lane.of-lead span { color: var(--lead); } .lane.of-bass span { color: var(--bass); }
   .lane.of-pulse span { color: var(--pulse); } .lane.of-drums span { color: var(--drum); }
   .lbl.ref { color: var(--fg); }
@@ -1090,6 +1093,7 @@
     if (!ready || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
     if (e.key === "r") restart();
+    if (/^[1-8]$/.test(e.key)) pickSlot(+e.key - 1);
   });
 
   // The listening volume, in dB, as loudness is heard: xsofy plays its
@@ -1436,9 +1440,13 @@
     keep(s);
     $("undo").disabled = undo.length < 2;
   }
-  function restore(s) {
+  // lanesOnly takes the slot's notes, drums and bed and leaves the settings
+  // as they are: in a chain they are the chain's, not each slot's.
+  function restore(s, lanesOnly) {
     restoring = true;
+    const { bpm, mood, voice, bassVoice, seed, busy, tension, feel } = st;
     if (decode(s.link)) {
+      if (lanesOnly) Object.assign(st, { bpm, mood, voice, bassVoice, seed, busy, tension, feel });
       pushParams();
       if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
       paint(); pushGrid();
@@ -1464,15 +1472,19 @@
       const i = +c.dataset.v;
       c.classList.toggle("on", i === slot); c.classList.toggle("empty", !slots[i]);
       c.classList.toggle("linked", i < chain); c.classList.toggle("heard", i === heardSlot);
+      // with a chain on the slots sit in the header, which has room for the chain's and not all eight
+      c.hidden = chain > 0 && i >= chain && i !== slot;
       c.title = slots[i] ? "load this slot" : "an empty slot: picking it starts it as a copy of this pattern";
     }
   }
   function pickSlot(i) {
     if (i === slot) return;
     slots = readSlots();
+    // from one slot of the chain to another, the settings on screen stay
+    const within = slot < chain && i < chain;
     slot = i; store(CURKEY, String(i));
     undo = []; lastAt = 0;
-    if (slots[i]) restore(slots[i]);
+    if (slots[i]) restore(slots[i], within);
     remember(); // the slot's state is the first step back to; an empty slot takes this pattern
     pushChain(); // an empty slot of the chain now has a pattern to play
     paintSlots();
@@ -1507,7 +1519,8 @@
     showChainEDN(); paintChain();
   }
   function paintChain() {
-    document.querySelector(".pick.chain .pickbtn").textContent = !chain ? "chain off" : `chain 1–${chain}` + (slot >= chain ? `, not slot ${slot + 1}` : heardSlot >= 0 ? `, on ${heardSlot + 1}` : "");
+    document.documentElement.classList.toggle("chained", chain > 0);
+    document.querySelector(".pick.chain .pickbtn").textContent = !chain ? "chain off" : `chain 1–${chain}` + (slot >= chain ? `, not slot ${slot + 1}` : "");
     for (const c of document.querySelectorAll("#chain .chip")) c.classList.toggle("on", +c.dataset.v === chain);
     paintSlots();
   }

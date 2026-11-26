@@ -186,7 +186,7 @@
   /* next: a ghost of the four steps that play after this grid, to the right
      of every lane, so the join can be seen while its last notes are written.
      Not cells: it cannot be edited. Only where there is room beside the grid. */
-  .ghost { display: none; }
+  .ghost, .here { display: none; }
   @media (min-width: 900px) {
     html.next { --cols: 20.75; }
     html.next .grid { position: relative; }
@@ -202,6 +202,9 @@
     .pulse .ghost .g.on::after { background: var(--pulse); border: 1px solid var(--pulse); }
     .drums .ghost .g.on::after { background: var(--drum); border: 1px solid var(--drum); }
     .drums .ghost .g.ch::after { border: 1px dashed var(--drum); }
+    /* the slot on screen, over its first step as the ghost's is over its own: (1) … (2) reads as from and to */
+    html.next .here { display: block; position: absolute; left: 34px; bottom: 100%; z-index: 1; pointer-events: none;
+                      font-size: 10px; line-height: 14px; color: var(--fg); white-space: nowrap; }
     .ghost .tag { position: absolute; left: 2px; bottom: 100%; font-size: 10px; line-height: 14px; color: var(--mut); white-space: nowrap; }
   }
   .c.head::after { background: #23232b; }
@@ -576,6 +579,7 @@
       const c = document.createElement("div"); c.className = "g"; c.dataset.r = r; c.dataset.i = i; g.appendChild(c);
     }
     $(id).appendChild(g);
+    const here = document.createElement("span"); here.className = "here"; here.setAttribute("aria-hidden", "true"); $(id).appendChild(here);
   }
   // A looping lane runs on across patterns, so each pass starts it somewhere
   // else in its loop: loopAt is where, per lane, learnt from the hits the
@@ -602,6 +606,7 @@
   function paintGhost() {
     if (!document.documentElement.classList.contains("next") || !slotsUp) return;
     const { g, n } = nextGrid();
+    for (const el of document.querySelectorAll(".here")) el.textContent = `(${slot + 1})`;
     for (const el of document.querySelectorAll(".ghost")) {
       const lane = el.parentElement.id;
       el.querySelector(".tag").textContent = `(${n + 1})`;

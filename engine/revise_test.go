@@ -333,3 +333,58 @@ func TestReviseThemeDoesNotAllocateInRead(t *testing.T) {
 		t.Fatalf("the revisions did not both land: pass %d, waiting %v", s.themePass, s.revise != nil)
 	}
 }
+
+// A revision with fewer grids landing at a grid mid-pass wraps into itself
+// as one landing on a row does: the theme does not end there, and no pass is
+// counted.
+func TestReviseThemeAtTheNextGridToFewerGridsWraps(t *testing.T) {
+	for _, then := range []ThemeEnd{ThenGenerate, ThenLoop} {
+		s := themeAtRow(t, tune(1, 4, then), 1, 5)
+		s.ReviseTheme(tune(5, 2, then), AtNextGrid)
+		toRow(t, s, 0)
+		wantLead(t, s, 5, "the next grid")
+		if got, _ := s.Position(); !got.Theme || got.Grid != 0 || got.Pass != 0 {
+			t.Errorf("then %v: position %+v, want grid 0 of pass 0", then, got)
+		}
+		toRow(t, s, 0)
+		wantLead(t, s, 6, "the grid after")
+	}
+}
+
+// A revision with more grids landing at what was the last grid plays on into
+// them, as one landing on a row does.
+func TestReviseThemeAtTheNextGridToMoreGrids(t *testing.T) {
+	s := themeAtRow(t, tune(1, 2, ThenGenerate), 1, 5)
+	s.ReviseTheme(tune(3, 4, ThenGenerate), AtNextGrid)
+	toRow(t, s, 0)
+	wantLead(t, s, 5, "the third grid")
+	if got, _ := s.Position(); got.Grid != 2 || got.Pass != 0 {
+		t.Errorf("position %+v, want grid 2 of pass 0", got)
+	}
+}
+
+// A PlayTheme and its revision can both arrive after the audio thread has
+// looked for a theme in a block and before it looks for revisions. The
+// revision then waits in its slot for the theme to start, and lands.
+func TestReviseThemeArrivingBeforeItsThemeStarts(t *testing.T) {
+	for _, at := range []ThemeAt{AtNextRow, AtNextLoop} {
+		p, _ := DeriveMood("village", 3, 2, 0)
+		s := NewSynth(p)
+		render(s, 5*s.samplesPerRow+77)
+		s.PlayTheme(tune(1, 2, ThenLoop))
+		s.ReviseTheme(tune(5, 2, ThenLoop), at)
+		s.takeRevisions() // as if the block's look for the theme had come before both
+		if s.reviseNow.Load() == nil && s.reviseLater.Load() == nil {
+			t.Fatalf("at %v: the revision of a theme not yet started was dropped", at)
+		}
+		for s.theme == nil {
+			render(s, 1)
+		}
+		if got, want := s.voices[trackLead].note, leadAt(s, 5); got != want {
+			t.Errorf("at %v: the first row plays %d, want the revision's %d", at, got, want)
+		}
+		if s.reviseNow.Load() != nil || s.reviseLater.Load() != nil {
+			t.Errorf("at %v: the revision is still in its slot after landing", at)
+		}
+	}
+}

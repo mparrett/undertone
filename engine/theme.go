@@ -1,5 +1,7 @@
 package engine
 
+import "sync/atomic"
+
 // Theme is authored music: grids played in order, one per pattern (two bars
 // each), then Then. A theme is written in scale degrees, so it plays in
 // whatever key and tempo the params set; set them with SetParametersNow
@@ -115,10 +117,12 @@ func (s *Synth) PlayTheme(t *Theme) {
 // revision also lands at a Rewind, and is dropped if the theme ends first:
 // an AtNextLoop one always is unless the theme playing loops.
 //
-// The playhead's grid number carries over. If t has fewer grids than that,
-// it wraps into t; with as many, the grid playing is replaced by t's at the
-// same place. An EndTheme already counting still ends the theme where it was
-// going to.
+// The playhead's grid number carries over: the grid playing is replaced by
+// t's at the same place, and the next is t's next. If t has fewer grids than
+// that, the number wraps into t, which is not the theme starting over: the
+// pass is counted, and an AtNextLoop revision lands, where the theme playing
+// would have reached its end. An EndTheme already counting still ends the
+// theme where it was going to.
 //
 // ReviseTheme applies to the theme started by the last PlayTheme before it,
 // and is ignored if that one has finished, or if t is nil or has no grids.
@@ -142,17 +146,32 @@ func (s *Synth) ReviseTheme(t *Theme, at ThemeAt) {
 // PlayTheme staged in the same block, so a revision of the theme just
 // started is not taken for one of the theme before.
 func (s *Synth) takeRevisions() {
-	now, later := s.reviseNow.Swap(nil), s.reviseLater.Swap(nil)
-	if s.theme == nil {
-		return
+	if c := s.takeRevision(&s.reviseNow); c != nil {
+		s.theme = c.t
+		s.themeAt %= len(c.t.Grids)
 	}
-	if now != nil && now.gen == s.themeOf {
-		s.theme = now.t
-		s.themeAt %= len(now.t.Grids)
+	if c := s.takeRevision(&s.reviseLater); c != nil {
+		s.revise = c
 	}
-	if later != nil && later.gen == s.themeOf {
-		s.revise = later
+}
+
+// takeRevision empties a ReviseTheme slot and returns what it held if that is
+// for the theme playing. One for a theme this thread has yet to start stays
+// in its slot: a PlayTheme and its revision can both arrive between this
+// block's look for the theme and its look here, and the revision is taken a
+// block later, once the theme has started.
+func (s *Synth) takeRevision(slot *atomic.Pointer[reviseCmd]) *reviseCmd {
+	c := slot.Load()
+	if c == nil || c.gen > s.themeOf {
+		return nil
 	}
+	if !slot.CompareAndSwap(c, nil) {
+		return nil // replaced as we looked: the newer one is taken next block
+	}
+	if s.theme == nil || c.gen != s.themeOf {
+		return nil
+	}
+	return c
 }
 
 // EndTheme ends the playing theme after n units, counted from the unit the
@@ -301,9 +320,13 @@ func (s *Synth) themeAhead() (t *Theme, at int, wraps bool) {
 	if s.revise != nil && s.revise.at == AtNextGrid {
 		t = s.revise.t
 	}
-	switch {
-	case s.themeAt+1 < len(t.Grids):
-		return t, s.themeAt + 1, false
+	switch next := s.themeAt + 1; {
+	case next < len(t.Grids):
+		return t, next, false
+	case next < len(s.theme.Grids):
+		// a revision with fewer grids, landing mid-pass: the grid number
+		// wraps into it, as it does for one landing on a row
+		return t, next % len(t.Grids), false
 	case t.Then != ThenLoop:
 		return t, -1, false
 	}

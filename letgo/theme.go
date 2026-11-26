@@ -32,7 +32,8 @@ func (m *Music) playTheme(v vm.Value) (vm.Value, error) {
 // reviseTheme replaces what the playing theme holds and keeps its place
 // (engine.Synth.ReviseTheme): the theme as play-theme takes it, and when it
 // lands, :row, :grid or :loop. A theme waiting on music-start is replaced
-// whatever the when, since no place in it has played yet.
+// whatever the when, since no place in it has played yet; one the output is
+// already rendering as it opens is revised as a playing one is.
 func (m *Music) reviseTheme(v, when vm.Value) (vm.Value, error) {
 	t, at, err := reviseArgs(v, when)
 	if err != nil {
@@ -41,7 +42,11 @@ func (m *Music) reviseTheme(v, when vm.Value) (vm.Value, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.out == nil {
-		if m.theme != nil {
+		switch {
+		case m.theme == nil:
+		case m.opening != nil && m.theme == m.openingTheme:
+			m.opening.ReviseTheme(t, at)
+		default:
 			m.theme = t
 		}
 		return vm.NIL, nil

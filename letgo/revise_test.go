@@ -115,3 +115,32 @@ func TestPositionThemeGridFromLg(t *testing.T) {
 		}
 	}
 }
+
+// While the output opens, the synth may already be rendering the theme it
+// was started with. A revision sent then goes to that synth and keeps the
+// theme's place, where replacing the waiting theme would start it over.
+func TestReviseThemeWhileTheOutputOpens(t *testing.T) {
+	p := engine.DeriveDungeon(1, 0, 0)
+	m := NewMusic(p)
+	SetMusic(m)
+	c, err := api.NewLetGo("reviseopening")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Run(`(undertone/play-theme {:grids [{:lead [1]} {:lead [2]}] :then :loop})`); err != nil {
+		t.Fatal(err)
+	}
+	m.start(func(src io.Reader) (output, error) {
+		io.ReadFull(src, make([]byte, 4*(rowsOf(p, 20))))
+		if _, err := c.Run(`(undertone/revise-theme {:grids [{:lead [5]} {:lead [6]}] :then :loop} :row)`); err != nil {
+			t.Error(err)
+		}
+		io.ReadFull(src, make([]byte, 4*(rowsOf(p, 2))))
+		return gainTestOutput{}, nil
+	})
+	defer m.Stop()
+	got, _ := m.synth.Position()
+	if !got.Theme || got.Grid != 1 || got.Row != 5 {
+		t.Errorf("after opening: %+v, want row 5 of the theme's second grid, its place kept", got)
+	}
+}

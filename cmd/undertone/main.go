@@ -26,6 +26,7 @@
 //	go run ./cmd/undertone -wav out.wav -depth 4 -lead pluck  # deterministic render
 //	go run ./cmd/undertone -midi-file out.mid -mood forge -dur 60  # the notes, one channel per layer
 //	go run ./cmd/undertone -midi-live -mood village       # a virtual MIDI source "undertone" (macOS)
+//	go run ./cmd/undertone -midi-live -midi-split         # a source per layer: "undertone drone", ...
 //	go run ./cmd/undertone -midi-file out.mid -theme title.json  # an authored theme, as its notes
 package main
 
@@ -45,7 +46,8 @@ func main() {
 	wav := flag.String("wav", "", "render to WAV file")
 	midiFile := flag.String("midi-file", "", "render the notes to a Standard MIDI File (with -wav, the same render)")
 	midiLive := flag.Bool("midi-live", false, "play the notes live to a virtual MIDI source named undertone, without audio (macOS)")
-	layer := flag.String("layer", "", "with -midi-live, send only these layers, comma-separated: "+layerList())
+	midiSplit := flag.Bool("midi-split", false, "with -midi-live, a virtual source per layer, named \"undertone <layer>\", each layer on its usual channel")
+	layer := flag.String("layer", "", "with -midi-live, send only these layers, comma-separated (with -midi-split, only their sources open): "+layerList())
 	dur := flag.Float64("dur", 48, "WAV or MIDI file duration seconds")
 	seed := seedFlag(1)
 	flag.Var(&seed, "seed", "level seed; a negative one is read as a signed 64-bit seed's bits, as a game passes it")
@@ -60,6 +62,10 @@ func main() {
 
 	if *layer != "" && !*midiLive {
 		fmt.Fprintln(os.Stderr, "-layer filters -midi-live only; a -midi-file has a track per layer to mute")
+		os.Exit(2)
+	}
+	if *midiSplit && !*midiLive {
+		fmt.Fprintln(os.Stderr, "-midi-split splits -midi-live's source; a -midi-file has a track per layer already")
 		os.Exit(2)
 	}
 	if _, ok := engine.DeriveMood(*mood, 0, 0, 0); !ok {
@@ -106,7 +112,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		if err := playMIDILive(s, p, desc); err != nil {
+		if err := playMIDILive(s, p, desc, *midiSplit); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

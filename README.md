@@ -219,6 +219,7 @@ undertone -play -vu compact                # meters: bars | compact | tall
 undertone -wav out.wav -depth 4 -lead pluck -dur 30
 undertone -midi-file out.mid -mood forge -dur 60     # add -wav out.wav for both, aligned
 undertone -midi-live -mood village                   # macOS: a MIDI source named "undertone"
+undertone -midi-live -midi-split -layer lead,drums   # a source per layer: "undertone lead", "undertone drums"
 undertone -midi-file title.mid -theme title.json     # an authored theme; also with -wav, -play, -midi-live
 ```
 
@@ -242,7 +243,15 @@ gate), or until the track's next note cuts it, as its single voice does; a
 drum strike lasts a 16th. The file's tempo is the synth's row length, so
 notes sit on the grid and line up with a WAV of the same render.
 `-midi-live` renders in real time without audio and needs a cgo build on
-macOS.
+macOS. It publishes one virtual source, `undertone`, with the layers on the
+channels above. `-midi-split` publishes a source per layer instead, named
+`undertone <layer>` (`undertone drone`, `undertone lead`, `undertone drums`,
+...), each carrying only its layer, on the same channel it has in the single
+source. A DAW such as Slab can then give each track a source by name rather
+than a channel, and a receiver that reads only channels hears what it did
+before. `-layer` limits either mode to the layers named; with `-midi-split`
+only their sources are created. On ctrl-C every source gets note-offs for
+what is still sounding and all-notes-off (CC 123).
 
 ## The let-go binding
 

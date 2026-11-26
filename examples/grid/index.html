@@ -311,7 +311,7 @@
     <button id="share" title="copy a link that opens this pattern">copy link</button>
     <button id="tostudio" hidden title="open this pattern in the studio, in a new tab: one grid of a theme, or the chain's grids while a chain is on, over this mood, seed, tension and bed. The studio plays it in the mood's own voices and tempo; the lead and bass voices, tempo and busy here stay here.">studio &#8599;</button>
     <div class="pick slots"><button class="pickbtn" title="eight slots kept in this browser: picking one loads it, and every change saves to the one picked">slot 1</button><div class="bar drawer slotchips" id="slots"></div></div>
-    <div class="pick chain"><button class="pickbtn" title="chain: play slots 1 to the number picked, one after another and round again, in place of the one slot. Empty slots are skipped. Every slot plays in the mood, voices, tempo and seed on screen; the notes, drums and bed are its own. The grid stays on the slot picked, and shows the playhead while that slot is the one playing.">chain off</button><div class="bar drawer" id="chain"></div></div>
+    <div class="pick chain"><button class="pickbtn" title="chain: play slots 1 to the number picked, one after another and round again, in place of the one slot. Empty slots are skipped, and a slot picked from past the chain's end plays alone. Every slot plays in the mood, voices, tempo and seed on screen; the notes, drums and bed are its own. The grid stays on the slot picked, and shows the playhead while that slot is the one playing.">chain off</button><div class="bar drawer" id="chain"></div></div>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
   </div>
@@ -375,7 +375,7 @@
     <div><h3>playing</h3><ul>
       <li><kbd>space</kbd> plays and stops; <kbd>r</kbd> goes back to the first step.</li>
       <li>Edits are heard the next time the playhead passes them.</li>
-      <li><b>slot</b> keeps eight patterns in this browser. <b>chain</b> plays slots 1 to the number picked one after another, round and round, in the settings on screen; the grid stays on the slot picked, and an edit is heard the next time round without the chain starting over. With <b>edn</b> open the chain shows as a theme.</li>
+      <li><b>slot</b> keeps eight patterns in this browser. <b>chain</b> plays slots 1 to the number picked one after another, round and round, in the settings on screen; the grid stays on the slot picked, a slot past the chain's end plays alone, and an edit is heard the next time round without the chain starting over. With <b>edn</b> open the chain shows as a theme.</li>
       <li>A pick in the header opens its choices; <kbd>&larr;</kbd> <kbd>&rarr;</kbd> step through them while it is open, and <kbd>esc</kbd> closes it.</li>
       <li>A bass voice plays at the level of the pluck it replaces.</li>
       <li>Every note echoes 3 steps later, and again every 3, each fainter: an echo can sound like a note of its own.</li>
@@ -439,8 +439,9 @@
              lead: Array(STEPS).fill(0), bass: Array(STEPS).fill(0), pulse: Array(STEPS).fill(false), drums: lanes() };
   let playing = false, ready = false, linkHasDrums = false;
   // The chain: slots 1..chain play in order, and 0 plays the picked slot
-  // alone. chainSlots is the slot each grid last sent came from, empty while
-  // no chain plays; heardSlot is the one at the speaker, or -1.
+  // alone, as does picking a slot past the chain's end. chainSlots is the
+  // slot each grid last sent came from, empty while no chain plays;
+  // heardSlot is the one at the speaker, or -1.
   let chain = 0, chainSlots = [], heardSlot = -1;
   let seedDirty = false; // the seed field holds typing not yet taken
   // Set once the drum lanes hold a choice, even an empty one: an edit, clear,
@@ -605,8 +606,8 @@
   }
   // The chain as the map undertone/play-theme takes, a lane to a line.
   function showChainEDN() {
-    $("chainbox").hidden = !chain;
-    if (!chain || !document.documentElement.classList.contains("edn")) return;
+    $("chainbox").hidden = !chainSlots.length;
+    if (!chainSlots.length || !document.documentElement.classList.contains("edn")) return;
     const v = (a) => `[${a.join(" ")}]`;
     const one = (g) => `{:lead  ${v(g.lead)}\n          :bass  ${v(g.bass)}\n          :pulse ${v(g.pulse)}` +
       (g.drums.some(Boolean) ? `\n          :drums [${g.drums.map((d) => JSON.stringify(d)).join(" ")}]` : "") + `\n          :bed   ${g.bed}}`;
@@ -1061,7 +1062,7 @@
     const mute = [...(st.voice === NONE ? ["lead"] : []), ...(st.bassVoice === NONE ? ["bass"] : [])];
     const theme = {
       name: `grid: ${st.mood}, seed ${st.seed}`,
-      grids: (chain ? chainGrids().grids : [liveGrid()]).map((g) => ({ lead: g.lead.join(""), bass: g.bass.join(""), pulse: g.pulse.map((p) => (p ? "1" : "0")).join(""), drums: g.drums, bed: g.bed })),
+      grids: (chainSlots.length ? chainGrids().grids : [liveGrid()]).map((g) => ({ lead: g.lead.join(""), bass: g.bass.join(""), pulse: g.pulse.map((p) => (p ? "1" : "0")).join(""), drums: g.drums, bed: g.bed })),
       mood, level, tension: st.tension, seed: st.seed, mute,
     };
     return new URL(`../studio/#theme=${encodeURIComponent(JSON.stringify(theme))}`, location.href).href;
@@ -1158,10 +1159,9 @@
     if (six >> 1 === lastRow) light(lane, six); else early.push([lane, six]);
   }
   (function head() {
-    let [r, g] = ready && playing ? undertoneGrid.at() : [-1, -1];
+    let [r, heard] = ready && playing ? undertoneGrid.at() : [-1, -1];
     // In a chain the grid shows the picked slot, so the playhead and the
     // struck steps are drawn only while that slot is the one heard.
-    const heard = g >= 0 ? chainSlots[g] ?? -1 : -1;
     if (heard !== heardSlot) { heardSlot = heard; paintChain(); }
     if (chainSlots.length && heard !== slot) { r = -1; early = []; }
     if (r !== lastRow) {
@@ -1489,31 +1489,32 @@
   const CHAINKEY = "undertone-grid-chain";
   try { chain = Math.min(SLOTS, Math.max(0, Math.round(+localStorage.getItem(CHAINKEY)) || 0)); if (chain < 2) chain = 0; } catch {}
   // the chain's grids and the slot each came from: the picked slot as it is
-  // on screen, the others as they were kept
+  // on screen, the others as they were kept. None while the picked slot is
+  // past the chain's end: the grid on screen is then what plays, alone, so
+  // that what is edited is always heard.
   function chainGrids() {
     const grids = [], from = [];
-    for (let i = 0; i < chain; i++) {
+    for (let i = 0; i < chain && slot < chain; i++) {
       const g = i === slot ? liveGrid() : linkGrid(slots[i]?.link);
       if (g) { grids.push(g); from.push(i); }
     }
     return { grids, from };
   }
   function pushChain() {
-    if (!ready) return;
     const { grids, from } = chainGrids();
-    if (grids.length || chainSlots.length) undertoneGrid.setChain(grids.length ? JSON.stringify(grids) : "");
+    if (ready && (grids.length || chainSlots.length)) undertoneGrid.setChain(grids.length ? JSON.stringify(grids) : "", JSON.stringify(from));
     chainSlots = from;
-    showChainEDN();
+    showChainEDN(); paintChain();
   }
   function paintChain() {
-    document.querySelector(".pick.chain .pickbtn").textContent = !chain ? "chain off" : `chain 1–${chain}` + (heardSlot >= 0 ? `, on ${heardSlot + 1}` : "");
+    document.querySelector(".pick.chain .pickbtn").textContent = !chain ? "chain off" : `chain 1–${chain}` + (slot >= chain ? `, not slot ${slot + 1}` : heardSlot >= 0 ? `, on ${heardSlot + 1}` : "");
     for (const c of document.querySelectorAll("#chain .chip")) c.classList.toggle("on", +c.dataset.v === chain);
     paintSlots();
   }
   for (const n of [0, ...Array.from({ length: SLOTS - 1 }, (_, k) => k + 2)]) {
     const c = document.createElement("span"); c.className = "chip"; c.textContent = n ? `1–${n}` : "off"; c.dataset.v = n;
     c.title = n ? `play slots 1 to ${n} in order, round and round` : "play the picked slot alone";
-    c.onclick = () => { chain = n; store(CHAINKEY, String(n)); pushChain(); paintChain(); };
+    c.onclick = () => { chain = n; store(CHAINKEY, String(n)); pushChain(); };
     $("chain").appendChild(c);
   }
   paintChain();

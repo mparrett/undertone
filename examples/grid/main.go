@@ -15,9 +15,11 @@
 //
 //	setGrid(json)    {lead:[16], bass:[16], pulse:[16], drums:[3], bed}: degrees 1..8, 0 = rest;
 //	                 drums are kick, clap, shaker as 32 sixteenths of X x o . and the chance steps ? f
-//	setChain(json)   an array of grids, as setGrid takes one: plays them in order, round and round, in
-//	                 place of setGrid's. The first call starts from the first grid; later ones replace
-//	                 the grids and keep the place. "" goes back to setGrid's grid
+//	setChain(json, ids)  an array of grids, as setGrid takes one, and a JSON array naming each (the
+//	                 page's slot numbers): plays them in order, round and round, in place of setGrid's.
+//	                 The first call starts from the first grid; later ones replace the grids and keep
+//	                 the place, at the next row while the names are the same and at the next grid
+//	                 when they differ. "" goes back to setGrid's grid
 //	setVolume(v)     the listening volume, 0..1, for the pattern and auditions alike
 //	moodLevel()      the engine mood and level the current mood plays, as JSON {mood, level}
 //	moods()          the moods setParams takes, as JSON: the engine's, and ruins after the dungeon
@@ -28,7 +30,7 @@
 //	play() / stop()  call from the tap handler: iOS resumes audio only inside one
 //	restart()        start the pattern over from its first step; while stopped, the next play starts there
 //	row()            the step being heard, or -1 while stopped
-//	at()             [row, grid]: row(), and which of setChain's grids it is in, -1 for none
+//	at()             [row, id]: row(), and the name of the setChain grid it is in, -1 for none
 //	levels()         [lead, bass, pulse, drums, echo]: each lane's level, dry, as of the last block
 //	                 rendered, then the echo's: what the shared delay returns, all lanes' at once
 //	onsets()         [lead, bass, pulse, drums, struck]: how many notes each lane started since the last call,
@@ -44,6 +46,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"sync/atomic"
 	"syscall/js"
 	"time"
@@ -284,6 +287,13 @@ func main() {
 	lanes := map[int]int{3: 0, 7: 1, 5: 2, engine.DrumsLayer: 3}
 
 	chained := false // setChain's grids are playing, not setGrid's
+	// chain names setChain's grids: ids for the grids playing, and while
+	// moving, next for those that take over once pattern after has played
+	var chain struct {
+		ids, next []int
+		after     int
+		moving    bool
+	}
 	api := map[string]any{
 		"setGrid": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			var j gridJSON
@@ -304,16 +314,37 @@ func main() {
 				chained = false
 				return nil
 			}
+			var ids []int
+			if len(a) > 1 {
+				json.Unmarshal([]byte(a[1].String()), &ids)
+			}
 			t := &engine.Theme{Then: engine.ThenLoop}
 			for _, j := range list {
 				t.Grids = append(t.Grids, j.grid())
 			}
-			// A chain already playing is revised: an edit to one grid must not
-			// send the listener back to the first.
-			if chained && syn.ThemePlaying() {
-				syn.ReviseTheme(t, engine.AtNextRow)
-			} else {
+			pos, _ := syn.Position()
+			// the names as of the last pattern rendered: a change staged for
+			// a grid that has since started is in effect
+			if chain.moving && pos.Pattern > chain.after {
+				chain.ids, chain.moving = chain.next, false
+			}
+			moved := !slices.Equal(ids, chain.ids) || chain.moving && !slices.Equal(ids, chain.next)
+			switch {
+			case !chained || !syn.ThemePlaying() || moved && !src.on.Load():
+				// stopped, nobody hears the place lost
 				syn.PlayTheme(t)
+				chain.ids, chain.moving = ids, false
+			case moved || chain.moving:
+				// The engine keeps its place by number, so with other grids
+				// before it the number would name another grid mid-pattern.
+				// It lands as the next grid starts instead, and so does any
+				// edit until then, which would otherwise land the new list
+				// at once.
+				syn.ReviseTheme(t, engine.AtNextGrid)
+				chain.next, chain.after, chain.moving = ids, pos.Pattern, true
+			default:
+				// an edit to one grid must not send the listener back to the first
+				syn.ReviseTheme(t, engine.AtNextRow)
 			}
 			chained = true
 			return nil
@@ -378,13 +409,18 @@ func main() {
 				return []any{-1, -1}
 			}
 			pos, ok := syn.PositionAt(syn.Frames() - int64(p.Queued().Seconds()*engine.SampleRate))
-			switch {
-			case !ok:
+			if !ok {
 				return []any{-1, -1}
-			case !pos.Theme:
+			}
+			// the names in effect at the row heard, which trails the rendering
+			ids := chain.ids
+			if chain.moving && pos.Pattern > chain.after {
+				ids = chain.next
+			}
+			if !pos.Theme || pos.Grid >= len(ids) {
 				return []any{pos.Row, -1}
 			}
-			return []any{pos.Row, pos.Grid}
+			return []any{pos.Row, ids[pos.Grid]}
 		}),
 		"levels": js.FuncOf(func(js.Value, []js.Value) any {
 			l := syn.LayerLevels()

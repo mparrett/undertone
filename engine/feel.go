@@ -10,7 +10,8 @@ import "math"
 // neighbours. Everything is a function of the seed, the lane and the row,
 // so a render repeats.
 //
-// Timing is not part of it yet: every note still starts on its row.
+// Timing is part of it too: a touched note starts a little after its row,
+// by an amount that wanders, as a player's does. See late, below.
 
 // touch is how one note is struck, as offsets from the patch as written, so
 // the zero touch is the patch itself.
@@ -79,6 +80,131 @@ func (s *Synth) feel(lane, pat, row int) {
 	ring := (1 + 0.25*(level-1)) * (1 + f*feelRingIm*u())
 	s.pats[laneTrack[lane]][row].gain *= level
 	s.touch[lane][row] = touch{bright - 1, ring - 1, f * feelDetuneIm * u()}
+	ms := f * lateMS(s.params.Seed, lane, pat*rows+row)
+	// well short of a row, so a lane's note has started before its next steps
+	s.lateBy[lane][row] = min(int(ms*SampleRate/1000), s.samplesPerRow/3)
+}
+
+// Timing. A row steps on one sample, and every note of it started there:
+// the stiffness a listener hears first. A touched note instead starts late,
+// by up to about 25 ms at Feel 1, made of:
+//
+//   - a base, so that the wander below can run early as well as late of where
+//     the lane sits;
+//   - a wander that carries from note to note, so the line drifts ahead and
+//     behind as a player does, where independent jitter only sounds unsteady;
+//   - a lean on the offbeat eighths, which a player places late;
+//   - the bass a touch behind the lead.
+//
+// Nothing starts before its row has stepped, so the sequencer needs no
+// look-ahead, and what the row log and a host's playhead say is unchanged.
+// The cost is that the lead and bass sit behind the bed and the drums by the
+// base, on average: under 15 ms at Feel 1. Delaying everything else by the
+// same amount would remove that, and is a larger change.
+const (
+	lateBaseMS    = 8.0
+	lateWanderMS  = 8.0 // the wander's limit either way
+	lateWanderSD  = 4.4 // ms per unit of the walk, whose own spread is close to 1
+	lateOffbeatMS = 5.0
+	lateBassMS    = 4.0
+	lateCarry     = 0.8 // how much of the wander carries to the next row
+	lateTerms     = 9   // rows back the walk is summed over: 0.8^9 is 0.13
+)
+
+// lateMS is how late the note of lane at row at of the run starts, in ms, at
+// Feel 1. The wander is a mean-reverting walk, each row's 0.8 of the last
+// plus fresh noise, written as the sum it unrolls to so that it is a
+// function of the place alone: a redraw of a row (applyNow) gets the lateness
+// the step gave it, with no state to carry or to lose at a cut.
+func lateMS(seed uint64, lane, at int) float64 {
+	walk, w := 0.0, 1.0
+	for k := range lateTerms {
+		r := feelRng(seed, lane+2, at-k) // the lane's timing stream, apart from its tone's
+		walk += w * (2*r.f() - 1)
+		w *= lateCarry
+	}
+	ms := lateBaseMS + max(-lateWanderMS, min(walk*lateWanderSD, lateWanderMS))
+	if at%2 == 1 {
+		ms += lateOffbeatMS
+	}
+	if lane == laneBass {
+		ms += lateBassMS
+	}
+	return ms
+}
+
+// lateNote is an authored note between its row's step and its own start.
+type lateNote struct {
+	tr       trackRow
+	seed     uint64
+	left     int // frames to go; 0 is no note waiting
+	row, pat int
+}
+
+// holdLate keeps tr, which the row has just stepped on track t, to start
+// late, if it is an authored note with a lateness. It reports whether it did.
+func (s *Synth) holdLate(t int, tr trackRow, seed uint64) bool {
+	lane := trackLane(t)
+	if lane < 0 || s.lateBy[lane][s.row] == 0 {
+		return false
+	}
+	s.late[lane] = lateNote{tr, seed, s.lateBy[lane][s.row], s.row, s.pat}
+	return true
+}
+
+// trackLane is the touched lane that plays on track t, or -1.
+func trackLane(t int) int {
+	switch t {
+	case trackLead:
+		return laneLead
+	case trackBass:
+		return laneBass
+	}
+	return -1
+}
+
+// tickLate counts a frame off each waiting note and starts the ones due.
+func (s *Synth) tickLate() {
+	for lane := range s.late {
+		n := &s.late[lane]
+		if n.left == 0 {
+			continue
+		}
+		if n.left--; n.left == 0 {
+			s.strike(laneTrack[lane], n.tr, n.seed, n.row, n.pat)
+		}
+	}
+}
+
+// strikeLate starts every waiting note now.
+func (s *Synth) strikeLate() {
+	for lane := range s.late {
+		if n := &s.late[lane]; n.left != 0 {
+			n.left = 0
+			s.strike(laneTrack[lane], n.tr, n.seed, n.row, n.pat)
+		}
+	}
+}
+
+// waiting reports whether track t's note at row has yet to start.
+func (s *Synth) waiting(t, row int) bool {
+	lane := trackLane(t)
+	return lane >= 0 && s.late[lane].left != 0 && s.late[lane].row == row
+}
+
+// redrawLate gives each waiting note the redrawn pattern's version of
+// itself, after applyNow: a new level or voice, or no note at all.
+func (s *Synth) redrawLate() {
+	for lane := range s.late {
+		n := &s.late[lane]
+		if n.left == 0 {
+			continue
+		}
+		n.tr = s.pats[laneTrack[lane]][n.row]
+		if n.tr.note == 0 {
+			n.left = 0
+		}
+	}
 }
 
 // setTouch hands track t's voice the touch of the note at row, before the

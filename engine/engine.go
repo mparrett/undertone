@@ -1261,9 +1261,10 @@ type Params struct {
 	LeadDB, PadDB, BassDB float64
 	// Feel plays authored notes, a grid's or a theme's lead and bass, less
 	// evenly, 0..1 (feel.go): louder on the strong beats, a harder note
-	// brighter and longer, and each note a little different in tone and
-	// tuning. 0 plays every note alike, as before Feel. Generated music is
-	// not touched.
+	// brighter and longer, each note a little different in tone and tuning,
+	// and each starting a little after its row by an amount that wanders. 0
+	// plays every note alike and on its row, as before Feel. Generated music
+	// is not touched.
 	Feel float64
 	// bassGain is the bass lane's gain when ApplyBass chose its voice; zero
 	// plays gridBassGain.
@@ -1585,7 +1586,12 @@ type Synth struct {
 	samplesPerRow int
 	// touch is how each authored note of the pattern is struck, by lane and
 	// row (feel.go); applyGrid fills it, and a fresh pattern clears it.
-	touch    [2][rows]touch
+	touch [2][rows]touch
+	// lateBy is how many frames after its row each authored note starts, by
+	// lane and row, and late the note of each lane that is waiting to
+	// (feel.go).
+	lateBy   [2][rows]int
+	late     [2]lateNote
 	rowLeft  int
 	row, pat int
 	voices   []Voice
@@ -2046,12 +2052,13 @@ func (s *Synth) applyNow(c *paramCmd) {
 	}
 	s.pats = buildPatterns(s.params, pat)
 	s.drums = buildDrums(s.params, pat)
-	s.touch = [2][rows]touch{}
+	s.touch, s.lateBy = [2][rows]touch{}, [2][rows]int{}
 	if g := s.playingGrid(); g != nil {
 		for r := 0; r <= row; r++ {
 			s.applyGridAt(g, pat, r)
 		}
 	}
+	s.redrawLate()
 	for t := range s.voices {
 		s.revoice(t, pat, row)
 	}
@@ -2061,7 +2068,11 @@ func (s *Synth) applyNow(c *paramCmd) {
 // the latest one there, if its gate has not run out.
 func (s *Synth) revoice(t, pat, row int) {
 	v := &s.voices[t]
-	for r := row; r >= 0; r-- {
+	from := row
+	if s.waiting(t, row) {
+		from-- // this row's note has yet to start; what sounds is what came before
+	}
+	for r := from; r >= 0; r-- {
 		tr := s.pats[t][r]
 		if tr.note == 0 {
 			continue
@@ -2097,7 +2108,7 @@ func (s *Synth) step() {
 		}
 		s.pats = buildPatterns(s.params, s.pat)
 		s.drums = buildDrums(s.params, s.pat)
-		s.touch = [2][rows]touch{}
+		s.touch, s.lateBy = [2][rows]touch{}, [2][rows]int{}
 	}
 	if g := s.playingGrid(); g != nil {
 		s.applyGrid(g, s.row)
@@ -2105,22 +2116,17 @@ func (s *Synth) step() {
 	s.rowLog.add(s.nframe, s.row, s.pat)
 	s.stepRow, s.stepPat = s.row, s.pat
 	s.stepDrums()
+	s.strikeLate() // none can be left, a wait being shorter than a row; were one, it would not be lost
 	for t := 0; t < nTracks; t++ {
 		v := &s.voices[t]
 		tr := s.pats[t][s.row]
 		seed := s.params.Seed + uint64(s.pat*rows+s.row)
-		if tr.note != 0 {
-			s.setTouch(t, s.row)
+		if tr.note != 0 && s.holdLate(t, tr, seed) {
+			tr = trackRow{} // it starts in a moment; until then the row is a rest
 		}
 		switch {
-		case tr.note != 0 && (v.pend.note != 0 || v.gain != v.gainTo || v.active && !samePatch(v.patch, tr.patch)):
-			// mid-fade, a trigger would step the gain; on a new patch it
-			// would cut the old one off
-			v.retrigger(tr, tr.gateRows, seed)
-			s.noteAt(t, NoteRetrigger, tr.note, tr.gain, s.row, s.pat)
 		case tr.note != 0:
-			v.trigger(tr.patch, tr.note, tr.gateRows, tr.gain, seed)
-			s.noteAt(t, NoteOn, tr.note, tr.gain, s.row, s.pat)
+			s.strike(t, tr, seed, s.row, s.pat)
 		default:
 			if v.pend.note != 0 {
 				v.pendRows--
@@ -2141,6 +2147,21 @@ func (s *Synth) step() {
 		s.row = 0
 		s.pat++
 	}
+}
+
+// strike starts tr, the note at row of pat, on track t.
+func (s *Synth) strike(t int, tr trackRow, seed uint64, row, pat int) {
+	v := &s.voices[t]
+	s.setTouch(t, row)
+	if v.pend.note != 0 || v.gain != v.gainTo || v.active && !samePatch(v.patch, tr.patch) {
+		// mid-fade, a trigger would step the gain; on a new patch it
+		// would cut the old one off
+		v.retrigger(tr, tr.gateRows, seed)
+		s.noteAt(t, NoteRetrigger, tr.note, tr.gain, row, pat)
+		return
+	}
+	v.trigger(tr.patch, tr.note, tr.gateRows, tr.gain, seed)
+	s.noteAt(t, NoteOn, tr.note, tr.gain, row, pat)
 }
 
 func (s *Synth) frame() (int16, int16) {
@@ -2167,6 +2188,9 @@ func (s *Synth) frame() (int16, int16) {
 	if s.rowLeft == 0 {
 		s.step()
 		s.rowLeft, s.graced = s.samplesPerRow, false
+	}
+	if s.late[laneLead].left|s.late[laneBass].left != 0 {
+		s.tickLate()
 	}
 	if s.nframe%nowBlock == 0 {
 		if c := s.now.Swap(nil); c != nil && c.seq > s.applied {

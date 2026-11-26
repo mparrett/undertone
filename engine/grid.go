@@ -80,6 +80,7 @@ func (s *Synth) startOver() {
 		s.pat++ // the cut pattern ends here, as in startTheme
 	}
 	s.row, s.rowLeft, s.leadIn, s.cut = 0, 0, true, true
+	s.late = [2]lateNote{} // a note of the cut pattern, not yet started, never does
 	// a grid's polymetric lanes count from here too; a theme's already do,
 	// from its fresh first grid
 	s.runFrom = s.pat * rows

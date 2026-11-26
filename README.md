@@ -331,8 +331,14 @@ follows its place in the bar (at 1 a downbeat is about 3 dB up and an offbeat
 2 dB down), a harder note is brighter and rings longer, and each note differs
 a little from the last in level, tone and tuning (6 cents at most). It is
 seeded, so a render repeats, and it holds across mood changes as the trims do.
-Generated music is not touched, and every note still starts on its row: feel
-does not move timing yet.
+Generated music is not touched.
+
+Timing loosens with it. A note with feel starts a little after its row, never
+before: at 1, between 0 and 25 ms after. The amount wanders from note to note
+as a player's does, offbeats lean about 5 ms later than beats, and the bass
+sits about 4 ms behind the lead. The rows themselves do not move, so a
+playhead reading `undertone/position` is unaffected. The lead and bass do end
+up behind the bed and the drums on average, by under 15 ms at 1.
 
 ```clojure
 (undertone/set-parameters {:feel 0.6})

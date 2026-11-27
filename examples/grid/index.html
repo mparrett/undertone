@@ -328,6 +328,7 @@
     :root { --cell: clamp(17px, round(down, calc((100vw - 32px - 32px - 3 * 6px) / 16), 2px), 28px); }
     @media (min-width: 900px) {
       :root { --cell16: clamp(22px, round(down, calc((100vw - 64px - 32px - 18px) / 16), 2px), 56px);
+              --cell: var(--cell16);
               --drow: min(round(down, calc(var(--cell) / 2), 1px), 32px);
               --row: clamp(20px, round(down, min(calc((100dvh - var(--other) - var(--drows, 3) * var(--drow)) / var(--rows, 17)), var(--cell)), 1px), 44px); }
     }
@@ -1285,7 +1286,8 @@
     if (heard !== heardSlot) { heardSlot = heard; paintChain(); }
     // not mid-drag: the cells under the pointer would become another slot's
     const behind = follow && chainSlots.length && heard >= 0 && heard !== slot;
-    const held = behind && (!!painting || Date.now() - editedAt < FOLLOW_HOLD);
+    // nor while the pattern box holds typing: applied after the turn, it would land in the next slot
+    const held = behind && (!!painting || ednDirty || document.activeElement === $("patedn") || Date.now() - editedAt < FOLLOW_HOLD);
     if (held !== followHeld) { followHeld = held; $("follow").classList.toggle("held", held); }
     if (behind && !held) pickSlot(heard, true);
     if (chainSlots.length && heard !== slot) { r = -1; early = []; }
@@ -1624,9 +1626,14 @@
     slot = i; store(CURKEY, String(i));
     undo = undos[i] || []; lastAt = 0;
     if (slots[i]) restore(slots[i], within);
+    // In a chain the settings are not this slot's to take back: its steps are put under the
+    // chain's as they now are, so that a step back is a step in its lanes and not in a tempo
+    // changed from another slot. Steps that differed only in a setting become one.
+    if (i < chain) undo = undo.map((e) => ({ link: withSettings(e.link) })).filter((e, k, a) => !k || e.link !== a[k - 1].link);
     // the slot's state is the first step back to, or a new step if it changed while away (the
     // chain's settings, another tab); an empty slot takes this pattern
     arriving = true; remember(); arriving = false;
+    lastAt = 0; // the next edit is its own step, not part of the arrival
     $("undo").disabled = undo.length < 2;
     pushChain(); // an empty slot of the chain now has a pattern to play
     paintSlots();

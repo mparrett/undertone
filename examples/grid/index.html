@@ -1522,7 +1522,7 @@
     MOODS = JSON.parse(undertoneGrid.moods()); chips("moods", MOODS, "mood"); // before any link is read: it may name one of them
     // A link's pattern goes into the picked slot, whose old state is the first
     // step back; with no link, the slot is what opens.
-    const kept = slots[slot];
+    const kept = slots[slot]?.lanes ? slots[slot] : null;
     if (kept) undo = [kept];
     if (!decode(location.hash) && !(kept && (applyPattern(kept), true))) {
       const g = JSON.parse(undertoneGrid.initial);
@@ -1555,8 +1555,11 @@
   const SLOTS = 8, SLOTKEY = "undertone-grid-slots", CURKEY = "undertone-grid-slot";
   const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} }; // storage may be blocked
   let slots = [], slot = 0;
-  // storage holds each slot as { link }: what is not a link there is an empty slot
-  const stored = (a) => Array.from(a, (e) => (e && readLink(e.link)) || null);
+  // Storage holds each slot as { link }. An entry this page cannot read (a
+  // newer build's, in another tab) is carried as { raw } and written back
+  // as it came: it is not this page's to drop. It has no lanes, so it
+  // plays nothing and loads nothing.
+  const stored = (a) => Array.from(a, (e) => e ? readLink(e.link) || { raw: e } : null);
   try { slots = stored(JSON.parse(localStorage.getItem(SLOTKEY)) || []); slot = Math.min(SLOTS - 1, Math.max(0, +localStorage.getItem(CURKEY) || 0)); } catch {}
   // Another tab may have saved its own slot since this one read them: take
   // storage as it is now and change only this tab's slot in it.
@@ -1568,8 +1571,8 @@
   // from one to another changes the lanes and nothing else.
   function keep(p) {
     slots = readSlots(); slots[slot] = p;
-    if (slot < chain) for (let i = 0; i < chain; i++) if (i !== slot && slots[i]) slots[i] = under(p.settings, slots[i]);
-    store(SLOTKEY, JSON.stringify(Array.from(slots, (e) => e && { link: writeLink(e) })));
+    if (slot < chain) for (let i = 0; i < chain; i++) if (i !== slot && slots[i]?.lanes) slots[i] = under(p.settings, slots[i]);
+    store(SLOTKEY, JSON.stringify(Array.from(slots, (e) => e ? e.raw || { link: writeLink(e) } : null)));
   }
   addEventListener("storage", (e) => { if (e.key === SLOTKEY) { slots = readSlots(); paintSlots(); pushChain(); } });
   // undo is the picked slot's history; the others' wait in undos, so that
@@ -1639,7 +1642,7 @@
     undos[slot] = undo;
     slot = i; store(CURKEY, String(i));
     undo = undos[i] || []; lastAt = 0;
-    if (slots[i]) restore(slots[i], within);
+    if (slots[i]?.lanes) restore(slots[i], within);
     // In a chain the settings are not this slot's to take back: its steps are put under the
     // chain's as they now are, so that a step back is a step in its lanes and not in a tempo
     // changed from another slot. Steps that differed only in a setting become one.

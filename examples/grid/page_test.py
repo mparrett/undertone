@@ -209,6 +209,16 @@ def links(browser, url):
         got = p.js(f"writeLink(readLink({json.dumps(old)}))")
         check("an old link keeps its spelling, and gains only the bed", got == old.replace(";L=", ";bed=1;L="), got)
         check("no page errors (links)", not p.errors, p.errors)
+    # a slot this page cannot read is not its to drop: an edit elsewhere leaves it in storage as it was
+    with Page(browser, url, [opened, "#v2;from-a-newer-build", opened], chain=3) as p:
+        p.click_cell("lead", 5, 4)
+        p.settle()
+        p.tempo(100)
+        ls = p.links()
+        check("an unreadable slot is kept as it was", ls[1] == "#v2;from-a-newer-build", ls[1])
+        check("and the chain plays round it", p.js("[theChain().slots[1], chainGrids().from]") == [None, [0, 2]], p.js("[theChain().slots[1], chainGrids().from]"))
+        check("while the slots beside it take the chain's tempo", "t=100;" in ls[0] and "t=100;" in ls[2], [x[:12] for x in ls])
+        check("no page errors (unreadable slot)", not p.errors, p.errors)
 
 
 def chain_settings(browser, url):

@@ -7,8 +7,11 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mparrett/undertone/engine"
 )
 
 // lgSide is the decision, made when an engine export lands, of what lg has
@@ -167,7 +170,9 @@ func TestLgParity(t *testing.T) {
 	}
 	keys := map[string]bool{}
 	for _, k := range paramKey {
-		keys[k] = true
+		if !strings.HasPrefix(k, "go:") {
+			keys[k] = true
+		}
 	}
 	for _, k := range setOnly {
 		keys[k] = true
@@ -205,8 +210,9 @@ func TestLgParity(t *testing.T) {
 	}
 }
 
-// Every Params field has a set-parameters key, and each scalar one is the
-// key that sets it: an lg map with just that key changes just that field.
+// Every Params field has a set-parameters key, or is go-only with a reason,
+// and each numeric one is the key that sets it: an lg map with just that key
+// changes just that field.
 func TestParamsParity(t *testing.T) {
 	c, m := lgRuntime(t)
 	fields := map[string]reflect.Value{}
@@ -235,27 +241,56 @@ func TestParamsParity(t *testing.T) {
 			t.Errorf("paramKey lists Params.%s, which Params no longer has", name)
 		}
 	}
-	for name, key := range paramKey {
-		f := fields[name]
+	names := make([]string, 0, len(paramKey))
+	for name := range paramKey {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for i, name := range names {
+		key := paramKey[name]
+		if reason, ok := strings.CutPrefix(key, "go:"); ok {
+			if reason == "" {
+				t.Errorf("Params.%s: go-only needs its reason", name)
+			}
+			continue
+		}
 		if broughtBy[name] {
 			continue
 		}
+		// a value no other key was given, so a key that writes a second
+		// field shows as that field changing too
 		var lit string
-		var want any
-		switch f.Kind() {
+		var want reflect.Value
+		switch fields[name].Kind() {
 		case reflect.Float64:
-			lit, want = "0.0625", 0.0625
+			x := float64(i+1) / 64
+			lit, want = strconv.FormatFloat(x, 'f', -1, 64), reflect.ValueOf(x)
 		case reflect.Int:
-			lit, want = "3", 3
+			lit, want = strconv.Itoa(i+2), reflect.ValueOf(i+2)
+		case reflect.Uint64:
+			lit, want = strconv.Itoa(i+2), reflect.ValueOf(uint64(i+2))
 		default:
-			continue // a name, list or bank: its own tests read it
+			continue // a name, a list, a bank or a layer set: their own tests read them
 		}
+		before := m.params
 		if _, err := c.Run("(undertone/set-parameters {:" + key + " " + lit + "})"); err != nil {
 			t.Errorf(":%s: %v", key, err)
 			continue
 		}
-		if got := fields[name].Interface(); !reflect.DeepEqual(got, want) {
-			t.Errorf("set-parameters {:%s %s} left Params.%s at %v", key, lit, name, got)
+		expect := before
+		fieldOf(&expect, name).Set(want)
+		if !reflect.DeepEqual(m.params, expect) {
+			t.Errorf("set-parameters {:%s %s}: Params.%s is %v, and the rest should not move\ngot  %+v\nwant %+v",
+				key, lit, name, fields[name].Interface(), m.params, expect)
 		}
 	}
+}
+
+// fieldOf is Params field name, dotted for Room's.
+func fieldOf(p *engine.Params, name string) reflect.Value {
+	v := reflect.ValueOf(p).Elem()
+	for _, part := range strings.Split(name, ".") {
+		v = v.FieldByName(part)
+	}
+	return v
 }

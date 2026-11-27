@@ -27,6 +27,8 @@ func TestBassFromLg(t *testing.T) {
 	for _, src := range []string{
 		`(undertone/play-theme {:grids [{:bass [1]}] :bass :tuba})`,
 		`(undertone/set-parameters {:bass :tuba})`,
+		`(undertone/set-parameters {:bass {:out 0.1}})`,
+		`(undertone/play-theme {:grids [{:bass [1]}] :bass 1})`,
 	} {
 		if _, err := c.Run(src); err == nil {
 			t.Errorf("%s: no error", src)

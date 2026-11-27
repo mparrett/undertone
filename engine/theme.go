@@ -11,7 +11,8 @@ type Theme struct {
 	Grids []Grid
 	Then  ThemeEnd
 	// Bass names a lead instrument for the bass lane while the theme plays,
-	// level-matched as ApplyBass matches it; "" (or a name no lead has)
+	// level-matched as ApplyBass matches it (a registered lead, unmeasured,
+	// plays at gridBassGain); "" (or a name no lead has)
 	// plays the palette's bass. It holds across mood changes, which replace
 	// the palette, and ends with the theme.
 	Bass string

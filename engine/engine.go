@@ -1372,7 +1372,8 @@ func ApplyLead(p *Params, name string) {
 
 // ApplyBass gives the bass lane of a grid or theme a lead instrument's patch,
 // as ApplyLead gives the lead one, at a gain that puts it level with the
-// string it replaces. An unknown name changes nothing, and the bass stays the
+// string it replaces; a registered lead, which has not been measured, plays
+// at gridBassGain, 3.4 times its out. An unknown name changes nothing, and the bass stays the
 // palette's own, or the string every bass was before. The lane keeps its own
 // two-row gate whatever the instrument: a bass note is held, not struck. The
 // choice lives in the palette, so a new palette (a mood change) brings its own

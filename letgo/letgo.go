@@ -721,14 +721,17 @@ func integer(m *vm.PersistentMap, k string, dst *int) bool {
 	return true
 }
 
-// kwStr reads a key that may be written as either :chime or "chime".
 // bassName reads a :bass, a lead instrument for a theme's bass lane, from a
 // set-parameters or theme map: "" when absent. An unknown name is an error, as
 // an unknown :palette is, rather than the string bass playing on unnoticed.
 func bassName(m *vm.PersistentMap) (string, error) {
+	if at(m, "bass") == vm.NIL {
+		return "", nil
+	}
 	s, ok := kwStr(m, "bass")
 	if !ok {
-		return "", nil
+		// a patch map here is a palette's :bass, which register-palette takes
+		return "", fmt.Errorf(":bass names a lead instrument, as :reed, got %v", at(m, "bass"))
 	}
 	if !slices.Contains(engine.LeadNames(), s) {
 		return "", fmt.Errorf(":bass %q is not a lead instrument (%v)", s, engine.LeadNames())
@@ -736,6 +739,7 @@ func bassName(m *vm.PersistentMap) (string, error) {
 	return s, nil
 }
 
+// kwStr reads a key that may be written as either :chime or "chime".
 func kwStr(m *vm.PersistentMap, k string) (string, bool) {
 	switch v := at(m, k).(type) {
 	case vm.Keyword:

@@ -198,7 +198,8 @@ it. It plays at the lane's fixed gain, 3.4 times its `:out`, which is set
 for the quiet pluck, so a bass of your own needs a low `:out` (around 0.1
 for a sine) to sit where the string does. To play a lead instrument there
 instead, name it with `:bass` on the theme or in `set-parameters` (below);
-those are level-matched for you.
+the built-in leads are level-matched for you, and a registered lead plays
+at the same 3.4 times its `:out` as a palette bass.
 `PaletteSpec.EDN` and `LeadSpec.EDN` write the maps these take.
 
 ### Determinism
@@ -338,7 +339,8 @@ name (`[:lead :drums]`; `[]` unmutes). With `set-parameters-now`, notes
 already sounding fade to the new level.
 
 `:bass` names the lead instrument (`:reed`, `:bell`, any lead) a theme's bass
-lane plays, at a gain measured to match the string bass. It belongs to the
+lane plays. A built-in lead plays at a gain measured to match the string
+bass; a registered one at 3.4 times its `:out`, as a palette bass does. It belongs to the
 palette, so the next `:mood` or `:palette` brings that palette's bass back;
 a `:bass` in the same map as either wins. For a bass that holds across mood
 changes, put `:bass` on the theme instead (`play-theme`), where it lasts as

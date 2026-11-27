@@ -422,7 +422,8 @@
     <div><h3>playing</h3><ul>
       <li><kbd>space</kbd> plays and stops; <kbd>r</kbd> goes back to the first step.</li>
       <li>Edits are heard the next time the playhead passes them.</li>
-      <li><b>slot</b> keeps eight patterns in this browser. <b>chain</b> plays slots 1 to the number picked one after another, round and round, in the settings on screen; the grid stays on the slot picked, a slot past the chain's end plays alone, and an edit is heard the next time round without the chain starting over. With <b>edn</b> open the chain shows as a theme.</li>
+      <li><b>slot</b> keeps eight patterns in this browser. <b>chain</b> plays slots 1 to the number picked one after another, round and round, in the settings on screen, which every slot of the chain then keeps; a slot past the chain's end plays alone, and an edit is heard the next time round without the chain starting over. With <b>follow</b> on the grid shows whichever slot is playing, waiting a moment after an edit; picking a slot turns it off, and the grid stays there. Each slot has its own undo. With <b>edn</b> open the chain shows as a theme.</li>
+      <li><b>next</b> shows, dimmed at the right of each lane, the four steps that play after this grid: its own first steps as it comes round, or the next slot's in a chain, with the slot's number over them. It is not edited there.</li>
       <li>A pick in the header opens its choices; <kbd>&larr;</kbd> <kbd>&rarr;</kbd> step through them while it is open, and <kbd>esc</kbd> closes it.</li>
       <li>A bass voice plays at the level of the pluck it replaces.</li>
       <li>Every note echoes 3 steps later, and again every 3, each fainter: an echo can sound like a note of its own.</li>

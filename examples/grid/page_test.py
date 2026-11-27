@@ -8,8 +8,8 @@
 Builds the page into a temporary folder, serves it on localhost, and works it
 in headless Chromium as a hand would: slots, the chain, follow, undo, the
 ghost of the next steps, looping drum lanes. It makes no sound (the browser is
-muted) but it does play: several checks wait on the playhead, so the run takes
-about a minute.
+muted) but it does play: several checks wait on the playhead, so the run is
+as long as the patterns they wait for. It prints its time at the end.
 
     uv run examples/grid/page_test.py           # or: just grid-test
     uvx playwright@1.65.2 install chromium      # once, for the browser
@@ -29,6 +29,8 @@ import tempfile
 import threading
 import time
 
+from playwright.sync_api import Error as BrowserError
+from playwright.sync_api import TimeoutError as BrowserTimeout
 from playwright.sync_api import sync_playwright
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -97,6 +99,14 @@ class Page:
 
     def wait(self, expr, timeout=20):
         self.pg.wait_for_function(expr, timeout=timeout * 1000)
+
+    def reaches(self, expr, timeout=20):
+        """wait, for a check of its own: False where wait would end the group."""
+        try:
+            self.wait(expr, timeout)
+            return True
+        except BrowserTimeout:
+            return False
 
     def settle(self):
         """Past the 600 ms in which changes count as one undo step."""
@@ -168,7 +178,8 @@ def looping_lanes(browser, url):
         # A chain unlinked while it plays hands back to the grid mid-pattern, so the run begins
         # partway through one and the pattern's start is before it.
         p.play()
-        p.wait("(() => { const r = undertoneGrid.at()[0]; return r >= 4 && r <= 10; })()")
+        # early enough that the clicks land before the engine has rendered into the next pattern
+        p.wait("(() => { const r = undertoneGrid.at()[0]; return r >= 4 && r <= 7; })()")
         p.chain("off")
         low, whole, t0 = 0, True, time.time()
         while time.time() - t0 < 2.5:
@@ -246,8 +257,7 @@ def follow(browser, url):
             time.sleep(0.25)
         check("the grid stays on slot 1 while it is edited", seen == {0}, seen)
         check("and follow shows that it is waiting", held)
-        p.wait("slot === 1", timeout=10)
-        check("it moves on once the hand stops", True)
+        check("it moves on once the hand stops", p.reaches("slot === 1", timeout=10))
 
         # typing in the pattern box is an edit too: applied after the turn, it would land in the next slot
         p.wait("slot === 0 && heardSlot === 0")
@@ -284,6 +294,7 @@ def layout(browser, url):
 
 
 def main():
+    began = time.time()
     site = tempfile.mkdtemp(prefix="undertone-grid-")
     try:
         build(site)
@@ -292,15 +303,20 @@ def main():
             # muted, and allowed to start audio without a tap: the playhead follows the audio clock
             browser = pw.chromium.launch(args=["--autoplay-policy=no-user-gesture-required", "--mute-audio"])
             for group in (looping_lanes, chain_settings, undo_per_slot, follow, layout):
-                group(browser, url)
+                # a wait that times out ends its group, not the run: the rest still report
+                try:
+                    group(browser, url)
+                except BrowserError as e:
+                    check(f"{group.__name__} ran to its end", False, str(e).splitlines()[0])
             browser.close()
         srv.shutdown()
     finally:
         shutil.rmtree(site, ignore_errors=True)
+    took = f"in {time.time() - began:.0f}s"
     if failures:
-        print(f"\n{len(failures)} failed: " + "; ".join(failures))
+        print(f"\n{len(failures)} failed {took}: " + "; ".join(failures))
         sys.exit(1)
-    print("\nall passed")
+    print(f"\nall passed {took}")
 
 
 if __name__ == "__main__":

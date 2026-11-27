@@ -23,7 +23,8 @@ test-wasm:
 ready: test race lint test-wasm
 
 # The grid page worked in a headless browser, muted: slots, the chain, follow,
-# undo, the ghost, looping lanes. About a minute, as it waits on the playhead.
+# undo, the ghost, looping lanes. It waits on the playhead, so it is as long as
+# the patterns it plays, and prints its time.
 # It is CI's page job; not part of ready, as it needs a browser installed once:
 # uvx playwright@1.65.2 install chromium
 grid-test:

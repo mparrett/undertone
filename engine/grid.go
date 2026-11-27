@@ -182,11 +182,14 @@ func (s *Synth) applyGridAt(g *Grid, pat, row int) {
 	}
 	s.pats[trackBass][row] = trackRow{}
 	if d := g.Bass[row]; d > 0 {
-		gain := p.bassGain
+		patch, gain := p.Palette.bass(), p.Palette.bassGain
+		if t := s.theme; t != nil && t.bass != nil {
+			patch, gain = t.bass, t.bassGain
+		}
 		if gain == 0 {
 			gain = gridBassGain
 		}
-		s.pats[trackBass][row] = trackRow{degreeNote(p, bass, d), gain * dbGain(p.BassDB), 2, p.Palette.bass()}
+		s.pats[trackBass][row] = trackRow{degreeNote(p, bass, d), gain * dbGain(p.BassDB), 2, patch}
 		s.feel(laneBass, pat, row)
 	}
 	s.pats[trackPulse][row] = trackRow{}

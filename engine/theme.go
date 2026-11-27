@@ -10,6 +10,27 @@ import "sync/atomic"
 type Theme struct {
 	Grids []Grid
 	Then  ThemeEnd
+	// Bass names a lead instrument for the bass lane while the theme plays,
+	// level-matched as ApplyBass matches it (a registered lead, unmeasured,
+	// plays at gridBassGain); "" (or a name no lead has)
+	// plays the palette's bass. It holds across mood changes, which replace
+	// the palette, and ends with the theme.
+	Bass string
+
+	// bass and bassGain are Bass resolved, by copyTheme, so the audio
+	// thread never looks a name up.
+	bass     Patch
+	bassGain float64
+}
+
+// copyTheme is the theme PlayTheme and ReviseTheme keep: the caller may go on
+// editing its own, and Bass is resolved here, off the audio thread.
+func copyTheme(t *Theme) *Theme {
+	c := &Theme{Grids: append([]Grid(nil), t.Grids...), Then: t.Then, Bass: t.Bass}
+	if d, ok := lookupLead(t.Bass); ok {
+		c.bass, c.bassGain = d.patch, gridBassVoiceGain[d.name]
+	}
+	return c
 }
 
 // ThemeEnd is what a theme does after its last grid.
@@ -94,8 +115,7 @@ var silence = Grid{} // no bed, every lane at rest
 // back to what played before. Safe to call from any goroutine.
 func (s *Synth) PlayTheme(t *Theme) {
 	if t != nil && len(t.Grids) > 0 {
-		c := Theme{Grids: append([]Grid(nil), t.Grids...), Then: t.Then} // the caller may keep editing its copy
-		t = &c
+		t = copyTheme(t)
 	} else {
 		t = nil
 	}
@@ -106,7 +126,7 @@ func (s *Synth) PlayTheme(t *Theme) {
 	s.themeCmd.Store(&themeCmd{t, gen})
 }
 
-// ReviseTheme replaces what the playing theme holds, its grids and its Then,
+// ReviseTheme replaces what the playing theme holds, its grids, Then and Bass,
 // and leaves where it is playing alone: the playhead keeps its grid and row,
 // where PlayTheme would start over from the first. It is what SetGrid is to
 // one grid. t is always the whole theme.
@@ -132,8 +152,7 @@ func (s *Synth) ReviseTheme(t *Theme, at ThemeAt) {
 		return
 	}
 	c := &reviseCmd{
-		&Theme{Grids: append([]Grid(nil), t.Grids...), Then: t.Then}, // the caller may keep editing its copy
-		at, s.themeGen.Load(),
+		copyTheme(t), at, s.themeGen.Load(),
 	}
 	if at == AtNextRow {
 		s.reviseNow.Store(c)

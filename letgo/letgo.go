@@ -105,7 +105,8 @@ func (m *Music) Params() engine.Params {
 // An unknown :palette is an exception: it comes from an exported mood, which
 // MoodSpec.Derive rejects for the same name, so it is an error here too rather
 // than a mood playing on whatever patches were loaded before. A :mute layer
-// name that isn't one is the other, so a typo can't leave a layer playing.
+// name that isn't one is another, so a typo can't leave a layer playing, and
+// a :bass that names no lead instrument the third.
 //
 // With now, the change is heard within a block rather than at the next
 // pattern boundary (engine.Synth.SetParametersNow).
@@ -150,6 +151,10 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 			return fmt.Errorf("unknown palette %q", s)
 		}
 		pal = &bank
+	}
+	bass, err := bassName(lgm)
+	if err != nil {
+		return err
 	}
 	mute, setMute := p.Mute, false
 	if v := at(lgm, "mute"); v != vm.NIL { // absent keeps the current mute, as every key does
@@ -226,6 +231,11 @@ func mergeParams(p *engine.Params, lgm *vm.PersistentMap) error {
 		} else {
 			engine.ApplyLead(p, s)
 		}
+	}
+	// After :mood and :palette, which bring their own bass: a :bass in the
+	// same map is the one heard.
+	if bass != "" {
+		engine.ApplyBass(p, bass)
 	}
 	// :seed is int64 on the lg side; the engine's rng streams are uint64.
 	var seed int
@@ -709,6 +719,24 @@ func integer(m *vm.PersistentMap, k string, dst *int) bool {
 	}
 	*dst = int(v)
 	return true
+}
+
+// bassName reads a :bass, a lead instrument for a theme's bass lane, from a
+// set-parameters or theme map: "" when absent. An unknown name is an error, as
+// an unknown :palette is, rather than the string bass playing on unnoticed.
+func bassName(m *vm.PersistentMap) (string, error) {
+	if at(m, "bass") == vm.NIL {
+		return "", nil
+	}
+	s, ok := kwStr(m, "bass")
+	if !ok {
+		// a patch map here is a palette's :bass, which register-palette takes
+		return "", fmt.Errorf(":bass names a lead instrument, as :reed, got %v", at(m, "bass"))
+	}
+	if !slices.Contains(engine.LeadNames(), s) {
+		return "", fmt.Errorf(":bass %q is not a lead instrument (%v)", s, engine.LeadNames())
+	}
+	return s, nil
 }
 
 // kwStr reads a key that may be written as either :chime or "chime".

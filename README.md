@@ -194,8 +194,12 @@ registered lead. A registered lead plays at the level its patch sets, without
 the measured trim a built-in lead has.
 `:bass` is optional: it is what a theme's bass lane plays, and left out, it
 is the string bass (`:pluck`) every theme has. Generated music never plays
-it. It plays at the lane's fixed gain, set for pluck, which is quiet, so a
-bass of your own sets its level with its `:out`.
+it. It plays at the lane's fixed gain, 3.4 times its `:out`, which is set
+for the quiet pluck, so a bass of your own needs a low `:out` (around 0.1
+for a sine) to sit where the string does. To play a lead instrument there
+instead, name it with `:bass` on the theme or in `set-parameters` (below);
+the built-in leads are level-matched for you, and a registered lead plays
+at the same 3.4 times its `:out` as a palette bass.
 `PaletteSpec.EDN` and `LeadSpec.EDN` write the maps these take.
 
 ### Determinism
@@ -270,7 +274,7 @@ audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 | `undertone/set-sfx-gain` | every one-shot's level over the music, 0..1: the effects volume; glides there over 50 ms |
 | `undertone/glide-sfx-gain` | the same over a chosen number of seconds |
 | `undertone/set-queue` | browser only, and not in a `-w-audio` bundle (the seam owns the queue there): milliseconds of audio queued ahead of the speaker, for tuning per device without a rebuild; clamped to the ring, with the clamp reported on stderr |
-| `undertone/play-theme` | `{:grids [{:lead [1 0 3] :bass [1] :pulse [true] :drums ["X..." "" "x.x."] :bed false} ...] :then :generate}`: an authored theme, from its first grid at once; `:then` is `:generate`, `:silence` or `:loop`; nil stops it. Sent before `music-start`, it starts with the music |
+| `undertone/play-theme` | `{:grids [{:lead [1 0 3] :bass [1] :pulse [true] :drums ["X..." "" "x.x."] :bed false} ...] :then :generate}`: an authored theme, from its first grid at once; `:then` is `:generate`, `:silence` or `:loop`; `:bass :reed` plays that lead instrument on the bass lane for as long as the theme does, through mood changes; nil stops it. Sent before `music-start`, it starts with the music |
 | `undertone/revise-theme` | `(undertone/revise-theme theme :row)`: replaces what the playing theme holds, `theme` as `play-theme` takes it and always whole, and keeps its place: nothing is cut and nothing starts over. `:row` lands on the next row, `:grid` as the next grid starts, `:loop` as a `:loop` theme next starts over. One `:grid` or `:loop` revision waits at a time, a later one replacing it; a `:row` one meanwhile leaves it waiting. Ignored when no theme is playing |
 | `undertone/end-theme` | `{:grids 1}`, `{:bars 1}` or `{:rows 4}`: ends the playing theme after that many units, counted from the one playing now (at a boundary, the one starting), then as its `:then` says, a `:loop` handing back to the generator. A grid is 16 rows, a bar 8, a row an eighth note. For a title theme that loops until the player starts and then finishes its phrase |
 | `undertone/theme-playing?` | whether the last theme has still to finish |
@@ -333,6 +337,14 @@ the mix, `:lead-db`, `:pad-db` and `:bass-db` (a theme's grid bass) trim
 those layers in dB, 0 being as authored, and `:mute` silences layers by
 name (`[:lead :drums]`; `[]` unmutes). With `set-parameters-now`, notes
 already sounding fade to the new level.
+
+`:bass` names the lead instrument (`:reed`, `:bell`, any lead) a theme's bass
+lane plays. A built-in lead plays at a gain measured to match the string
+bass; a registered one at 3.4 times its `:out`, as a palette bass does. It belongs to the
+palette, so the next `:mood` or `:palette` brings that palette's bass back;
+a `:bass` in the same map as either wins. For a bass that holds across mood
+changes, put `:bass` on the theme instead (`play-theme`), where it lasts as
+long as the theme. An unknown name is an error.
 
 A mood entry can carry its own `:lead-db` and `:pad-db`, its balance as
 authored. They add to the game's: derive-spec hands them over as

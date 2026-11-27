@@ -20,7 +20,17 @@ func goldenLine(name string, p Params) string {
 	h := func(x float64) string { return strconv.FormatFloat(x, 'x', -1, 64) }
 	return fmt.Sprintf("%s bpm=%s root=%d scale=%v drone=%s fifth=%s pad=%s lead-density=%s air=%s pulse=%s off=%d lift=%d lead=%s/%d seed=%d palette=%v",
 		name, h(p.BPM), p.Root, p.Scale, h(p.DroneGain), h(p.FifthGain), h(p.PadDensity), h(p.LeadDensity),
-		h(p.AirGain), h(p.PulseGain), p.FifthOffset, p.LeadLift, p.LeadName, p.LeadGate, p.Seed, p.Palette)
+		h(p.AirGain), h(p.PulseGain), p.FifthOffset, p.LeadLift, p.LeadName, p.LeadGate, p.Seed, goldenPalette(p.Palette))
+}
+
+// goldenPalette is a palette printed as the golden file has it, from before
+// the palette carried ApplyBass's gain. A derivation never sets that gain,
+// so leaving it out loses nothing; one that did would show in its Bass.
+func goldenPalette(pl Palette) any {
+	return struct {
+		Drone, Fifth, Pad, Lead, Air, Pulse, Bass Patch
+		Kit                                      kit
+	}{pl.Drone, pl.Fifth, pl.Pad, pl.Lead, pl.Air, pl.Pulse, pl.Bass, pl.Kit}
 }
 
 // The mood table must reproduce the moods that existed before it byte for

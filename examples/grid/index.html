@@ -121,6 +121,11 @@
   .slotchips .chip.linked { box-shadow: 0 2px 0 var(--mut); }
   .slotchips .chip.heard { background: var(--fg); color: var(--bg); border-color: var(--fg); }
   #chainedn { margin: 0; overflow-x: auto; }
+  /* with a chain on, the slots are always in view: a click picks one */
+  .chained .pick.slots .pickbtn { display: none; }
+  #follow.held { border-style: dashed; } /* waiting on an edit before it moves on */
+  .chained #pattern .lab { display: none; } /* room for the slots and follow on the one line */
+  .chained .pick.slots .drawer { display: flex; position: static; width: auto; max-width: none; padding: 0; border: 0; background: none; box-shadow: none; }
   .lane.of-lead span { color: var(--lead); } .lane.of-bass span { color: var(--bass); }
   .lane.of-pulse span { color: var(--pulse); } .lane.of-drums span { color: var(--drum); }
   .lbl.ref { color: var(--fg); }
@@ -179,6 +184,42 @@
   .c::after { content: ""; display: block; height: 100%; border-radius: 3px; background: var(--panel);
               border: 1px solid var(--line); }
   .c.g4 { padding-left: 7px; }
+  /* next: a ghost of the four steps that play after this grid, to the right
+     of every lane, so the join can be seen while its last notes are written.
+     Not cells: it cannot be edited. Only where there is room beside the grid. */
+  .ghost, .here { display: none; }
+  @media (min-width: 900px) {
+    html.next { --cell: calc((16 * var(--cell16) - 12px) / 20); }
+    @supports (width: round(down, 1px, 1px)) { html.next { --cell: round(down, calc((16 * var(--cell16) - 12px) / 20), 2px); } }
+    html.next .grid { position: relative; }
+    html.next .ghost { display: grid; position: absolute; left: calc(100% + 12px); top: 0; pointer-events: none;
+                       grid-template-columns: repeat(4, var(--cell)); grid-auto-rows: var(--row); opacity: .55; }
+    html.next #drums .ghost { grid-template-columns: repeat(8, calc(var(--cell) / 2)); grid-auto-rows: var(--drow); }
+    /* the grid and the ghost together sit in the middle, the header moving with them */
+    /* the boxes laid over the grid cover its cells and the ghost, moved as the lanes are */
+    html.next.edn #ednsec, html.next.help #helpsec { left: calc(32px - 2 * var(--cell) - 6px); right: calc(-2 * var(--cell) - 6px); }
+    html.next .lanegroup, html.next #mixlane, html.next #echolane { position: relative; left: calc(-2 * var(--cell) - 6px); } /* half the ghost and its gap */
+    .ghost .g { padding: 1px; }
+    .ghost .g::after { content: ""; display: block; height: 100%; border-radius: 3px; background: var(--panel); border: 1px dashed var(--line); }
+    .lead .ghost .g.on::after { background: var(--lead); border: 1px solid var(--lead); }
+    .bass .ghost .g.on::after { background: var(--bass); border: 1px solid var(--bass); }
+    .pulse .ghost .g.on::after { background: var(--pulse); border: 1px solid var(--pulse); }
+    .drums .ghost .g.on::after { background: var(--drum); border: 1px solid var(--drum); }
+    .drums .ghost .g.ch::after { border: 1px dashed var(--drum); }
+    /* the slot on screen, at the lane's left as the ghost's is at its right: (1) … (2) reads as from and to */
+    /* left of the lane's name: over the cells is the lane's strip */
+    html.next .here { display: block; position: absolute; right: calc(100% + 18px); bottom: calc(100% + 5px); z-index: 1; pointer-events: none;
+                      font-size: 10px; line-height: 14px; color: var(--fg); white-space: nowrap; }
+    /* the slot changing: its number swells and settles, and the ghost shows at full strength
+       for a moment, so that a change made by follow is not missed */
+    @keyframes slotflash { from { color: #fff; transform: scale(1.8); } }
+    @keyframes ghostflash { from { opacity: 1; } }
+    .here { transform-origin: right bottom; } .ghost .tag { transform-origin: left bottom; }
+    .here.flash, .ghost .tag.flash { animation: slotflash .7s ease-out; }
+    .ghost.flash { animation: ghostflash .7s ease-out; }
+    @media (prefers-reduced-motion: reduce) { .here.flash, .ghost .tag.flash, .ghost.flash { animation: none; } }
+    .ghost .tag { position: absolute; left: 2px; bottom: 100%; font-size: 10px; line-height: 14px; color: var(--mut); white-space: nowrap; }
+  }
   .c.head::after { background: #23232b; }
   .lead .c.on::after { background: var(--lead); border-color: var(--lead); }
   .bass .c.on::after { background: var(--bass); border-color: var(--bass); }
@@ -238,13 +279,17 @@
      what give them room. */
   @media (min-width: 900px) {
     :root { --other: 355px; /* 33px of it the backing row */
-            --cell: clamp(22px, calc((100vw - 64px - 32px - 18px) / 16), 56px);
+            /* --cell16 is a cell with the grid's 16 steps filling the column. The column keeps
+               that width whatever is shown in it: with the ghost on, its four steps and their
+               12px gap go inside, and every cell narrows to make the room. */
+            --cell16: clamp(22px, calc((100vw - 64px - 32px - 18px) / 16), 56px);
+            --cell: var(--cell16);
             --drow: min(calc(var(--cell) / 2), 32px);
             --row: clamp(20px, min(calc((100dvh - var(--other) - var(--drows, 3) * var(--drow)) / var(--rows, 17)), var(--cell)), 44px); }
     body { padding: 0 32px 32px; }
     main { max-width: none; }
     /* the bar's background runs edge to edge; its contents line up with the grid's column under it */
-    header { --col: calc(32px + 16 * var(--cell) + 3 * 6px);
+    header { --col: calc(32px + 16 * var(--cell16) + 3 * 6px);
              position: sticky; top: 0; z-index: 3; background: var(--bg); margin: 0 -32px 14px;
              padding: 16px max(32px, calc((100% + 64px - var(--col)) / 2)) 0;
              display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; border-bottom: 1px solid var(--line); }
@@ -282,7 +327,8 @@
   @supports (width: round(down, 1px, 1px)) {
     :root { --cell: clamp(17px, round(down, calc((100vw - 32px - 32px - 3 * 6px) / 16), 2px), 28px); }
     @media (min-width: 900px) {
-      :root { --cell: clamp(22px, round(down, calc((100vw - 64px - 32px - 18px) / 16), 2px), 56px);
+      :root { --cell16: clamp(22px, round(down, calc((100vw - 64px - 32px - 18px) / 16), 2px), 56px);
+              --cell: var(--cell16);
               --drow: min(round(down, calc(var(--cell) / 2), 1px), 32px);
               --row: clamp(20px, round(down, min(calc((100dvh - var(--other) - var(--drows, 3) * var(--drow)) / var(--rows, 17)), var(--cell)), 1px), 44px); }
     }
@@ -312,6 +358,7 @@
     <button id="tostudio" hidden title="open this pattern in the studio, in a new tab: one grid of a theme, or the chain's grids while a chain is on, over this mood, seed, tension and bed. The studio plays it in the mood's own voices and tempo; the lead and bass voices, tempo and busy here stay here.">studio &#8599;</button>
     <div class="pick slots"><button class="pickbtn" title="eight slots kept in this browser: picking one loads it, and every change saves to the one picked">slot 1</button><div class="bar drawer slotchips" id="slots"></div></div>
     <div class="pick chain"><button class="pickbtn" title="chain: play slots 1 to the number picked, one after another and round again, in place of the one slot. Empty slots are skipped, and a slot picked from past the chain's end plays alone. Every slot plays in the mood, voices, tempo and seed on screen; the notes, drums and bed are its own. The grid stays on the slot picked, and shows the playhead while that slot is the one playing.">chain off</button><div class="bar drawer" id="chain"></div></div>
+    <button class="bed" id="follow" hidden title="follow: the grid shows whichever slot of the chain is playing, and moves on with it. Off, it stays on the slot picked. Picking a slot turns it off. It waits a couple of seconds after an edit (dashed) before moving on.">follow</button>
     <button id="mutate" hidden title="a variation of this pattern, computed by lg code">mutate (lg)</button>
   </div>
   </div>
@@ -338,6 +385,7 @@
     <div class="bar"><span class="lab">view</span>
       <button class="bed" id="mixbtn" title="show a strip of all four lanes over one another, their colours added; not saved in the link">mix</button>
       <button class="bed" id="echobtn" title="show a strip of the echo: what the shared delay returns, every lane's at once; not saved in the link">echo</button>
+      <button class="bed" id="nextbtn" title="show, to the right of each lane, the four steps that play after this grid: its own first steps as it comes round, or in a chain the next slot's. To look at: it is not edited there.">next</button>
       <button class="bed" id="ednbtn" title="show the pattern and the settings as EDN over the grid (Esc closes it); not saved in the link">edn</button>
       <button class="bed" id="helpbtn" title="how it works, over the grid (Esc closes it)" aria-label="how it works">?</button></div>
   </div>
@@ -375,7 +423,8 @@
     <div><h3>playing</h3><ul>
       <li><kbd>space</kbd> plays and stops; <kbd>r</kbd> goes back to the first step.</li>
       <li>Edits are heard the next time the playhead passes them.</li>
-      <li><b>slot</b> keeps eight patterns in this browser. <b>chain</b> plays slots 1 to the number picked one after another, round and round, in the settings on screen; the grid stays on the slot picked, a slot past the chain's end plays alone, and an edit is heard the next time round without the chain starting over. With <b>edn</b> open the chain shows as a theme.</li>
+      <li><b>slot</b> keeps eight patterns in this browser. <b>chain</b> plays slots 1 to the number picked one after another, round and round, in the settings on screen, which every slot of the chain then keeps; a slot past the chain's end plays alone, and an edit is heard the next time round without the chain starting over. With <b>follow</b> on the grid shows whichever slot is playing, waiting a moment after an edit; picking a slot turns it off, and the grid stays there. Each slot has its own undo. With <b>edn</b> open the chain shows as a theme.</li>
+      <li><b>next</b> shows, dimmed at the right of each lane, the four steps that play after this grid: its own first steps as it comes round, or the next slot's in a chain, with the slot's number over them. It is not edited there.</li>
       <li>A pick in the header opens its choices; <kbd>&larr;</kbd> <kbd>&rarr;</kbd> step through them while it is open, and <kbd>esc</kbd> closes it.</li>
       <li>A bass voice plays at the level of the pluck it replaces.</li>
       <li>Every note echoes 3 steps later, and again every 3, each fainter: an echo can sound like a note of its own.</li>
@@ -443,6 +492,14 @@
   // slot each grid last sent came from, empty while no chain plays;
   // heardSlot is the one at the speaker, or -1.
   let chain = 0, chainSlots = [], heardSlot = -1;
+  let followHeld = false; // follow is on and waiting: the slot heard is not the one on screen
+  let slotsUp = false; // the slots, declared further down, are read: the ghost may look at them
+  // follow: the grid shows the slot of the chain being heard, moving on with
+  // it. Picking a slot by hand turns it off: that is a choice to stay.
+  // It waits FOLLOW_HOLD after an edit, so that a hand at work on one slot
+  // does not find the next under it at the turn.
+  let follow = true;
+  const FOLLOW_HOLD = 2500;
   let seedDirty = false; // the seed field holds typing not yet taken
   // Set once the drum lanes hold a choice, even an empty one: an edit, clear,
   // or a link that carries them. Until then a mood change brings its groove.
@@ -477,6 +534,17 @@
     try { D = decodeURIComponent(kv.D || "").split(","); } catch {} // a stray % in a hand-edited link: no drums, not a dead page
     const drums = D.length === DRUMS.length && D.every((s) => /^[Xxo.?f]*$|^[Xxo.?f]+\|$/.test(s)) ? D : null;
     return { kv, L, B, P: [...Array(STEPS)].map((_, i) => !!(p & (1 << i))), drums };
+  }
+  // withSettings is a link's lanes under the settings on screen, spelled in
+  // encode's order so that the slot, loaded, is found unchanged.
+  const LANEKEYS = ["bed", "L", "B", "P", "D", "g", "dc"];
+  function withSettings(h) {
+    const l = linkParts(h);
+    if (!l) return h;
+    const kv = Object.fromEntries(encode().slice(4).split(";").map((p) => p.split("=")));
+    for (const k of LANEKEYS) if (k in l.kv) kv[k] = l.kv[k]; else delete kv[k];
+    return "#v1;" + ["t", "m", "v", "bv", "s", "bed", "L", "B", "P", "D", "g", "dc", "bz", "tn", "fl"]
+      .filter((k) => k in kv).map((k) => `${k}=${kv[k]}`).join(";");
   }
   // linkGrid is a link's grid as the engine takes one, for a slot the chain
   // plays without loading it. A link from before links carried drums plays
@@ -533,10 +601,22 @@
     });
   })();
 
+  // The ghost: beside each lane, the first GHOST steps of what plays next.
+  const GHOST = 4;
+  for (const [id, rows, cols] of [["lead", DEG, GHOST], ["bass", DEG, GHOST], ["pulse", 1, GHOST], ["drums", DRUMS.length, 2 * GHOST]]) {
+    const g = document.createElement("div"); g.className = "ghost"; g.setAttribute("aria-hidden", "true");
+    const tag = document.createElement("span"); tag.className = "tag"; g.appendChild(tag);
+    for (let r = 0; r < rows; r++) for (let i = 0; i < cols; i++) {
+      const c = document.createElement("div"); c.className = "g"; c.dataset.r = r; c.dataset.i = i; g.appendChild(c);
+    }
+    $(id).appendChild(g);
+    const here = document.createElement("span"); here.className = "here"; here.setAttribute("aria-hidden", "true"); $(id).appendChild(here);
+  }
   // A looping lane runs on across patterns, so each pass starts it somewhere
   // else in its loop: loopAt is where, per lane, learnt from the hits the
   // engine reports, and the cells draw the pass that is playing.
   const loopAt = DRUMS.map(() => 0);
+  let patRun = 0; // the sixteenth of the run the pattern heard began on, from the same hits
   const shown = (d, i) => { const a = st.drums[d]; return a.loop ? a.loop[(loopAt[d] + +i) % a.loop.length] : a[i]; };
   // Which pass of its cycle a loop of n sixteenths is on, and how many passes the cycle takes: pass k
   // starts the loop at (k * SIXTEENTHS) mod n, and it is back in line after n / gcd(n, SIXTEENTHS).
@@ -548,6 +628,42 @@
   };
   // A lane spelled from a figure: the loop over one pattern, as lanes() builds it.
   const loopLane = (loop) => { const a = [...loop.repeat(Math.ceil(SIXTEENTHS / loop.length)).slice(0, SIXTEENTHS)]; a.loop = loop; return a; };
+  // What plays after the grid on screen, and the slot it is: in a chain the
+  // next of its slots, round to the first; otherwise this grid again.
+  function nextGrid() {
+    const k = chainSlots.indexOf(slot), n = k < 0 ? -1 : chainSlots[(k + 1) % chainSlots.length];
+    const g = n >= 0 && n !== slot ? linkGrid(slots[n]?.link) : null;
+    return g ? { g, n } : { g: liveGrid(), n: slot };
+  }
+  function paintGhost() {
+    if (!document.documentElement.classList.contains("next") || !slotsUp) return;
+    const { g, n } = nextGrid();
+    // not the first time, when there was nothing to change from
+    const name = (el, text, ...also) => {
+      if (el.textContent === text) return;
+      const first = !el.textContent; el.textContent = text;
+      if (!first) for (const e of [el, ...also]) { e.classList.remove("flash"); void e.offsetWidth; e.classList.add("flash"); }
+    };
+    for (const el of document.querySelectorAll(".here")) name(el, `(${slot + 1})`);
+    for (const el of document.querySelectorAll(".ghost")) {
+      const lane = el.parentElement.id;
+      name(el.querySelector(".tag"), `(${n + 1})`, el);
+      for (const c of el.querySelectorAll(".g")) {
+        const r = +c.dataset.r, i = +c.dataset.i;
+        let on = false, ch = false;
+        if (lane === "pulse") on = !!g.pulse[i];
+        else if (lane === "drums") {
+          // a lane that loops at its own length runs on from where this pattern leaves it:
+          // this slot's own by where it is drawn, another slot's by the run
+          const d = g.drums[r] || "", loop = d.endsWith("|") ? d.slice(0, -1) : "";
+          const from = n === slot ? loopAt[r] : patRun;
+          const x = loop ? loop[(from + SIXTEENTHS + i) % loop.length] : d[i] || ".";
+          on = !!LEVEL[x]; ch = !!CHANCE[x];
+        } else on = g[lane][i] === DEG - r; // the top row is the highest degree
+        c.classList.toggle("on", on); c.classList.toggle("ch", ch);
+      }
+    }
+  }
   function paint() {
     for (const c of document.querySelectorAll(".c")) {
       const s = +c.dataset.step, lane = c.dataset.lane;
@@ -563,6 +679,7 @@
       const on = lane === "pulse" ? st.pulse[s] : st[lane][s] === +c.dataset.deg;
       c.classList.toggle("on", on);
     }
+    paintGhost();
     for (const l of document.querySelectorAll("#drums .lbl")) { // a looping lane names its length
       const loop = st.drums[l.dataset.drum].loop;
       const d = l.dataset.drum, [k, n] = loop ? loopPass(loop.length, loopAt[d]) : [0, 1];
@@ -1090,6 +1207,7 @@
     if (!ready || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
     if (e.key === "r") restart();
+    if (/^[1-8]$/.test(e.key)) pickSlot(+e.key - 1);
   });
 
   // The listening volume, in dB, as loudness is heard: xsofy plays its
@@ -1155,6 +1273,9 @@
   };
   function strike(lane, six, run) {
     const loop = st.drums[lane]?.loop;
+    // later than the one known, or a new run: a late hit of the pattern before does not take it back
+    const began = run - six;
+    if (began > patRun || began < patRun - SIXTEENTHS) { patRun = began; paintGhost(); }
     if (loop) { const at = ((run - six) % loop.length + loop.length) % loop.length; if (at !== loopAt[lane]) { loopAt[lane] = at; paint(); } }
     if (six >> 1 === lastRow) light(lane, six); else early.push([lane, six]);
   }
@@ -1163,6 +1284,12 @@
     // In a chain the grid shows the picked slot, so the playhead and the
     // struck steps are drawn only while that slot is the one heard.
     if (heard !== heardSlot) { heardSlot = heard; paintChain(); }
+    // not mid-drag: the cells under the pointer would become another slot's
+    const behind = follow && chainSlots.length && heard >= 0 && heard !== slot;
+    // nor while the pattern box holds typing: applied after the turn, it would land in the next slot
+    const held = behind && (!!painting || ednDirty || document.activeElement === $("patedn") || Date.now() - editedAt < FOLLOW_HOLD);
+    if (held !== followHeld) { followHeld = held; $("follow").classList.toggle("held", held); }
+    if (behind && !held) pickSlot(heard, true);
     if (chainSlots.length && heard !== slot) { r = -1; early = []; }
     if (r !== lastRow) {
       for (const c of document.querySelectorAll(".c.head")) c.classList.remove("head");
@@ -1392,6 +1519,7 @@
     pushParams(); // before seeding: seedGrid derives from the current params
     if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
     paint(); pushGrid();
+    if (slot < chain) keep(snap()); // a chain from before its slots shared their settings
     $("play").disabled = false;
     $("play").innerHTML = "&#9654; play";
     document.querySelector("main").classList.remove("loading");
@@ -1408,8 +1536,9 @@
   // takes every change, so there is no save. A slot holds what a link holds,
   // and the groove picked, and loading one goes the way a link does. Picking
   // an empty slot starts it as a copy of what is playing. Undo steps back
-  // through this session's changes to the slot; a burst of them (a drag
-  // across cells, a slide of the tempo) is one step.
+  // through this session's changes to the slot, each slot having its own
+  // steps; a burst of them (a drag across cells, a slide of the tempo) is
+  // one step.
   const SLOTS = 8, SLOTKEY = "undertone-grid-slots", CURKEY = "undertone-grid-slot";
   const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} }; // storage may be blocked
   let slots = [], slot = 0;
@@ -1417,9 +1546,22 @@
   // Another tab may have saved its own slot since this one read them: take
   // storage as it is now and change only this tab's slot in it.
   const readSlots = () => { try { const a = JSON.parse(localStorage.getItem(SLOTKEY)); if (Array.isArray(a)) return a; } catch {} return slots; };
-  function keep(s) { slots = readSlots(); slots[slot] = s; store(SLOTKEY, JSON.stringify(slots)); }
+  // In a chain the settings are the chain's, so every slot of it is kept
+  // under them: a slot then sounds alone as it does in the chain, and going
+  // from one to another changes the lanes and nothing else.
+  function keep(s) {
+    slots = readSlots(); slots[slot] = s;
+    if (slot < chain) for (let i = 0; i < chain; i++) if (i !== slot && slots[i]) slots[i] = { link: withSettings(slots[i].link) };
+    store(SLOTKEY, JSON.stringify(slots));
+  }
   addEventListener("storage", (e) => { if (e.key === SLOTKEY) { slots = readSlots(); paintSlots(); pushChain(); } });
+  // undo is the picked slot's history; the others' wait in undos, so that
+  // coming back to a slot (as follow does every few seconds) finds its
+  // steps still there.
   let undo = [], lastAt = 0, restoring = false;
+  const undos = [];
+  // editedAt is when a change was last made by hand, not by arriving at a slot
+  let editedAt = 0, arriving = false;
   const snap = () => ({ link: encode() }); // the link carries the groove and the drums' choice
   // pushGrid and pushParams call this after every change
   function remember() {
@@ -1433,12 +1575,17 @@
       if (prev.link === s.link) undo.pop();
     } else undo.push(s);
     lastAt = now;
+    if (!arriving) editedAt = now;
     keep(s);
     $("undo").disabled = undo.length < 2;
   }
-  function restore(s) {
+  // lanesOnly takes the slot's notes, drums and bed and leaves the settings
+  // as they are: in a chain they are the chain's, not each slot's.
+  function restore(s, lanesOnly) {
     restoring = true;
+    const { bpm, mood, voice, bassVoice, seed, busy, tension, feel } = st;
     if (decode(s.link)) {
+      if (lanesOnly) Object.assign(st, { bpm, mood, voice, bassVoice, seed, busy, tension, feel });
       pushParams();
       if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
       paint(); pushGrid();
@@ -1464,16 +1611,30 @@
       const i = +c.dataset.v;
       c.classList.toggle("on", i === slot); c.classList.toggle("empty", !slots[i]);
       c.classList.toggle("linked", i < chain); c.classList.toggle("heard", i === heardSlot);
+      // with a chain on the slots sit in the header, which has room for the chain's and not all eight
+      c.hidden = chain > 0 && i >= chain && i !== slot;
       c.title = slots[i] ? "load this slot" : "an empty slot: picking it starts it as a copy of this pattern";
     }
   }
-  function pickSlot(i) {
+  function pickSlot(i, following) {
+    if (!following && chain) setFollow(false);
     if (i === slot) return;
     slots = readSlots();
+    // from one slot of the chain to another, the settings on screen stay
+    const within = slot < chain && i < chain;
+    undos[slot] = undo;
     slot = i; store(CURKEY, String(i));
-    undo = []; lastAt = 0;
-    if (slots[i]) restore(slots[i]);
-    remember(); // the slot's state is the first step back to; an empty slot takes this pattern
+    undo = undos[i] || []; lastAt = 0;
+    if (slots[i]) restore(slots[i], within);
+    // In a chain the settings are not this slot's to take back: its steps are put under the
+    // chain's as they now are, so that a step back is a step in its lanes and not in a tempo
+    // changed from another slot. Steps that differed only in a setting become one.
+    if (i < chain) undo = undo.map((e) => ({ link: withSettings(e.link) })).filter((e, k, a) => !k || e.link !== a[k - 1].link);
+    // the slot's state is the first step back to, or a new step if it changed while away (the
+    // chain's settings, another tab); an empty slot takes this pattern
+    arriving = true; remember(); arriving = false;
+    lastAt = 0; // the next edit is its own step, not part of the arrival
+    $("undo").disabled = undo.length < 2;
     pushChain(); // an empty slot of the chain now has a pattern to play
     paintSlots();
   }
@@ -1485,7 +1646,7 @@
   // every grid of it at each change and keeps its place (setChain), so an
   // edit is heard on the next row whichever slot is playing. Only the
   // lanes and the bed are a slot's own in a chain: the settings are the
-  // picked slot's, as on screen.
+  // chain's, as on screen, and keep writes them to each of its slots.
   const CHAINKEY = "undertone-grid-chain";
   try { chain = Math.min(SLOTS, Math.max(0, Math.round(+localStorage.getItem(CHAINKEY)) || 0)); if (chain < 2) chain = 0; } catch {}
   // the chain's grids and the slot each came from: the picked slot as it is
@@ -1504,19 +1665,33 @@
     const { grids, from } = chainGrids();
     if (ready && (grids.length || chainSlots.length)) undertoneGrid.setChain(grids.length ? JSON.stringify(grids) : "", JSON.stringify(from));
     chainSlots = from;
-    showChainEDN(); paintChain();
+    showChainEDN(); paintChain(); paintGhost();
   }
   function paintChain() {
-    document.querySelector(".pick.chain .pickbtn").textContent = !chain ? "chain off" : `chain 1–${chain}` + (slot >= chain ? `, not slot ${slot + 1}` : heardSlot >= 0 ? `, on ${heardSlot + 1}` : "");
+    document.documentElement.classList.toggle("chained", chain > 0);
+    $("follow").hidden = !chain; $("follow").classList.toggle("on", follow);
+    document.querySelector(".pick.chain .pickbtn").textContent = !chain ? "chain off" : `chain 1–${chain}` + (slot >= chain ? `, not slot ${slot + 1}` : "");
     for (const c of document.querySelectorAll("#chain .chip")) c.classList.toggle("on", +c.dataset.v === chain);
     paintSlots();
   }
   for (const n of [0, ...Array.from({ length: SLOTS - 1 }, (_, k) => k + 2)]) {
     const c = document.createElement("span"); c.className = "chip"; c.textContent = n ? `1–${n}` : "off"; c.dataset.v = n;
-    c.title = n ? `play slots 1 to ${n} in order, round and round` : "play the picked slot alone";
-    c.onclick = () => { chain = n; store(CHAINKEY, String(n)); pushChain(); };
+    c.title = n ? `play slots 1 to ${n} in order, round and round, all under the settings on screen: tempo, mood, voices and the rest become the same in each` : "play the picked slot alone";
+    c.onclick = () => { chain = n; store(CHAINKEY, String(n)); if (ready) keep(snap()); pushChain(); };
     $("chain").appendChild(c);
   }
+  slotsUp = true;
+  const NEXTKEY = "undertone-grid-next";
+  function showNext(on) {
+    document.documentElement.classList.toggle("next", on); $("nextbtn").classList.toggle("on", on);
+    store(NEXTKEY, String(+on)); paintGhost();
+  }
+  $("nextbtn").onclick = () => showNext(!document.documentElement.classList.contains("next"));
+  { let on = true; try { on = localStorage.getItem(NEXTKEY) !== "0"; } catch {} showNext(on); }
+  const FOLLOWKEY = "undertone-grid-follow";
+  try { follow = localStorage.getItem(FOLLOWKEY) !== "0"; } catch {}
+  function setFollow(on) { follow = on; store(FOLLOWKEY, String(+on)); paintChain(); }
+  $("follow").onclick = () => setFollow(!follow);
   paintChain();
   // An address that differs only after the # does not reload the page, so a
   // link pasted over this one arrives here and nowhere else.

@@ -37,13 +37,13 @@ type Position struct {
 func (s *Synth) Position() (Position, bool) { return s.PositionAt(math.MaxInt64) }
 
 // RunStart is the row the grid or theme now playing counts its run from, as
-// of the last row rendered; Position.Run is the same count for a row heard.
-// It is
 // Pattern*16+Row: a polymetric lane (one ending in |) plays its step
 // (Pattern*16+Row-RunStart)*2 sixteenths in, wrapping at its length, for a
 // host drawing where such a lane is. It moves when the run starts over, at a
-// Rewind or when the grid or theme takes over from what played before. Safe
-// to call from any goroutine.
+// Rewind or when the grid or theme takes over from what played before. It is
+// as of the last row rendered: a host following the row heard reads
+// Position.Run, which is that row's count with RunStart already taken off.
+// Safe to call from any goroutine.
 func (s *Synth) RunStart() int { return int(s.runStart.Load()) }
 
 // PositionAt returns the row sounding at an output frame, for a playhead

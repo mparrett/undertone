@@ -617,8 +617,12 @@
   // began on, as the engine reports it with the playhead (at()), and loopAt
   // where that puts a lane in its loop: the engine's own rule, so the cells
   // draw the pass that is playing from its first row.
+  // patRun is below 0 for a pattern the run began partway through (a chain
+  // unlinked while it plays hands back to the grid mid-pattern), so the
+  // remainder is taken as the engine takes it, never negative.
   let patRun = 0;
-  const loopAt = (d) => { const l = st.drums[d]?.loop; return l ? patRun % l.length : 0; };
+  const mod = (a, n) => ((a % n) + n) % n;
+  const loopAt = (d) => { const l = st.drums[d]?.loop; return l ? mod(patRun, l.length) : 0; };
   const shown = (d, i) => { const a = st.drums[d]; return a.loop ? a.loop[(loopAt(d) + +i) % a.loop.length] : a[i]; };
   // Which pass of its cycle a loop of n sixteenths is on, and how many passes the cycle takes: pass k
   // starts the loop at (k * SIXTEENTHS) mod n, and it is back in line after n / gcd(n, SIXTEENTHS).
@@ -657,7 +661,7 @@
         else if (lane === "drums") {
           // a lane that loops at its own length runs on from where this pattern leaves it
           const d = g.drums[r] || "", loop = d.endsWith("|") ? d.slice(0, -1) : "";
-          const x = loop ? loop[(patRun + SIXTEENTHS + i) % loop.length] : d[i] || ".";
+          const x = loop ? loop[mod(patRun + SIXTEENTHS + i, loop.length)] : d[i] || ".";
           on = !!LEVEL[x]; ch = !!CHANCE[x];
         } else on = g[lane][i] === DEG - r; // the top row is the highest degree
         c.classList.toggle("on", on); c.classList.toggle("ch", ch);
@@ -981,7 +985,7 @@
   function setLoop(d, n) {
     const row = st.drums[d], now = [...Array(SIXTEENTHS)].map((_, i) => shown(d, i));
     // the figure is the first n cells as they are drawn, written so that this pass still draws them there
-    if (n) st.drums[d] = loopLane(now.slice(0, n).map((_, i) => now[((i - patRun) % n + n) % n]).join(""));
+    if (n) st.drums[d] = loopLane(now.slice(0, n).map((_, i) => now[mod(i - patRun, n)]).join(""));
     else { st.drums[d] = now; }
     drumsChosen = true; groove = "";
     paint(); pushGrid();
@@ -1279,7 +1283,8 @@
   (function head() {
     let [r, heard, run] = ready && playing ? undertoneGrid.at() : [-1, -1, 0];
     // the looping lanes and the ghost are drawn for the pattern heard
-    if (r >= 0 && 2 * (run - r) !== patRun) { patRun = 2 * (run - r); paint(); }
+    // the cells only where a lane loops: every pattern moves patRun, and paint rewrites the EDN boxes too
+    if (r >= 0 && 2 * (run - r) !== patRun) { patRun = 2 * (run - r); if (st.drums.some((a) => a.loop)) paint(); else paintGhost(); }
     // In a chain the grid shows the picked slot, so the playhead and the
     // struck steps are drawn only while that slot is the one heard.
     if (heard !== heardSlot) { heardSlot = heard; paintChain(); }

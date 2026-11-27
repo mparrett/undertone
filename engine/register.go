@@ -30,14 +30,18 @@ type regLead struct {
 	spec LeadSpec
 }
 
+// lookupPalette finds a registered palette first, then a built-in, so a
+// game that registers a built-in's name replaces it everywhere that name is
+// heard: in the moods built on it, and at :palette.
 func lookupPalette(name string) (Palette, bool) {
-	if p, ok := palettes[name]; ok {
-		return p, true
-	}
 	regMu.RLock()
-	defer regMu.RUnlock()
 	r, ok := paletteReg[name]
-	return r.pal, ok
+	regMu.RUnlock()
+	if ok {
+		return r.pal, true
+	}
+	p, ok := palettes[name]
+	return p, ok
 }
 
 func lookupLead(name string) (leadDef, bool) {
@@ -76,8 +80,17 @@ func (pl *Palette) tracks() []*Patch {
 
 // RegisterPalette makes a spec a palette a mood can name (MoodSpec.Palette,
 // :palette), replacing an earlier registration of that name. It reports an
-// error, and registers nothing, for a built-in palette's name or a patch the
-// synth could not run safely.
+// error, and registers nothing, for a patch the synth could not run safely or
+// a Base it does not have.
+//
+// A built-in palette's name may be registered: the game's palette then
+// stands in for the built-in wherever that name is heard, in every mood
+// built on it (meadow and village use overworld's) and at :palette, and
+// PaletteSpecByName reads it. Base names the palette to start from: every
+// track the spec leaves empty is the base's, and with no kit lane set, so is
+// the kit. A Base of the spec's own name is the built-in, so "dungeon with
+// my bass" is {Name: dungeon, Base: dungeon, Bass: ...}. The base is read as
+// it is at registration; the registered palette does not follow it after.
 //
 // A patch is its units, or with no units, the built-in patch its Name names
 // ("pad", "kick"; PaletteSpecByName gives every built-in's names). A patch
@@ -112,8 +125,15 @@ func (s PaletteSpec) build() (Palette, PaletteSpec, error) {
 	if !validName(s.Name) {
 		return pl, out, fmt.Errorf("a palette needs a name of letters, digits and dashes, as a keyword")
 	}
-	if _, ok := palettes[s.Name]; ok {
-		return pl, out, fmt.Errorf("a built-in palette has that name")
+	if s.Base != "" {
+		base, ok := builtinPaletteSpec(s.Base)
+		if s.Base != s.Name {
+			base, ok = PaletteSpecByName(s.Base)
+		}
+		if !ok {
+			return pl, out, fmt.Errorf("unknown base palette %q", s.Base)
+		}
+		s = s.over(base)
 	}
 	dst, read := pl.tracks(), out.tracks()
 	for i, ps := range s.tracks() {
@@ -245,6 +265,31 @@ func (ps PatchSpec) clone() PatchSpec {
 	return PatchSpec{ps.Name, units}
 }
 
+// over fills what s leaves empty from base: each track, and the kit when s
+// sets no lane.
+func (s PaletteSpec) over(base PaletteSpec) PaletteSpec {
+	base = base.clone()
+	for i, ps := range s.tracks() {
+		if ps.zero() {
+			*ps = *base.tracks()[i]
+		}
+	}
+	if s.noKit() {
+		s.Kit = base.Kit
+	}
+	return s
+}
+
+// noKit is whether the spec sets no kit lane.
+func (s PaletteSpec) noKit() bool {
+	for _, d := range s.Kit {
+		if !d.zero() || d.Note != 0 || d.Default {
+			return false
+		}
+	}
+	return true
+}
+
 func (s PaletteSpec) clone() PaletteSpec {
 	for _, ps := range s.tracks() {
 		*ps = ps.clone()
@@ -260,8 +305,18 @@ func (s PaletteSpec) clone() PaletteSpec {
 func (s PaletteSpec) EDN() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "{:name :%s", s.Name)
+	if s.Base != "" {
+		fmt.Fprintf(&b, " :base :%s", s.Base)
+	}
 	for i, ps := range s.tracks() {
+		if s.Base != "" && ps.zero() {
+			continue // the base's
+		}
 		fmt.Fprintf(&b, "\n :%s %s", trackNames[i], ps.edn(len(trackNames[i])+3))
+	}
+	if s.Base != "" && s.noKit() {
+		b.WriteString("}")
+		return b.String()
 	}
 	b.WriteString("\n :kit [")
 	for i, d := range s.Kit {

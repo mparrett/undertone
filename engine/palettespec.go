@@ -24,7 +24,10 @@ type DrumSpec struct {
 // LeadSpecByName), and with no lead, every palette's is the bell lead's
 // (Palette.Lead), so `:lead :none` can restore it without knowing the bank.
 type PaletteSpec struct {
-	Name                          string
+	Name string
+	// Base names a palette to start from, for a spec that changes only some
+	// tracks (RegisterPalette). A spec read back has none: it is whole.
+	Base                          string
 	Drone, Fifth, Pad, Air, Pulse PatchSpec
 	// Bass is what a theme's bass lane plays; empty, the default string bass.
 	Bass PatchSpec
@@ -78,16 +81,26 @@ func unitSpecs(p Patch) []UnitSpec {
 
 func patchSpec(p Patch) PatchSpec { return PatchSpec{patchName(p), unitSpecs(p)} }
 
-// PaletteSpecByName returns a built-in or registered palette as data. A lane
-// the palette's kit leaves empty plays the default kit's (Params.sound); its
-// spec holds that lane, marked Default.
+// PaletteSpecByName returns a registered or built-in palette as data, the
+// registered one first, as a mood finds it. A lane the palette's kit leaves
+// empty plays the default kit's (Params.sound); its spec holds that lane,
+// marked Default.
 func PaletteSpecByName(name string) (PaletteSpec, bool) {
+	regMu.RLock()
+	r, ok := paletteReg[name]
+	regMu.RUnlock()
+	if ok {
+		return r.spec.clone(), true
+	}
+	return builtinPaletteSpec(name)
+}
+
+// builtinPaletteSpec is a built-in palette as data, whether or not a game's
+// palette stands in for it.
+func builtinPaletteSpec(name string) (PaletteSpec, bool) {
 	pl, ok := palettes[name]
 	if !ok {
-		regMu.RLock()
-		defer regMu.RUnlock()
-		r, ok := paletteReg[name]
-		return r.spec.clone(), ok
+		return PaletteSpec{}, false
 	}
 	s := PaletteSpec{
 		Name:  name,

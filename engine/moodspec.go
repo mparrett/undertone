@@ -3,7 +3,6 @@ package engine
 import (
 	"fmt"
 	"math"
-	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -66,13 +65,21 @@ func LeadNames() []string {
 }
 
 // PaletteNames lists the patch banks a MoodSpec can name: the built-in ones,
-// then the registered ones, sorted.
+// then the registered ones, sorted. A registered palette with a built-in's
+// name is listed once, as the built-in.
 func PaletteNames() []string {
-	return append([]string{"dungeon", "overworld", "aurora", "rust", "void", "stratosphere"}, registeredNames(paletteReg)...)
+	names := []string{"dungeon", "overworld", "aurora", "rust", "void", "stratosphere"}
+	for _, n := range registeredNames(paletteReg) {
+		if _, ok := palettes[n]; !ok {
+			names = append(names, n)
+		}
+	}
+	return names
 }
 
-// PaletteByName returns a built-in or registered patch bank by the name a
-// MoodSpec uses for it.
+// PaletteByName returns a patch bank by the name a MoodSpec uses for it: a
+// registered one, or else the built-in, so a game's palette can stand in for
+// a built-in of the same name.
 func PaletteByName(name string) (Palette, bool) { return lookupPalette(name) }
 
 func (l Line) internal() line { return line{l.Base, l.Step, l.Lo, l.Hi} }
@@ -115,11 +122,7 @@ func MoodByName(name string) (MoodSpec, bool) {
 			TenseDrums: m.tenseDrums, Open: m.open.export(), Room: m.room,
 			LeadDB: m.leadDB, PadDB: m.padDB,
 		}
-		for name, p := range palettes {
-			if reflect.DeepEqual(p, m.palette) {
-				s.Palette = name
-			}
-		}
+		s.Palette = m.palette
 		return s, true
 	}
 	return MoodSpec{}, false
@@ -161,12 +164,12 @@ func (s MoodSpec) Derive(seed uint64, level int, tension float64) (Params, error
 		rootBase: s.RootBase, rootStep: s.RootStep,
 		drone: s.Drone.internal(), fifth: s.Fifth.internal(), pad: s.Pad.internal(),
 		leadDensity: s.LeadDensity.internal(), air: s.Air.internal(),
-		calm: s.Calm, leadLift: s.LeadLift, palette: pal, leads: slices.Clone(s.Leads),
+		calm: s.Calm, leadLift: s.LeadLift, palette: s.Palette, leads: slices.Clone(s.Leads),
 		grooves: slices.Clone(s.Grooves), drums: s.Drums.internal(), busy: s.Busy.internal(), swing: s.Swing,
 		tenseDrums: s.TenseDrums, open: s.Open.internal(), room: s.Room,
 		leadDB: s.LeadDB, padDB: s.PadDB,
 	}
-	return m.derive(seed, level, tension), nil
+	return m.derive(pal, seed, level, tension), nil
 }
 
 // EDN writes the spec as an entry for the moods map, in the shape

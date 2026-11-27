@@ -20,6 +20,11 @@ func paletteSpec(v vm.Value) (engine.PaletteSpec, error) {
 	if s.Name, ok = kwStr(m, "name"); !ok {
 		return s, fmt.Errorf("want :name as a keyword or string")
 	}
+	if at(m, "base") != vm.NIL {
+		if s.Base, ok = kwStr(m, "base"); !ok {
+			return s, fmt.Errorf("want :base as a palette's name, :aurora")
+		}
+	}
 	// Refused, not ignored: a palette that brought its own bell would
 	// otherwise register and play the bell lead instead, with no error.
 	if at(m, "bell") != vm.NIL {

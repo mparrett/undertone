@@ -186,6 +186,19 @@ start from:
 (undertone/set-parameters {:palette :ember :lead :glass})
 ```
 
+To change only some tracks, start from another palette with `:base`: every
+track the map leaves out, and the kit if it gives none, is the base's, read
+as it is when the palette registers. A palette may also take a built-in's
+name, and then plays wherever that name is heard, in every mood built on it
+(meadow and village play overworld's) and at `:palette`; a `:base` of its
+own name is the built-in. So one call gives the dungeon mood a softer bass:
+
+```clojure
+(undertone/register-palette
+  {:name :dungeon :base :dungeon
+   :bass [[:env 0.01 0.4 0.6 0.3] [:osc 0 :sine 0 1] [:mul] [:out 0.1 0.5]]})
+```
+
 A track names a built-in patch by keyword or gives its units. A palette's
 patches are checked as a shot's are, but may release over up to 10 s and
 out at up to 4, as the built-in beds do. A palette has no patch for the lead
@@ -286,7 +299,7 @@ audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 | `undertone/trigger` | a trigger map (`{:shot :hit :gain 0.8 :pan 0.3}`) or a vector of them; fire-and-forget. `:send` and `:verb` (0..1, 1 as authored) scale that trigger's send to the shared delay and room, so `:send 0` keeps a sound out of the music's echo. `:group` (a keyword or string) tags it for `undertone/cut` |
 | `undertone/cut` | `{:group :run :fade-ms 30}`: stops that group's shots, dropping those still waiting on their `:delay-ms` and fading out those sounding (`:fade-ms` 30 by default, held to 5..2000); shots triggered after it play. For a phrase that has to end when something else does, such as a run under a loading screen |
 | `undertone/register-shot` | a game's own one-shot (`{:name :ping :gate-ms 20 :patch [[:env 0.001 0.2 0 0.1] [:osc 0 :sine 0 1] [:mul] [:out 0.5 0.5]]}`); a patch the synth could not run safely is an error |
-| `undertone/register-palette`, `undertone/register-lead` | a game's own palette or lead, for a mood's `:palette`, `:leads` or a `:lead` (`PaletteSpec.EDN`, `LeadSpec.EDN`); an error as for a shot |
+| `undertone/register-palette`, `undertone/register-lead` | a game's own palette or lead, for a mood's `:palette`, `:leads` or a `:lead` (`PaletteSpec.EDN`, `LeadSpec.EDN`); a palette's `:base :aurora` fills the tracks it leaves out, and a built-in's name replaces that built-in; an error as for a shot |
 | `undertone/render-wav` | `(undertone/render-wav "out.wav" 20.0)`: offline render of the current parameters and music gain (set it to 0 to render shots dry), for checking determinism without a sound card. It returns the PCM's SHA-256 as hex, and a nil path skips the file. An optional script plays calls at given seconds, so a test can pin a theme or an outro by hash: `[[0.0 :play-theme {...}] [4.5 :trigger {:shot :hit}] [8.0 :set-parameters-now {:mood :rust}]]`, with `:set-parameters`, `:set-parameters-now`, `:play-theme`, `:trigger` and `:cut` taking what the natives take. A script is stricter than live calls: a trigger it cannot play is an error, not dropped. `:until-silent` in place of the seconds renders until the sound has ended, so a short shot is not padded with silence and a long tail is not cut: the shots are done, the script has nothing left to play, and the output has stayed under −60 dBFS for an echo's period. The file ends 10 ms after the last audible frame, at most 60 s in; a bed playing above that level runs the full 60 s. Renders run up to 600 s |
 | `undertone/derive-spec`, `undertone/moods-edn` | the mood derivation behind `undertone.ambience`: a mood entry, seed, level and tension to a parameter map, and the built-in mood table as EDN. Pure functions; call them through `ambience/derive-spec`, `ambience/derive-mood` and `ambience/moods` |
 

@@ -40,7 +40,7 @@ type mood struct {
 	air         line
 	calm        int // the second drone's interval from the chord at low tension; positive floats above it
 	leadLift    int
-	palette     Palette
+	palette     string // a name, looked up as the mood derives: a game's palette of that name is the one heard
 	leads       []string // the seed picks one; repeats are the weights; none leaves the lead silent
 
 	// Drums, for rhythmic moods; the zero values leave them off.
@@ -80,7 +80,7 @@ var moods = []mood{
 		leadDensity: lin(0.16, -0.02).atLeast(0.04),
 		air:         lin(0.25, 0.05).atMost(0.6),
 		calm:        -5, // perfect fifth above the low drone
-		palette:     dungeonPalette,
+		palette:     "dungeon",
 		leads:       dungeonLeads,
 	},
 	// Past the dungeon: where depth would take it if it kept going. Nine
@@ -99,7 +99,7 @@ var moods = []mood{
 		leadDensity: lin(0.07, -0.01).atLeast(0.02),
 		air:         lin(0.35, 0.03).atMost(0.55),
 		calm:        -5, // perfect fifth above the low drone
-		palette:     voidPalette,
+		palette:     "void",
 		leads:       voidLeads,
 		room:        Room{Size: 0.8, Damp: 0.6},
 	},
@@ -117,7 +117,7 @@ var moods = []mood{
 		air:         lin(0.15, 0.02),
 		calm:        -8, // major third above the low drone: sunshine
 		leadLift:    12,
-		palette:     overworldPalette,
+		palette:     "overworld",
 		leads:       overworldLeads,
 	},
 	// Warm, grounded and sunny: overworld without the floor. The drone is
@@ -137,7 +137,7 @@ var moods = []mood{
 		air:         lin(0.2, 0.02).atMost(0.3),
 		calm:        -3, // major sixth above the low drone
 		leadLift:    12,
-		palette:     overworldPalette,
+		palette:     "overworld",
 		leads:       meadowLeads,
 	},
 	// Bright by being thin rather than warm: no drone at all, a slow lydian
@@ -155,7 +155,7 @@ var moods = []mood{
 		leadDensity: lin(0.08, 0.01).atMost(0.14),
 		air:         lin(0.3, 0.03).atMost(0.45),
 		calm:        7, // a fifth above the chord, floating over it
-		palette:     auroraPalette,
+		palette:     "aurora",
 		leads:       auroraLeads,
 	},
 	// Above the aurora: thinner still, with no lead at all. No drone, a
@@ -173,7 +173,7 @@ var moods = []mood{
 		leadDensity: lin(0, 0),
 		air:         lin(0.3, 0.02).atMost(0.4),
 		calm:        12, // an octave above the chord: the thinnest interval
-		palette:     stratospherePalette,
+		palette:     "stratosphere",
 		room:        Room{Size: 0.4, Damp: -0.8},
 	},
 	// The first mood with drums: a warm daytime village, mixolydian turning
@@ -191,7 +191,7 @@ var moods = []mood{
 		air:         lin(0.1, 0),
 		calm:        -8, // major third above the low drone
 		leadLift:    12,
-		palette:     overworldPalette,
+		palette:     "overworld",
 		leads:       villageLeads,
 		grooves:     []string{"amble", "amble", "skip", "stomp"},
 		drums:       lin(0.55, 0.05).atMost(0.8),
@@ -215,7 +215,7 @@ var moods = []mood{
 		leadDensity: lin(0.06, 0),
 		air:         lin(0.35, 0.05).atMost(0.7),
 		calm:        -6, // a tritone from the start
-		palette:     rustPalette,
+		palette:     "rust",
 		leads:       rustLeads,
 		open:        lin(0, -0.12), // the filters close as it sinks
 		// no drums at rest; from a quarter tension the machine comes in
@@ -241,7 +241,7 @@ var moods = []mood{
 		leadDensity: lin(0.04, 0),
 		air:         lin(0.25, 0.03).atMost(0.4),
 		calm:        -5, // perfect fifth above the low drone
-		palette:     rustPalette,
+		palette:     "rust",
 		leads:       rustLeads,
 		open:        lin(0, 0.08),
 		grooves:     []string{"machine"},
@@ -270,13 +270,14 @@ func MoodNames() []string {
 func DeriveMood(name string, seed uint64, level int, tension float64) (Params, bool) {
 	for i := range moods {
 		if moods[i].name == name {
-			return moods[i].derive(seed, level, tension), true
+			pal, _ := lookupPalette(moods[i].palette) // the table names only built-ins, so it is found
+			return moods[i].derive(pal, seed, level, tension), true
 		}
 	}
 	return Params{}, false
 }
 
-func (m *mood) derive(seed uint64, level int, tension float64) Params {
+func (m *mood) derive(pal Palette, seed uint64, level int, tension float64) Params {
 	r := rng{seed ^ uint64(level)*0x9e3779b97f4a7c15 | 1}
 	l := float64(level)
 	t := math.Max(0, math.Min(1, tension))
@@ -296,7 +297,7 @@ func (m *mood) derive(seed uint64, level int, tension float64) Params {
 		Room:        m.room,
 		FifthOffset: tenseOffset(m.calm, t),
 		LeadLift:    m.leadLift,
-		Palette:     m.palette,
+		Palette:     pal,
 		Seed:        seed,
 		DrumGain:    m.drums.at(l),
 		DrumBusy:    m.busy.at(l),

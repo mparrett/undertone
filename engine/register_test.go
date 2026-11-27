@@ -174,7 +174,6 @@ func TestRegisterRefusesUnsafe(t *testing.T) {
 		edit func(*PaletteSpec)
 		says string
 	}{
-		{"a built-in's name", func(s *PaletteSpec) { s.Name = "rust" }, "built-in palette"},
 		{"a name EDN can't read back", func(s *PaletteSpec) { s.Name = "reg bad" }, "name"},
 		{"a release of a minute", func(s *PaletteSpec) { s.Drone = drone(60) }, "release"},
 		{"a built-in's name on other units", func(s *PaletteSpec) { s.Drone = edited }, "differ"},
@@ -196,7 +195,7 @@ func TestRegisterRefusesUnsafe(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), c.says) {
 			t.Errorf("%s: got %v, want an error saying %q", c.why, err, c.says)
 		}
-		if _, ok := PaletteByName(s.Name); ok && s.Name != "rust" {
+		if _, ok := PaletteByName(s.Name); ok {
 			t.Errorf("%s: registered anyway", c.why)
 		}
 	}

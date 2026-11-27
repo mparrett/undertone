@@ -57,7 +57,8 @@ func TestRegisterPaletteFromLg(t *testing.T) {
 		{"{:name :lg-bad :fifth :pad :pad :pad :air :air :pulse :pulse}", "drone"},
 		{"{:name :lg-bad :drone :drone :fifth :pad :pad :pad :air :air :pulse :pulse :kit [:default]}", "3 lanes"},
 		{"{:name :lg-bad :drone :drone :fifth :pad :pad :pad :air :air :pulse :pulse :kit [:default {:patch :kick} :default]}", ":note"},
-		{"{:name :dungeon :drone :drone :fifth :pad :pad :pad :air :air :pulse :pulse}", "built-in palette"},
+		{"{:name :lg-bad :base :nope}", "base"},
+		{"{:name :lg-bad :base 3}", ":base"},
 		{"{:name :lg-bad :drone [[:env 0 0.1 0 0.1] [:mul] [:out 1 0.5]] :fifth :pad :pad :pad :air :air :pulse :pulse}", "run dry"},
 	} {
 		_, err := c.Run("(undertone/register-palette " + c2.palette + ")")

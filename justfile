@@ -22,6 +22,14 @@ test-wasm:
 # Everything to run before opening a PR.
 ready: test race lint test-wasm
 
+# The grid page worked in a headless browser, muted: slots, the chain, follow,
+# undo, the ghost, looping lanes. It waits on the playhead, so it is as long as
+# the patterns it plays, and prints its time.
+# It is CI's page job; not part of ready, as it needs a browser installed once:
+# uvx playwright@1.65.2 install chromium
+grid-test:
+    uv run examples/grid/page_test.py
+
 # The tests that share a synth between goroutines, under the race detector,
 # as CI runs them. Only those: the detector slows rendering many times over,
 # and the rest of the suite is single-threaded, where it has nothing to find.

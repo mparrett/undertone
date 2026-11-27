@@ -48,13 +48,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"slices"
 	"sync/atomic"
 	"syscall/js"
 	"time"
 
 	"github.com/mparrett/undertone/engine"
 	"github.com/mparrett/undertone/internal/debugoverlay"
+	"github.com/mparrett/undertone/internal/gridchain"
 	"github.com/mparrett/undertone/webaudio"
 )
 
@@ -288,14 +288,8 @@ func main() {
 	// the lanes the page draws, by LayerNames index
 	lanes := map[int]int{3: 0, 7: 1, 5: 2, engine.DrumsLayer: 3}
 
-	chained := false // setChain's grids are playing, not setGrid's
-	// chain names setChain's grids: ids for the grids playing, and while
-	// moving, next for those that take over once pattern after has played
-	var chain struct {
-		ids, next []int
-		after     int
-		moving    bool
-	}
+	// chain names setChain's grids, and is on while they are the ones playing, not setGrid's
+	var chain gridchain.Names
 	api := map[string]any{
 		"setGrid": js.FuncOf(func(_ js.Value, a []js.Value) any {
 			var j gridJSON
@@ -310,10 +304,9 @@ func main() {
 			var list []gridJSON
 			json.Unmarshal([]byte(a[0].String()), &list) // "" leaves it empty
 			if len(list) == 0 {
-				if chained {
+				if chain.Clear() {
 					syn.PlayTheme(nil)
 				}
-				chained = false
 				return nil
 			}
 			var ids []int
@@ -325,30 +318,16 @@ func main() {
 				t.Grids = append(t.Grids, j.grid())
 			}
 			pos, _ := syn.Position()
-			// the names as of the last pattern rendered: a change staged for
-			// a grid that has since started is in effect
-			if chain.moving && pos.Pattern > chain.after {
-				chain.ids, chain.moving = chain.next, false
-			}
-			moved := !slices.Equal(ids, chain.ids) || chain.moving && !slices.Equal(ids, chain.next)
-			switch {
-			case !chained || !syn.ThemePlaying() || moved && !src.on.Load():
-				// stopped, nobody hears the place lost
+			// gridchain says why each: the engine keeps its place by number,
+			// so new names wait for the next grid
+			switch chain.Set(ids, pos.Pattern, syn.ThemePlaying(), src.on.Load()) {
+			case gridchain.Restart:
 				syn.PlayTheme(t)
-				chain.ids, chain.moving = ids, false
-			case moved || chain.moving:
-				// The engine keeps its place by number, so with other grids
-				// before it the number would name another grid mid-pattern.
-				// It lands as the next grid starts instead, and so does any
-				// edit until then, which would otherwise land the new list
-				// at once.
+			case gridchain.AtNextGrid:
 				syn.ReviseTheme(t, engine.AtNextGrid)
-				chain.next, chain.after, chain.moving = ids, pos.Pattern, true
-			default:
-				// an edit to one grid must not send the listener back to the first
+			case gridchain.AtNextRow:
 				syn.ReviseTheme(t, engine.AtNextRow)
 			}
-			chained = true
 			return nil
 		}),
 		"setParams": js.FuncOf(func(_ js.Value, a []js.Value) any {
@@ -414,15 +393,11 @@ func main() {
 			if !ok {
 				return []any{-1, -1, 0}
 			}
-			// the names in effect at the row heard, which trails the rendering
-			ids := chain.ids
-			if chain.moving && pos.Pattern > chain.after {
-				ids = chain.next
-			}
-			if !pos.Theme || pos.Grid >= len(ids) {
+			if !pos.Theme {
 				return []any{pos.Row, -1, pos.Run}
 			}
-			return []any{pos.Row, ids[pos.Grid], pos.Run}
+			// the name in effect at the row heard, which trails the rendering
+			return []any{pos.Row, chain.At(pos.Pattern, pos.Grid), pos.Run}
 		}),
 		"levels": js.FuncOf(func(js.Value, []js.Value) any {
 			l := syn.LayerLevels()

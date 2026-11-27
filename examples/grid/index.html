@@ -514,16 +514,24 @@
   // were not chosen, so a mood change brings the mood's. Undo and the slots
   // keep links too, so these come back with them. A link without dc chose its drums.
   const drumStrings = () => st.drums.map(laneString);
-  function encode() {
-    const pulse = st.pulse.reduce((n, on, i) => n | (on ? 1 << i : 0), 0);
-    return `#v1;t=${st.bpm};m=${st.mood};v=${st.voice};${st.bassVoice ? `bv=${st.bassVoice};` : ""}s=${st.seed};bed=${+st.bed};` +
-           `L=${st.lead.join("")};B=${st.bass.join("")};P=${pulse.toString(16)};D=${drumStrings().join(",")}` +
-           (groove ? `;g=${groove}` : "") + (drumsChosen ? "" : ";dc=0") + (st.busy == null ? "" : `;bz=${Math.round(st.busy * 100)}`) + (st.tension ? `;tn=${Math.round(st.tension * 100)}` : "") + (st.feel ? `;fl=${Math.round(st.feel * 100)}` : "");
-  }
-  // linkParts reads a link's lanes: its keys, the lead, bass and pulse, and
-  // the drum strings, null where the link has none that can be played. null
-  // for what is not a link.
-  function linkParts(h) {
+  // A pattern is what a link holds, in two halves, and is what the slots
+  // and undo keep: links are read and written only where one leaves the
+  // page, in the address and in storage.
+  //   settings  the link's own spelling of tempo, mood, voices, seed and the
+  //             rest, a string to a key, unchecked: applyPattern checks them
+  //             as they reach the screen, since a mood cannot be known before
+  //             the engine is up. In a chain these are the chain's.
+  //   lanes     lead, bass, pulse, the three drum strings (null where the
+  //             link has none that can be played), the bed, and g and dc.
+  const SETKEYS = ["t", "m", "v", "bv", "s", "bz", "tn", "fl"];
+  const pct = (x) => String(Math.round(x * 100));
+  const current = () => ({
+    settings: { t: String(st.bpm), m: st.mood, v: st.voice, bv: st.bassVoice || null, s: String(st.seed),
+                bz: st.busy == null ? null : pct(st.busy), tn: st.tension ? pct(st.tension) : null, fl: st.feel ? pct(st.feel) : null },
+    lanes: { lead: [...st.lead], bass: [...st.bass], pulse: [...st.pulse], drums: drumStrings(), bed: st.bed, g: groove || null, dc: drumsChosen ? null : "0" },
+  });
+  // null for what is not a link
+  function readLink(h) {
     if (!h?.startsWith("#v1;")) return null;
     const kv = Object.fromEntries(h.slice(4).split(";").map((s) => s.split("=")));
     const digits = (s) => s && s.length === STEPS && /^[0-8]+$/.test(s) ? [...s].map(Number) : null;
@@ -533,40 +541,41 @@
     let D = [];
     try { D = decodeURIComponent(kv.D || "").split(","); } catch {} // a stray % in a hand-edited link: no drums, not a dead page
     const drums = D.length === DRUMS.length && D.every((s) => /^[Xxo.?f]*$|^[Xxo.?f]+\|$/.test(s)) ? D : null;
-    return { kv, L, B, P: [...Array(STEPS)].map((_, i) => !!(p & (1 << i))), drums };
+    const settings = {};
+    for (const k of SETKEYS) settings[k] = kv[k] ?? null;
+    return { settings, lanes: { lead: L, bass: B, pulse: [...Array(STEPS)].map((_, i) => !!(p & (1 << i))), drums, bed: kv.bed !== "0", g: kv.g ?? null, dc: kv.dc ?? null } };
   }
-  // withSettings is a link's lanes under the settings on screen, spelled in
-  // encode's order so that the slot, loaded, is found unchanged.
-  const LANEKEYS = ["bed", "L", "B", "P", "D", "g", "dc"];
-  function withSettings(h) {
-    const l = linkParts(h);
-    if (!l) return h;
-    const kv = Object.fromEntries(encode().slice(4).split(";").map((p) => p.split("=")));
-    for (const k of LANEKEYS) if (k in l.kv) kv[k] = l.kv[k]; else delete kv[k];
+  // in one order always, so that two patterns are the same when their links are
+  function writeLink({ settings: c, lanes: l }) {
+    const kv = { ...c, bed: +l.bed, L: l.lead.join(""), B: l.bass.join(""), P: l.pulse.reduce((n, on, i) => n | (on ? 1 << i : 0), 0).toString(16),
+                 D: l.drums && l.drums.join(","), g: l.g, dc: l.dc };
     return "#v1;" + ["t", "m", "v", "bv", "s", "bed", "L", "B", "P", "D", "g", "dc", "bz", "tn", "fl"]
-      .filter((k) => k in kv).map((k) => `${k}=${kv[k]}`).join(";");
+      .filter((k) => kv[k] != null).map((k) => `${k}=${kv[k]}`).join(";");
   }
-  // linkGrid is a link's grid as the engine takes one, for a slot the chain
-  // plays without loading it. A link from before links carried drums plays
-  // none here: its drums were the mood's, drawn when it was opened.
-  function linkGrid(h) {
-    const l = linkParts(h);
-    return l && { lead: l.L, bass: l.B, pulse: l.P, drums: l.drums || DRUMS.map(() => ""), bed: l.kv.bed !== "0" };
-  }
-  function decode(h) {
-    const l = linkParts(h);
-    if (!l) return false;
-    const { kv, L, B } = l, D = l.drums;
-    linkHasDrums = !!D;
-    drumsChosen = linkHasDrums && kv.dc !== "0";
-    groove = linkHasDrums && ready && JSON.parse(undertoneGrid.grooves()).includes(kv.g) ? kv.g : "";
-    st = { ...st, lead: L, bass: B, pulse: l.P,
-           drums: lanes(linkHasDrums ? D : null),
+  const encode = () => writeLink(current());
+  const same = (a, b) => writeLink(a) === writeLink(b);
+  // lanesGrid is a pattern's lanes as the engine takes a grid, for a slot
+  // the chain plays without loading it. A link from before links carried
+  // drums plays none here: its drums were the mood's, drawn when it was opened.
+  const lanesGrid = (l) => l && { lead: l.lead, bass: l.bass, pulse: l.pulse, drums: l.drums || DRUMS.map(() => ""), bed: l.bed };
+  // lanesOnly takes the notes, drums and bed and leaves the settings as they
+  // are: in a chain they are the chain's, not each slot's.
+  function applyPattern({ settings: kv, lanes: l }, lanesOnly) {
+    linkHasDrums = !!l.drums;
+    drumsChosen = linkHasDrums && l.dc !== "0";
+    groove = linkHasDrums && ready && JSON.parse(undertoneGrid.grooves()).includes(l.g) ? l.g : "";
+    st = { ...st, lead: [...l.lead], bass: [...l.bass], pulse: [...l.pulse], drums: lanes(l.drums), bed: l.bed };
+    if (lanesOnly) return;
+    st = { ...st,
            bpm: Math.min(160, Math.max(60, +kv.t || 110)), mood: (kv.m?.length === 1 ? LINK_MOODS.find((m) => m[0] === kv.m) : MOODS.find((m) => m === kv.m)) || "overworld",
-           voice: VOICES.includes(kv.v) || kv.v === NONE ? kv.v : "kalimba", bassVoice: (VOICES.includes(kv.bv) && kv.bv !== "pluck") || kv.bv === NONE ? kv.bv : "", seed: Math.min(MAXSEED, Math.max(1, Math.round(+kv.s) || 1)), bed: kv.bed !== "0",
+           voice: VOICES.includes(kv.v) || kv.v === NONE ? kv.v : "kalimba", bassVoice: (VOICES.includes(kv.bv) && kv.bv !== "pluck") || kv.bv === NONE ? kv.bv : "", seed: Math.min(MAXSEED, Math.max(1, Math.round(+kv.s) || 1)),
            busy: kv.bz != null && isFinite(+kv.bz) ? Math.min(1, Math.max(0, +kv.bz / 100)) : null,
            tension: Math.min(1, Math.max(0, (+kv.tn || 0) / 100)), feel: Math.min(1, Math.max(0, (+kv.fl || 0) / 100)) };
-    return true;
+  }
+  function decode(h) {
+    const p = readLink(h);
+    if (p) applyPattern(p);
+    return !!p;
   }
 
   // ---- the grid ----
@@ -638,7 +647,7 @@
   // next of its slots, round to the first; otherwise this grid again.
   function nextGrid() {
     const k = chainSlots.indexOf(slot), n = k < 0 ? -1 : chainSlots[(k + 1) % chainSlots.length];
-    const g = n >= 0 && n !== slot ? linkGrid(slots[n]?.link) : null;
+    const g = n >= 0 && n !== slot ? lanesGrid(slots[n]?.lanes) : null;
     return g ? { g, n } : { g: liveGrid(), n: slot };
   }
   function paintGhost() {
@@ -1513,9 +1522,9 @@
     MOODS = JSON.parse(undertoneGrid.moods()); chips("moods", MOODS, "mood"); // before any link is read: it may name one of them
     // A link's pattern goes into the picked slot, whose old state is the first
     // step back; with no link, the slot is what opens.
-    const kept = slots[slot];
+    const kept = slots[slot]?.lanes ? slots[slot] : null;
     if (kept) undo = [kept];
-    if (!decode(location.hash) && !(kept && decode(kept.link))) {
+    if (!decode(location.hash) && !(kept && (applyPattern(kept), true))) {
       const g = JSON.parse(undertoneGrid.initial);
       st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = lanes(g.drums);
       linkHasDrums = true;
@@ -1537,8 +1546,8 @@
     status.textContent = "ready";
   };
   // ---- slots and undo. Eight patterns kept in this browser; the one picked
-  // takes every change, so there is no save. A slot holds what a link holds,
-  // and the groove picked, and loading one goes the way a link does. Picking
+  // takes every change, so there is no save. A slot holds a pattern, kept
+  // in storage as its link, and loading one goes the way a link does. Picking
   // an empty slot starts it as a copy of what is playing. Undo steps back
   // through this session's changes to the slot, each slot having its own
   // steps; a burst of them (a drag across cells, a slide of the tempo) is
@@ -1546,17 +1555,24 @@
   const SLOTS = 8, SLOTKEY = "undertone-grid-slots", CURKEY = "undertone-grid-slot";
   const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} }; // storage may be blocked
   let slots = [], slot = 0;
-  try { slots = JSON.parse(localStorage.getItem(SLOTKEY)) || []; slot = Math.min(SLOTS - 1, Math.max(0, +localStorage.getItem(CURKEY) || 0)); } catch {}
+  // Storage holds each slot as { link }. An entry this page cannot read (a
+  // newer build's, in another tab) is carried as { raw } and written back
+  // as it came: it is not this page's to drop. It has no lanes, so it
+  // plays nothing and loads nothing.
+  const stored = (a) => Array.from(a, (e) => e ? readLink(e.link) || { raw: e } : null);
+  try { slots = stored(JSON.parse(localStorage.getItem(SLOTKEY)) || []); slot = Math.min(SLOTS - 1, Math.max(0, +localStorage.getItem(CURKEY) || 0)); } catch {}
   // Another tab may have saved its own slot since this one read them: take
   // storage as it is now and change only this tab's slot in it.
-  const readSlots = () => { try { const a = JSON.parse(localStorage.getItem(SLOTKEY)); if (Array.isArray(a)) return a; } catch {} return slots; };
+  const readSlots = () => { try { const a = JSON.parse(localStorage.getItem(SLOTKEY)); if (Array.isArray(a)) return stored(a); } catch {} return slots; };
+  // under is a pattern's lanes under other settings: a chain's
+  const under = (settings, p) => ({ settings, lanes: p.lanes });
   // In a chain the settings are the chain's, so every slot of it is kept
   // under them: a slot then sounds alone as it does in the chain, and going
   // from one to another changes the lanes and nothing else.
-  function keep(s) {
-    slots = readSlots(); slots[slot] = s;
-    if (slot < chain) for (let i = 0; i < chain; i++) if (i !== slot && slots[i]) slots[i] = { link: withSettings(slots[i].link) };
-    store(SLOTKEY, JSON.stringify(slots));
+  function keep(p) {
+    slots = readSlots(); slots[slot] = p;
+    if (slot < chain) for (let i = 0; i < chain; i++) if (i !== slot && slots[i]?.lanes) slots[i] = under(p.settings, slots[i]);
+    store(SLOTKEY, JSON.stringify(Array.from(slots, (e) => e ? e.raw || { link: writeLink(e) } : null)));
   }
   addEventListener("storage", (e) => { if (e.key === SLOTKEY) { slots = readSlots(); paintSlots(); pushChain(); } });
   // undo is the picked slot's history; the others' wait in undos, so that
@@ -1566,17 +1582,17 @@
   const undos = [];
   // editedAt is when a change was last made by hand, not by arriving at a slot
   let editedAt = 0, arriving = false;
-  const snap = () => ({ link: encode() }); // the link carries the groove and the drums' choice
+  const snap = current; // a pattern carries the groove and the drums' choice
   // pushGrid and pushParams call this after every change
   function remember() {
     if (restoring || !ready) return;
     const s = snap(), top = undo[undo.length - 1];
-    if (top && top.link === s.link) return;
+    if (top && same(top, s)) return;
     const now = Date.now();
     if (top && now - lastAt < 600 && undo.length > 1) {
       undo[undo.length - 1] = s;
       const prev = undo[undo.length - 2]; // a burst that ends where it began is no step
-      if (prev.link === s.link) undo.pop();
+      if (same(prev, s)) undo.pop();
     } else undo.push(s);
     lastAt = now;
     if (!arriving) editedAt = now;
@@ -1585,15 +1601,12 @@
   }
   // lanesOnly takes the slot's notes, drums and bed and leaves the settings
   // as they are: in a chain they are the chain's, not each slot's.
-  function restore(s, lanesOnly) {
+  function restore(p, lanesOnly) {
     restoring = true;
-    const { bpm, mood, voice, bassVoice, seed, busy, tension, feel } = st;
-    if (decode(s.link)) {
-      if (lanesOnly) Object.assign(st, { bpm, mood, voice, bassVoice, seed, busy, tension, feel });
-      pushParams();
-      if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
-      paint(); pushGrid();
-    }
+    applyPattern(p, lanesOnly);
+    pushParams();
+    if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
+    paint(); pushGrid();
     restoring = false;
   }
   function stepBack() {
@@ -1629,11 +1642,11 @@
     undos[slot] = undo;
     slot = i; store(CURKEY, String(i));
     undo = undos[i] || []; lastAt = 0;
-    if (slots[i]) restore(slots[i], within);
+    if (slots[i]?.lanes) restore(slots[i], within);
     // In a chain the settings are not this slot's to take back: its steps are put under the
     // chain's as they now are, so that a step back is a step in its lanes and not in a tempo
     // changed from another slot. Steps that differed only in a setting become one.
-    if (i < chain) undo = undo.map((e) => ({ link: withSettings(e.link) })).filter((e, k, a) => !k || e.link !== a[k - 1].link);
+    if (i < chain) { const here = current().settings; undo = undo.map((e) => under(here, e)).filter((e, k, a) => !k || !same(e, a[k - 1])); }
     // the slot's state is the first step back to, or a new step if it changed while away (the
     // chain's settings, another tab); an empty slot takes this pattern
     arriving = true; remember(); arriving = false;
@@ -1650,19 +1663,23 @@
   // every grid of it at each change and keeps its place (setChain), so an
   // edit is heard on the next row whichever slot is playing. Only the
   // lanes and the bed are a slot's own in a chain: the settings are the
-  // chain's, as on screen, and keep writes them to each of its slots.
+  // chain's, as on screen (theChain), and keep puts each of its slots under them.
   const CHAINKEY = "undertone-grid-chain";
   try { chain = Math.min(SLOTS, Math.max(0, Math.round(+localStorage.getItem(CHAINKEY)) || 0)); if (chain < 2) chain = 0; } catch {}
-  // the chain's grids and the slot each came from: the picked slot as it is
-  // on screen, the others as they were kept. None while the picked slot is
-  // past the chain's end: the grid on screen is then what plays, alone, so
-  // that what is edited is always heard.
+  // The chain as one thing: its settings, once, and the lanes of each of
+  // its slots, null for an empty one: the picked slot as it is on screen,
+  // the others as they were kept. null while the picked slot is past the
+  // chain's end: the grid on screen is then what plays, alone, so that what
+  // is edited is always heard.
+  function theChain() {
+    if (slot >= chain) return null;
+    const { settings, lanes } = current();
+    return { settings, slots: Array.from({ length: chain }, (_, i) => i === slot ? lanes : slots[i]?.lanes || null) };
+  }
+  // its grids as the engine takes them, and the slot each came from
   function chainGrids() {
     const grids = [], from = [];
-    for (let i = 0; i < chain && slot < chain; i++) {
-      const g = i === slot ? liveGrid() : linkGrid(slots[i]?.link);
-      if (g) { grids.push(g); from.push(i); }
-    }
+    (theChain()?.slots || []).forEach((l, i) => { if (l) { grids.push(lanesGrid(l)); from.push(i); } });
     return { grids, from };
   }
   function pushChain() {

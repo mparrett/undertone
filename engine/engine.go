@@ -1276,6 +1276,12 @@ type Params struct {
 	// lead down keeps each mood's correction, and a mood change replaces
 	// the mood's trims without resetting the game's.
 	MoodLeadDB, MoodPadDB float64
+
+	// Phrasing and Memory, when set, turn on the phrase arc and motif memory
+	// (motif.go), each without the other: a spike, off by default, so nil
+	// plays as before.
+	Phrasing *Phrasing
+	Memory   *Memory
 }
 
 // dbGain is a trim in dB as a gain factor; 0 dB returns exactly 1, so an
@@ -1509,11 +1515,22 @@ type trackRow struct {
 // Chord drifts between tonic, VI, and iv each pattern; the lead walks the
 // scale — per-pattern reseeding is the gradual-mutation mechanism.
 func buildPatterns(p Params, pat int) [nTracks][rows]trackRow {
+	return buildPatternsOn(p, pat, -1)
+}
+
+// buildPatternsOn is buildPatterns on a chosen chord, 0..3 as the generator
+// draws it, or on its own draw for -1. The draw is taken either way, so the
+// rest of the pattern draws the same numbers (motif.go's chord cycles).
+func buildPatternsOn(p Params, pat, chordIdx int) [nTracks][rows]trackRow {
 	var out [nTracks][rows]trackRow
 	r := rng{p.Seed ^ uint64(pat)*0x9e3779b97f4a7c15 | 1}
 	// VI and iv are the tones two and four degrees below the root, which a
 	// five-note scale also has: in major pentatonic they are V and II.
-	chord := p.Root + []int{0, 0, scaleTone(p.Scale, -2), scaleTone(p.Scale, -4)}[r.n(4)]
+	k := r.n(4)
+	if chordIdx >= 0 {
+		k = chordIdx
+	}
+	chord := p.Root + []int{0, 0, scaleTone(p.Scale, -2), scaleTone(p.Scale, -4)}[k]
 
 	if p.DroneGain > 0.01 { // aurora has none; don't run a silent voice
 		out[0][0] = trackRow{chord - 12, p.DroneGain, rows, p.Palette.Drone}
@@ -1663,6 +1680,7 @@ type Synth struct {
 	frames                 atomic.Int64             // nframe as of the end of the last Read
 	rowLog                 rowLog
 	notes                  noteRing // notes started, for a host to draw (notes.go)
+	motif                  motifState
 	// the row stepped last, which the drum countdowns fire within: not
 	// s.row-1 after a theme cuts the pattern short
 	stepRow, stepPat int
@@ -2055,8 +2073,12 @@ func (s *Synth) applyNow(c *paramCmd) {
 	if row < 0 {
 		pat, row = pat-1, rows-1
 	}
-	s.pats = buildPatterns(s.params, pat)
-	s.drums = buildDrums(s.params, pat)
+	if s.params.motifOn() && s.motif.started {
+		s.motifNow(pat, row)
+	} else {
+		s.pats = buildPatterns(s.params, pat)
+		s.drums = buildDrums(s.params, pat)
+	}
 	s.touch, s.lateBy = [2][rows]touch{}, [2][rows]int{}
 	if g := s.playingGrid(); g != nil {
 		for r := 0; r <= row; r++ {
@@ -2120,9 +2142,15 @@ func (s *Synth) step() {
 		if c := s.next.Swap(nil); c != nil && s.landsAtBoundary(c) {
 			s.apply(c)
 		}
-		s.pats = buildPatterns(s.params, s.pat)
-		s.drums = buildDrums(s.params, s.pat)
+		if !s.params.motifOn() {
+			s.pats = buildPatterns(s.params, s.pat)
+			s.drums = buildDrums(s.params, s.pat)
+			s.motif.started = false
+		}
 		s.touch, s.lateBy = [2][rows]touch{}, [2][rows]int{}
+	}
+	if s.params.motifOn() {
+		s.motifRow()
 	}
 	if g := s.playingGrid(); g != nil {
 		s.applyGrid(g, s.row)
@@ -2253,6 +2281,9 @@ func (s *Synth) frame() (int16, int16) {
 	}
 	if s.nframe%layerFold == 0 {
 		s.layers.fold(layerFoldDecay)
+	}
+	if s.motif.started && s.motif.phr {
+		s.motif.mix.run(&l, &r, &s.bus)
 	}
 	if g := s.musicLevel.next(); g != 1 {
 		l, r = l*g, r*g

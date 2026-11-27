@@ -2127,7 +2127,7 @@ func (s *Synth) step() {
 	if g := s.playingGrid(); g != nil {
 		s.applyGrid(g, s.row)
 	}
-	s.rowLog.add(s.nframe, s.row, s.pat, s.themeWord())
+	s.rowLog.add(s.nframe, s.row, s.pat, s.themeWord(), s.pat*rows+s.row-s.runFrom)
 	s.stepRow, s.stepPat = s.row, s.pat
 	s.stepDrums()
 	s.strikeLate() // none can be left, a wait being shorter than a row; were one, it would not be lost

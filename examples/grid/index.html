@@ -613,11 +613,13 @@
     const here = document.createElement("span"); here.className = "here"; here.setAttribute("aria-hidden", "true"); $(id).appendChild(here);
   }
   // A looping lane runs on across patterns, so each pass starts it somewhere
-  // else in its loop: loopAt is where, per lane, learnt from the hits the
-  // engine reports, and the cells draw the pass that is playing.
-  const loopAt = DRUMS.map(() => 0);
-  let patRun = 0; // the sixteenth of the run the pattern heard began on, from the same hits
-  const shown = (d, i) => { const a = st.drums[d]; return a.loop ? a.loop[(loopAt[d] + +i) % a.loop.length] : a[i]; };
+  // else in its loop. patRun is the sixteenth of the run the pattern heard
+  // began on, as the engine reports it with the playhead (at()), and loopAt
+  // where that puts a lane in its loop: the engine's own rule, so the cells
+  // draw the pass that is playing from its first row.
+  let patRun = 0;
+  const loopAt = (d) => { const l = st.drums[d]?.loop; return l ? patRun % l.length : 0; };
+  const shown = (d, i) => { const a = st.drums[d]; return a.loop ? a.loop[(loopAt(d) + +i) % a.loop.length] : a[i]; };
   // Which pass of its cycle a loop of n sixteenths is on, and how many passes the cycle takes: pass k
   // starts the loop at (k * SIXTEENTHS) mod n, and it is back in line after n / gcd(n, SIXTEENTHS).
   const gcd = (a, b) => b ? gcd(b, a % b) : a;
@@ -653,11 +655,9 @@
         let on = false, ch = false;
         if (lane === "pulse") on = !!g.pulse[i];
         else if (lane === "drums") {
-          // a lane that loops at its own length runs on from where this pattern leaves it:
-          // this slot's own by where it is drawn, another slot's by the run
+          // a lane that loops at its own length runs on from where this pattern leaves it
           const d = g.drums[r] || "", loop = d.endsWith("|") ? d.slice(0, -1) : "";
-          const from = n === slot ? loopAt[r] : patRun;
-          const x = loop ? loop[(from + SIXTEENTHS + i) % loop.length] : d[i] || ".";
+          const x = loop ? loop[(patRun + SIXTEENTHS + i) % loop.length] : d[i] || ".";
           on = !!LEVEL[x]; ch = !!CHANCE[x];
         } else on = g[lane][i] === DEG - r; // the top row is the highest degree
         c.classList.toggle("on", on); c.classList.toggle("ch", ch);
@@ -673,7 +673,7 @@
         c.classList.toggle("on", lv > 0);
         c.classList.toggle("v1", lv === 1); c.classList.toggle("v2", lv === 2);
         const loop = st.drums[c.dataset.drum].loop;
-        c.classList.toggle("lstart", !!loop && (loopAt[c.dataset.drum] + +c.dataset.i) % loop.length === 0);
+        c.classList.toggle("lstart", !!loop && (loopAt(c.dataset.drum) + +c.dataset.i) % loop.length === 0);
         continue;
       }
       const on = lane === "pulse" ? st.pulse[s] : st[lane][s] === +c.dataset.deg;
@@ -682,7 +682,7 @@
     paintGhost();
     for (const l of document.querySelectorAll("#drums .lbl")) { // a looping lane names its length
       const loop = st.drums[l.dataset.drum].loop;
-      const d = l.dataset.drum, [k, n] = loop ? loopPass(loop.length, loopAt[d]) : [0, 1];
+      const d = l.dataset.drum, [k, n] = loop ? loopPass(loop.length, loopAt(d)) : [0, 1];
       l.textContent = DRUMS[d] + (loop ? ` ↻${loop.length}` : "");
       if (n > 1) { const p = document.createElement("span"); p.className = "pass"; p.textContent = `${k + 1}/${n}`; l.appendChild(p); }
       l.title = loop ? `loops every ${loop.length} sixteenths, running on across patterns; the cells show the pass that is playing` +
@@ -927,7 +927,7 @@
       const d = c.dataset.drum, row = st.drums[d];
       drumsChosen = true; groove = ""; // no groove's any more
       if (row.loop) { // the cell is one step of the figure: editing it edits every repeat
-        const at = (loopAt[d] + +c.dataset.i) % row.loop.length, v = mode ?? TAP[row.loop[at]];
+        const at = (loopAt(d) + +c.dataset.i) % row.loop.length, v = mode ?? TAP[row.loop[at]];
         st.drums[d] = loopLane(row.loop.slice(0, at) + v + row.loop.slice(at + 1)); return v;
       }
       const v = mode ?? TAP[row[c.dataset.i]];
@@ -980,9 +980,10 @@
   let loopFor = null;
   function setLoop(d, n) {
     const row = st.drums[d], now = [...Array(SIXTEENTHS)].map((_, i) => shown(d, i));
-    if (n) st.drums[d] = loopLane(now.slice(0, n).join(""));
+    // the figure is the first n cells as they are drawn, written so that this pass still draws them there
+    if (n) st.drums[d] = loopLane(now.slice(0, n).map((_, i) => now[((i - patRun) % n + n) % n]).join(""));
     else { st.drums[d] = now; }
-    loopAt[d] = 0; drumsChosen = true; groove = "";
+    drumsChosen = true; groove = "";
     paint(); pushGrid();
   }
   function openLoops(l) {
@@ -1201,6 +1202,7 @@
     if (!ready) return;
     undertoneGrid.restart();
     stripRestart();
+    if (!playing && patRun) { patRun = 0; paint(); } // the next play starts the run over; playing, at() says so
   }
   $("restart").onclick = restart;
   addEventListener("keydown", (e) => {
@@ -1271,16 +1273,13 @@
     if (!c || !(c.classList.contains("on") || c.classList.contains("ch"))) return;
     c.classList.remove("fired"); void c.offsetWidth; c.classList.add("fired"); // restart the fade if it is still running
   };
-  function strike(lane, six, run) {
-    const loop = st.drums[lane]?.loop;
-    // later than the one known, or a new run: a late hit of the pattern before does not take it back
-    const began = run - six;
-    if (began > patRun || began < patRun - SIXTEENTHS) { patRun = began; paintGhost(); }
-    if (loop) { const at = ((run - six) % loop.length + loop.length) % loop.length; if (at !== loopAt[lane]) { loopAt[lane] = at; paint(); } }
+  function strike(lane, six) {
     if (six >> 1 === lastRow) light(lane, six); else early.push([lane, six]);
   }
   (function head() {
-    let [r, heard] = ready && playing ? undertoneGrid.at() : [-1, -1];
+    let [r, heard, run] = ready && playing ? undertoneGrid.at() : [-1, -1, 0];
+    // the looping lanes and the ghost are drawn for the pattern heard
+    if (r >= 0 && 2 * (run - r) !== patRun) { patRun = 2 * (run - r); paint(); }
     // In a chain the grid shows the picked slot, so the playhead and the
     // struck steps are drawn only while that slot is the one heard.
     if (heard !== heardSlot) { heardSlot = heard; paintChain(); }
@@ -1444,7 +1443,7 @@
           cur = q.shift();
           for (let k = 0; k < 4; k++) hits[k] += cur.hit[k];
           const s = cur.gen === gridGen ? cur.hit[4] || [] : [];
-          for (let i = 0; i < s.length; i += 3) strike(s[i], s[i + 1], s[i + 2]);
+          for (let i = 0; i < s.length; i += 2) strike(s[i], s[i + 1]);
         }
         // a restart lands with a row change near its time, or with none: on the first step already
         const restarting = jumpAt && t >= jumpAt - 50 && (r !== row || t >= jumpAt + 50);

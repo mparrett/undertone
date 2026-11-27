@@ -32,6 +32,11 @@ type Names struct {
 	ids, next []int
 	after     int
 	moving    bool
+	// was names the grids of the patterns up to until, once a staged list
+	// has taken over: the last of them may be rendered and not yet heard
+	was   []int
+	until int
+	held  bool
 }
 
 // On reports whether a chain's grids are the ones playing.
@@ -51,6 +56,7 @@ func (n *Names) Set(ids []int, pattern int, themePlaying, sounding bool) Step {
 	// the names as of the last pattern rendered: a change staged for a grid
 	// that has since started is in effect
 	if n.moving && pattern > n.after {
+		n.was, n.until, n.held = n.ids, n.after, true
 		n.ids, n.moving = n.next, false
 	}
 	moved := !slices.Equal(ids, n.ids) || n.moving && !slices.Equal(ids, n.next)
@@ -59,7 +65,7 @@ func (n *Names) Set(ids []int, pattern int, themePlaying, sounding bool) Step {
 	switch {
 	case !was || !themePlaying || moved && !sounding:
 		// stopped, nobody hears the place lost
-		n.ids, n.moving = ids, false
+		n.ids, n.moving, n.held = ids, false, false
 		return Restart
 	case moved || n.moving:
 		// The engine keeps its place by number, so with other grids before
@@ -79,7 +85,10 @@ func (n *Names) Set(ids []int, pattern int, themePlaying, sounding bool) Step {
 // and not yet heard.
 func (n *Names) At(pattern, grid int) int {
 	ids := n.ids
-	if n.moving && pattern > n.after {
+	switch {
+	case n.held && pattern <= n.until:
+		ids = n.was
+	case n.moving && pattern > n.after:
 		ids = n.next
 	}
 	if grid < 0 || grid >= len(ids) {

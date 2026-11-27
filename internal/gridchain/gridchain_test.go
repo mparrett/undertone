@@ -65,6 +65,28 @@ func TestAnEditWhileNamesAreStagedWaitsWithThem(t *testing.T) {
 	}
 }
 
+func TestAPatternStillHeardKeepsItsNames(t *testing.T) {
+	var n Names
+	n.Set([]int{0, 1}, 0, false, true)
+	n.Set([]int{2, 0, 1}, 5, true, true)
+	// rendering is in pattern 6, the staged list's first, and a note is edited
+	n.Set([]int{2, 0, 1}, 6, true, true)
+	// the end of pattern 5 is still in the output queue: grid 1 there was slot 1
+	if got := n.At(5, 1); got != 1 {
+		t.Fatalf("grid 1 of pattern 5 is %d, want 1", got)
+	}
+	if got := n.At(6, 1); got != 0 {
+		t.Fatalf("grid 1 of pattern 6 is %d, want 0", got)
+	}
+	// and with another list staged from there, three sets of names are in play
+	n.Set([]int{1, 2}, 6, true, true)
+	for pattern, want := range map[int]int{5: 1, 6: 0, 7: 2} {
+		if got := n.At(pattern, 1); got != want {
+			t.Fatalf("grid 1 of pattern %d is %d, want %d", pattern, got, want)
+		}
+	}
+}
+
 func TestGoingBackWhileStagedIsStillAChange(t *testing.T) {
 	var n Names
 	n.Set([]int{0, 1}, 0, false, true)

@@ -74,20 +74,31 @@ def link(tempo, lead, kick=REST):
 class Page:
     """A fresh browser profile on the page, with the given slots kept in it."""
 
-    def __init__(self, browser, url, slots, chain=0, width=1440, height=900):
+    def __init__(self, browser, url, slots, chain=0, width=1440, height=900, hash="", answer=None):
         self.ctx = browser.new_context(viewport={"width": width, "height": height})
         self.pg = self.ctx.new_page()
         self.errors = []
         self.pg.on("pageerror", lambda e: self.errors.append(str(e)))
+        # the page asks before a chain's link replaces slots: answer says what it is told, and
+        # asked keeps what it said. Unanswered, a question is a failure of the check that met it.
+        self.asked, self.answer = [], answer
+        self.pg.on("dialog", self.reply)
         # Before the page's own script, and once: seeded after a first load, the page could keep
         # its opening pattern over slot 1 on its way out.
         self.ctx.add_init_script(
             "if (!localStorage.getItem('seeded')) { localStorage.setItem('seeded', '1'); localStorage.setItem('undertone-grid-slots', %s);"
             " localStorage.setItem('undertone-grid-slot', '0'); localStorage.setItem('undertone-grid-chain', '%d'); }"
-            % (json.dumps(json.dumps([{"link": s} for s in slots])), chain)
+            % (json.dumps(json.dumps([s and {"link": s} for s in slots])), chain)
         )
-        self.pg.goto(url)
+        self.pg.goto(url + hash)
         self.pg.wait_for_function("document.getElementById('play').disabled === false", timeout=60000)
+
+    def reply(self, dialog):
+        self.asked.append(dialog.message)
+        if self.answer:
+            dialog.accept()
+        else:
+            dialog.dismiss()
 
     def __enter__(self):
         return self
@@ -221,6 +232,77 @@ def links(browser, url):
         check("no page errors (unreadable slot)", not p.errors, p.errors)
 
 
+def chain_link(browser, url):
+    """A chain's link holds its settings once and each slot's lanes, and opens into slots 1 on."""
+    a, b, c = "1000000000000000", "0200000000000000", "0030000000000000"
+    lanes = lambda lead, kick=REST: f"bed=1;L={lead};B=0000000000000000;P=1;D={kick},{REST},{REST}"
+    want = f"#v1;t={FAST};m=overworld;v=kalimba;s=1/{lanes(a, 'x..|')}/{lanes(c)}"
+    # slot 2 empty: the link leaves it out
+    with Page(browser, url, [link(FAST, a, "x..|"), None, link(90, c)], chain=3) as p:
+        got = p.js("writeChain(theChain())")
+        check("a chain's link: the settings once, then each slot's lanes", got == want, got)
+        check("it reads back as each pattern's own link", p.js(f"readChain({json.dumps(want)}).map(writeLink)") == [link(FAST, a, "x..|"), link(FAST, c)])
+        check("a pattern's link is not a chain's", p.js("readChain(encode())") is None)
+        p.ctx.grant_permissions(["clipboard-read", "clipboard-write"])
+        p.pg.click("#share")
+        copied = p.js("navigator.clipboard.readText()")
+        check("copy link, in a chain, copies the chain's", copied.endswith(want) and copied.startswith("http"), copied)
+        check("and the address stays the pattern's", p.js("location.hash") == link(FAST, a, "x..|"), p.js("location.hash"))
+        check("no page errors (chain link, written)", not p.errors, p.errors)
+
+    # into an empty browser: no question, slots 1 and 2, chained
+    with Page(browser, url, [], hash=want) as p:
+        check("opened where nothing is kept, it does not ask", not p.asked, p.asked)
+        check("its patterns are slots 1 and 2", p.links() == [link(FAST, a, "x..|"), link(FAST, c)], p.links())
+        check("and they are chained, slot 1 on screen", p.js("[chain, slot, st.lead.join('')]") == [2, 0, a], p.js("[chain, slot, st.lead.join('')]"))
+        p.play()
+        check("the chain plays: the grid follows to slot 2", p.reaches("slot === 1 && heardSlot === 1"))
+        p.play()
+        check("no page errors (chain link, opened)", not p.errors, p.errors)
+
+    # over slots that hold something else: it asks, and no leaves everything as it was
+    mine = [link(90, b), link(90, b), link(90, b)]
+    with Page(browser, url, mine, hash=want, answer=False) as p:
+        check("opened over other patterns, it asks", len(p.asked) == 1 and "slots 1 to 2" in p.asked[0], p.asked)
+        check("no: the slots are as they were", p.links() == mine and p.js("chain") == 0, p.links())
+        check("and the slot picked is what opens", p.js("st.lead.join('')") == b and p.js("location.hash") == mine[0], p.js("location.hash"))
+    with Page(browser, url, mine, hash=want, answer=True) as p:
+        check("yes: slots 1 and 2 are the link's, slot 3 is left", p.links() == [link(FAST, a, "x..|"), link(FAST, c), mine[2]], p.links())
+        p.pg.click("#undo")
+        check("undo in slot 1 brings back its notes", p.lead() == b, p.lead())
+        check("under the link's settings, which stay the chain's", p.js("st.bpm") == FAST and p.links()[1] == link(FAST, c), [p.js("st.bpm"), p.links()[1]])
+        check("with nothing behind that step", p.undo_off())
+        p.key("2")
+        check("slot 2 has what it held as a step back too", not p.undo_off())
+        p.pg.click("#undo")
+        check("which undo brings back", p.lead() == b, p.lead())
+        check("no page errors (chain link, over slots)", not p.errors, p.errors)
+
+    # a slot the page cannot read has nothing to step back to, and the question says so
+    with Page(browser, url, [link(90, b), "#v2;from-a-newer-build"], hash=want, answer=False) as p:
+        check("it says which slot would be gone for good", len(p.asked) == 1 and "Not slot 2" in p.asked[0], p.asked)
+        check("and no leaves that slot as it was", p.links()[1] == "#v2;from-a-newer-build", p.links())
+
+    # pasted over the address of an open page, from a slot past the chain's end
+    with Page(browser, url, [link(90, b), None, None, link(90, b)], answer=True) as p:
+        # two steps of this session in slot 1, which the link must leave to step back through
+        p.click_cell("lead", 5, 4)
+        p.settle()
+        p.click_cell("lead", 6, 8)
+        p.settle()
+        p.key("4")
+        p.js(f"location.hash = {json.dumps(want)}")
+        p.wait("chain === 2")
+        check("pasted over the address, it opens the same way", p.js("[slot, st.lead.join(''), st.bpm]") == [0, a, FAST], p.js("[slot, st.lead.join(''), st.bpm]"))
+        check("leaving the slots past it alone", p.links()[3] == link(90, b), p.links())
+        back = []
+        while not p.undo_off() and len(back) < 6:
+            p.pg.click("#undo")
+            back.append(p.lead())
+        check("slot 1 steps back through what it held and the edits before", back == ["0200500060000000", "0200500000000000", b], back)
+        check("no page errors (chain link, pasted)", not p.errors, p.errors)
+
+
 def chain_settings(browser, url):
     """A chain's settings are written to each of its slots; a slot outside it keeps its own."""
     with Page(browser, url, [link(90, "1000000000000000"), link(140, "0200000000000000"), link(120, "0030000000000000")]) as p:
@@ -336,7 +418,7 @@ def main():
         with sync_playwright() as pw:
             # muted, and allowed to start audio without a tap: the playhead follows the audio clock
             browser = pw.chromium.launch(args=["--autoplay-policy=no-user-gesture-required", "--mute-audio"])
-            for group in (links, looping_lanes, chain_settings, undo_per_slot, follow, layout):
+            for group in (links, chain_link, looping_lanes, chain_settings, undo_per_slot, follow, layout):
                 # a wait that times out ends its group, not the run: the rest still report
                 try:
                     group(browser, url)

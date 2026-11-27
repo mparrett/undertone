@@ -313,22 +313,25 @@ func (s *Synth) RowAt(frame int64) int {
 func (s *Synth) Frames() int64 { return s.frames.Load() }
 
 // rowLog remembers when recent rows started: each entry packs the start
-// frame (<<8) with the row number, pat holds the entry's pattern and th where
-// a theme was (themeWord). It has a slot more than the 64 rows it promises,
-// since find gives up the oldest slot as possibly mid-overwrite.
+// frame (<<8) with the row number, pat holds the entry's pattern, th where
+// a theme was (themeWord) and run how many rows into its run the row was. It
+// has a slot more than the 64 rows it promises, since find gives up the
+// oldest slot as possibly mid-overwrite.
 type rowLog struct {
 	at  [65]atomic.Int64
 	pat [65]atomic.Int64
 	th  [65]atomic.Int64
+	run [65]atomic.Int64
 	n   atomic.Int64
 }
 
-func (l *rowLog) add(frame int64, row, pat int, th int64) {
+func (l *rowLog) add(frame int64, row, pat int, th int64, run int) {
 	n := l.n.Load()
 	i := n % int64(len(l.at))
 	l.at[i].Store(frame<<8 | int64(row))
 	l.pat[i].Store(int64(pat))
 	l.th[i].Store(th)
+	l.run[i].Store(int64(run))
 	l.n.Store(n + 1)
 }
 
@@ -337,17 +340,17 @@ func (l *rowLog) add(frame int64, row, pat int, th int64) {
 // meanwhile could pair one row's frame with a later row's pattern. It reads
 // the count again after each entry, and treats an entry the writer may have
 // begun to overwrite (a whole log behind the next to be written) as gone.
-func (l *rowLog) find(frame int64) (start int64, row, pat int, th int64, ok bool) {
+func (l *rowLog) find(frame int64) (start int64, row, pat int, th int64, run int, ok bool) {
 	size := int64(len(l.at))
 	n := l.n.Load()
 	for k := n - 1; k >= max(0, n-size); k-- {
-		e, pt, th := l.at[k%size].Load(), l.pat[k%size].Load(), l.th[k%size].Load()
+		e, pt, th, run := l.at[k%size].Load(), l.pat[k%size].Load(), l.th[k%size].Load(), l.run[k%size].Load()
 		if k <= l.n.Load()-size {
-			return 0, 0, 0, 0, false
+			return 0, 0, 0, 0, 0, false
 		}
 		if start := e >> 8; start <= frame {
-			return start, int(e & 0xff), int(pt), th, true
+			return start, int(e & 0xff), int(pt), th, int(run), true
 		}
 	}
-	return 0, 0, 0, 0, false
+	return 0, 0, 0, 0, 0, false
 }

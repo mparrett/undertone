@@ -22,6 +22,14 @@ type Position struct {
 	// from 0 again; a ReviseTheme does not.
 	Theme      bool
 	Grid, Pass int
+	// Run is how many rows into its run the row was: the count a grid's or a
+	// theme's polymetric lanes (those ending in |) and chance steps go by,
+	// from 0 where the run began. A lane of n sixteenths plays its step
+	// (2*Run+half)%n, so a host can draw such a lane for the row heard, or
+	// for any row ahead, without waiting for its hits. The run starts over
+	// at a Rewind and when a grid or theme takes over from what played
+	// before; it carries on through a theme's grids, SetGrid and ReviseTheme.
+	Run int
 }
 
 // Position returns the last row the synth stepped; ok is false before the
@@ -32,8 +40,10 @@ func (s *Synth) Position() (Position, bool) { return s.PositionAt(math.MaxInt64)
 // Pattern*16+Row: a polymetric lane (one ending in |) plays its step
 // (Pattern*16+Row-RunStart)*2 sixteenths in, wrapping at its length, for a
 // host drawing where such a lane is. It moves when the run starts over, at a
-// Rewind or when the grid or theme takes over from what played before. Safe
-// to call from any goroutine.
+// Rewind or when the grid or theme takes over from what played before. It is
+// as of the last row rendered: a host following the row heard reads
+// Position.Run, which is that row's count with RunStart already taken off.
+// Safe to call from any goroutine.
 func (s *Synth) RunStart() int { return int(s.runStart.Load()) }
 
 // PositionAt returns the row sounding at an output frame, for a playhead
@@ -41,7 +51,7 @@ func (s *Synth) RunStart() int { return int(s.runStart.Load()) }
 // for a frame before the first row or older than the last 64 rows. Safe to
 // call from any goroutine.
 func (s *Synth) PositionAt(frame int64) (Position, bool) {
-	start, row, pat, th, ok := s.rowLog.find(frame)
+	start, row, pat, th, run, ok := s.rowLog.find(frame)
 	if !ok {
 		return Position{}, false
 	}
@@ -53,5 +63,6 @@ func (s *Synth) PositionAt(frame int64) (Position, bool) {
 		Theme:        th != 0,
 		Grid:         max(int(th&0xffffffff)-1, 0),
 		Pass:         int(th >> 32),
+		Run:          run,
 	}, true
 }

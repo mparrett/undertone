@@ -30,11 +30,13 @@
 //	play() / stop()  call from the tap handler: iOS resumes audio only inside one
 //	restart()        start the pattern over from its first step; while stopped, the next play starts there
 //	row()            the step being heard, or -1 while stopped
-//	at()             [row, id]: row(), and the name of the setChain grid it is in, -1 for none
+//	at()             [row, id, run]: row(), the name of the setChain grid it is in, -1 for none, and how
+//	                 many rows into its run the row is (engine.Position.Run), by which a looping drum
+//	                 lane is drawn
 //	levels()         [lead, bass, pulse, drums, echo]: each lane's level, dry, as of the last block
 //	                 rendered, then the echo's: what the shared delay returns, all lanes' at once
 //	onsets()         [lead, bass, pulse, drums, struck]: how many notes each lane started since the last call,
-//	                 and struck, the drum sixteenths that sounded, as lane, sixteenth, sixteenth-of-the-run triples
+//	                 and struck, the drum sixteenths that sounded, as lane, sixteenth pairs
 //	queued()         milliseconds of audio rendered but not yet heard: how far levels and onsets lead the ear
 //	audition(json)   play a grid once, alone, without touching the pattern: a cell heard before it is placed
 //	key()            the current key and the notes of each lane's rows 1 and 8, as JSON
@@ -406,11 +408,11 @@ func main() {
 		"at": js.FuncOf(func(js.Value, []js.Value) any {
 			p := player.Load()
 			if p == nil || !src.on.Load() {
-				return []any{-1, -1}
+				return []any{-1, -1, 0}
 			}
 			pos, ok := syn.PositionAt(syn.Frames() - int64(p.Queued().Seconds()*engine.SampleRate))
 			if !ok {
-				return []any{-1, -1}
+				return []any{-1, -1, 0}
 			}
 			// the names in effect at the row heard, which trails the rendering
 			ids := chain.ids
@@ -418,9 +420,9 @@ func main() {
 				ids = chain.next
 			}
 			if !pos.Theme || pos.Grid >= len(ids) {
-				return []any{pos.Row, -1}
+				return []any{pos.Row, -1, pos.Run}
 			}
-			return []any{pos.Row, ids[pos.Grid]}
+			return []any{pos.Row, ids[pos.Grid], pos.Run}
 		}),
 		"levels": js.FuncOf(func(js.Value, []js.Value) any {
 			l := syn.LayerLevels()
@@ -437,9 +439,8 @@ func main() {
 			var evs []engine.NoteEvent
 			evs, noteCursor, _ = syn.NoteEvents(noteCursor, noteBuf[:0])
 			out := []any{0, 0, 0, 0}
-			// drum sixteenths struck, as lane, sixteenth of the pattern and
-			// sixteenth of the run: the page lights a step that played, and
-			// a looping lane draws where in its loop the run has got to
+			// drum sixteenths struck, as lane and sixteenth of the pattern:
+			// the page lights a step that played
 			var struck []any
 			from := syn.RunStart()
 			for _, e := range evs {
@@ -451,7 +452,7 @@ func main() {
 					if e.Kind == engine.DrumOff {
 						six++
 					}
-					struck = append(struck, e.Lane, six, 2*(e.Pattern*16+e.Row-from)+six%2)
+					struck = append(struck, e.Lane, six)
 				}
 				if k, ok := lanes[e.Layer]; ok && !(k == 0 && cur.Voice == voiceNone) && !(k == 1 && cur.Bass == voiceNone) {
 					out[k] = out[k].(int) + 1

@@ -15,7 +15,8 @@ as long as the patterns they wait for. It prints its time at the end.
     uvx playwright@1.65.2 install chromium      # once, for the browser
 
 The page keeps its state in script-level variables (st, slot, patRun, ...),
-and the checks read those where the screen does not say enough. A check that
+and its functions (encode, readLink, theChain), and the checks use those
+where the screen does not say enough. A check that
 breaks on a rename is this file's to fix, not the page's to avoid.
 """
 import functools
@@ -192,6 +193,24 @@ def looping_lanes(browser, url):
         check("no page errors (looping lanes)", not p.errors, p.errors)
 
 
+def links(browser, url):
+    """A link read and written is the same link, and the page opens on the one it was given."""
+    opened = link(90, "1000000000000000", "x..|")
+    # every key a link may carry, in the order the page writes them
+    full = "#v1;t=100;m=dungeon;v=kalimba;bv=none;s=7;bed=0;L=1234567812345678;B=0000111100002222;P=a5a5;D=x..|,....o...,?f?f;g=four;dc=0;bz=40;tn=20;fl=30"
+    with Page(browser, url, [opened]) as p:
+        check("the address is the slot's link", p.js("location.hash") == opened, p.js("location.hash"))
+        check("the pattern on screen writes that link", p.js("encode()") == opened, p.js("encode()"))
+        got = p.js(f"writeLink(readLink({json.dumps(full)}))")
+        check("a link with every key comes back as it went in", got == full, got)
+        check("what is not a link is no pattern", p.js("readLink('#v1;t=90') === null && readLink('#nonsense') === null && readLink('') === null"))
+        # an old link names its mood by a letter and has no drums: it is kept as spelled, not as the screen would spell it
+        old = "#v1;t=120;m=d;v=kalimba;s=3;L=1000000000000000;B=0000000000000000;P=0"
+        got = p.js(f"writeLink(readLink({json.dumps(old)}))")
+        check("an old link keeps its spelling, and gains only the bed", got == old.replace(";L=", ";bed=1;L="), got)
+        check("no page errors (links)", not p.errors, p.errors)
+
+
 def chain_settings(browser, url):
     """A chain's settings are written to each of its slots; a slot outside it keeps its own."""
     with Page(browser, url, [link(90, "1000000000000000"), link(140, "0200000000000000"), link(120, "0030000000000000")]) as p:
@@ -202,6 +221,11 @@ def chain_settings(browser, url):
         p.tempo(FAST)
         ls = p.links()
         check("a tempo change reaches both slots", all(f"t={FAST};" in s for s in ls[:2]), ls[:2])
+        got = p.js("(() => { const c = theChain(); return [c.settings.t, c.slots.length, c.slots[0].lead.join(''), c.slots[1].lead.join('')]; })()")
+        check("the chain is its settings and each slot's lanes", got == [str(FAST), 2, "1000000000000000", "0200000000000000"], got)
+        p.key("3")
+        check("from a slot past its end there is no chain to play", p.js("theChain()") is None)
+        check("and that slot's own tempo is on screen", p.js("st.bpm") == 120, p.js("st.bpm"))
         check("no page errors (chain settings)", not p.errors, p.errors)
 
 
@@ -302,7 +326,7 @@ def main():
         with sync_playwright() as pw:
             # muted, and allowed to start audio without a tap: the playhead follows the audio clock
             browser = pw.chromium.launch(args=["--autoplay-policy=no-user-gesture-required", "--mute-audio"])
-            for group in (looping_lanes, chain_settings, undo_per_slot, follow, layout):
+            for group in (links, looping_lanes, chain_settings, undo_per_slot, follow, layout):
                 # a wait that times out ends its group, not the run: the rest still report
                 try:
                     group(browser, url)

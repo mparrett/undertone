@@ -1266,9 +1266,6 @@ type Params struct {
 	// plays every note alike and on its row, as before Feel. Generated music
 	// is not touched.
 	Feel float64
-	// bassGain is the bass lane's gain when ApplyBass chose its voice; zero
-	// plays gridBassGain.
-	bassGain float64
 
 	// MoodLeadDB and MoodPadDB are the mood's own trims, which a derive sets.
 	// They add to LeadDB and PadDB rather than sharing them, so a mood's
@@ -1377,11 +1374,12 @@ func ApplyLead(p *Params, name string) {
 // as ApplyLead gives the lead one, at a gain that puts it level with the
 // string it replaces. An unknown name changes nothing, and the bass stays the
 // palette's own, or the string every bass was before. The lane keeps its own
-// two-row gate whatever the instrument: a bass note is held, not struck.
+// two-row gate whatever the instrument: a bass note is held, not struck. The
+// choice lives in the palette, so a new palette (a mood change) brings its own
+// bass back; a theme's Bass outlasts that, for as long as the theme plays.
 func ApplyBass(p *Params, name string) {
 	if d, ok := lookupLead(name); ok {
-		p.Palette.Bass = d.patch
-		p.bassGain = gridBassVoiceGain[d.name]
+		p.Palette.Bass, p.Palette.bassGain = d.patch, gridBassVoiceGain[d.name]
 	}
 }
 
@@ -1393,6 +1391,10 @@ type Palette struct {
 	// names none sounds as it did.
 	Bass Patch
 	Kit  kit // zero: drumKit
+	// bassGain is the bass lane's gain when ApplyBass chose Bass; zero plays
+	// gridBassGain. It is the palette's, not the params', so a palette
+	// replaced after ApplyBass does not keep the old voice's level.
+	bassGain float64
 }
 
 // bass is the patch a theme's bass lane plays.

@@ -9,9 +9,12 @@ import (
 )
 
 // playTheme starts an authored theme, given as
-// {:grids [grid ...] :then :generate|:silence|:loop}, where each grid is
-// {:lead [degrees] :bass [degrees] :pulse [bools] :drums ["X.x." ...] :bed true}
-// and :then defaults to :generate. nil or no grids stops a theme. Before
+// {:grids [grid ...] :then :generate|:silence|:loop :bass :reed}, where each
+// grid is
+// {:lead [degrees] :bass [degrees] :pulse [bools] :drums ["X.x." ...] :bed true},
+// :then defaults to :generate, and :bass names the lead instrument the bass
+// lane plays for as long as the theme does (engine.Theme.Bass), absent
+// keeping the palette's. nil or no grids stops a theme. Before
 // music-start the theme waits and starts with the music, since a title theme
 // is wanted before the gesture that unlocks audio.
 func (m *Music) playTheme(v vm.Value) (vm.Value, error) {
@@ -169,6 +172,11 @@ func theme(v vm.Value) (*engine.Theme, error) {
 		}
 		t.Grids = append(t.Grids, g)
 	}
+	bass, err := bassName(opts)
+	if err != nil {
+		return nil, err
+	}
+	t.Bass = bass
 	if then, ok := kwStr(opts, "then"); ok {
 		switch then {
 		case "generate":

@@ -39,6 +39,20 @@ jobs:
       - run: '"$(go env GOPATH)/bin/staticcheck" -tags audio_oto ./...'
       - run: GOOS=js GOARCH=wasm "$(go env GOPATH)/bin/staticcheck" ./cmd/undertone ./examples/designer ./examples/grid ./examples/studio ./webaudio ./internal/debugoverlay ./letgo
 
+  # The grid page in a headless browser: go test builds and vets its wasm but
+  # nothing else runs the page.
+  page:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: astral-sh/setup-uv@v6
+      # the version page_test.py pins: a browser from another does not launch
+      - run: uvx playwright@1.65.2 install --with-deps chromium
+      - run: uv run examples/grid/page_test.py
+
   build:
     runs-on: ubuntu-latest
     strategy:

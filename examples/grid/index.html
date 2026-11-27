@@ -1728,19 +1728,28 @@
   }
   // openChain puts a chain link's patterns into slots 1 to their number and
   // chains them. That is over whatever those slots held, so it asks first
-  // where one of them holds something else, and what it replaces is the
-  // first step back in that slot. false where the answer was no. The caller
-  // puts the picked slot on screen.
+  // where one of them holds something else. What it replaces is a step back
+  // in that slot, after the steps already there: its lanes, under the
+  // link's settings, as the settings are now the chain's and a step back to
+  // the old ones would put every slot of the chain under them. false where
+  // the answer was no. The caller puts the picked slot on screen.
   function openChain(ps) {
     slots = readSlots();
     const n = ps.length, differs = (i) => slots[i] && !(slots[i].lanes && same(slots[i], ps[i]));
+    // a slot this page cannot read has no lanes to step back to
+    const lost = ps.map((_, i) => i + 1).filter((k) => slots[k - 1]?.raw);
     if (ps.some((_, i) => differs(i)) &&
-        !confirm(`This link is a chain of ${n} patterns. Open it in slots 1 to ${n}, in place of what they hold? Undo in each slot brings back what was there, until the page is closed.`)) return false;
+        !confirm(`This link is a chain of ${n} patterns. Open it in slots 1 to ${n}, in place of what they hold? Undo in each slot brings back the notes that were there, until the page is closed.` +
+                 (lost.length ? ` Not slot ${lost.join(" or ")}: this page cannot read what it holds, and it would be gone.` : ""))) return false;
     if (slot >= n) { undos[slot] = undo; slot = 0; store(CURKEY, "0"); undo = undos[0] || []; }
+    const steps = (u, old) => {
+      if (old) u = [...u, old];
+      return u.map((e) => under(ps[0].settings, e)).filter((e, k, a) => !k || !same(e, a[k - 1]));
+    };
     ps.forEach((p, i) => {
       const old = differs(i) && slots[i].lanes ? slots[i] : null;
-      if (old && i === slot) { if (!undo.length || !same(undo[undo.length - 1], old)) undo.push(old); }
-      else if (old) undos[i] = [old];
+      if (i === slot) undo = steps(undo, old);
+      else if (old || undos[i]) undos[i] = steps(undos[i] || [], old);
       slots[i] = p;
     });
     saveSlots();

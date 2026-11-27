@@ -270,19 +270,36 @@ def chain_link(browser, url):
         check("yes: slots 1 and 2 are the link's, slot 3 is left", p.links() == [link(FAST, a, "x..|"), link(FAST, c), mine[2]], p.links())
         p.pg.click("#undo")
         check("undo in slot 1 brings back its notes", p.lead() == b, p.lead())
+        check("under the link's settings, which stay the chain's", p.js("st.bpm") == FAST and p.links()[1] == link(FAST, c), [p.js("st.bpm"), p.links()[1]])
+        check("with nothing behind that step", p.undo_off())
         p.key("2")
         check("slot 2 has what it held as a step back too", not p.undo_off())
         p.pg.click("#undo")
         check("which undo brings back", p.lead() == b, p.lead())
         check("no page errors (chain link, over slots)", not p.errors, p.errors)
 
+    # a slot the page cannot read has nothing to step back to, and the question says so
+    with Page(browser, url, [link(90, b), "#v2;from-a-newer-build"], hash=want, answer=False) as p:
+        check("it says which slot would be gone for good", len(p.asked) == 1 and "Not slot 2" in p.asked[0], p.asked)
+        check("and no leaves that slot as it was", p.links()[1] == "#v2;from-a-newer-build", p.links())
+
     # pasted over the address of an open page, from a slot past the chain's end
     with Page(browser, url, [link(90, b), None, None, link(90, b)], answer=True) as p:
+        # two steps of this session in slot 1, which the link must leave to step back through
+        p.click_cell("lead", 5, 4)
+        p.settle()
+        p.click_cell("lead", 6, 8)
+        p.settle()
         p.key("4")
         p.js(f"location.hash = {json.dumps(want)}")
         p.wait("chain === 2")
         check("pasted over the address, it opens the same way", p.js("[slot, st.lead.join(''), st.bpm]") == [0, a, FAST], p.js("[slot, st.lead.join(''), st.bpm]"))
         check("leaving the slots past it alone", p.links()[3] == link(90, b), p.links())
+        back = []
+        while not p.undo_off() and len(back) < 6:
+            p.pg.click("#undo")
+            back.append(p.lead())
+        check("slot 1 steps back through what it held and the edits before", back == ["0200500060000000", "0200500000000000", b], back)
         check("no page errors (chain link, pasted)", not p.errors, p.errors)
 
 

@@ -33,6 +33,13 @@ func TestPaletteBase(t *testing.T) {
 	if err := RegisterPalette(PaletteSpec{Name: "base-bad", Base: "nope"}); err == nil {
 		t.Error("an unknown Base registered")
 	}
+	// on its own name, with no built-in of it: the earlier registration, edited
+	if err := RegisterPalette(PaletteSpec{Name: "base-soft", Base: "base-soft", Pad: PatchSpec{Name: "veil"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := PaletteSpecByName("base-soft"); got.Bass.Name != "reed" || got.Pad.Name != "veil" {
+		t.Errorf("editing base-soft on itself: bass %q, pad %q, want reed and veil", got.Bass.Name, got.Pad.Name)
+	}
 	// EDN writes only what the spec changes, and lg reads it back the same
 	if edn := soft.EDN(); edn != "{:name :base-soft :base :aurora\n :bass :reed}" {
 		t.Errorf("EDN of a based spec:\n%s", edn)

@@ -89,7 +89,8 @@ func (pl *Palette) tracks() []*Patch {
 // PaletteSpecByName reads it. Base names the palette to start from: every
 // track the spec leaves empty is the base's, and with no kit lane set, so is
 // the kit. A Base of the spec's own name is the built-in, so "dungeon with
-// my bass" is {Name: dungeon, Base: dungeon, Bass: ...}. The base is read as
+// my bass" is {Name: dungeon, Base: dungeon, Bass: ...}; for a name no
+// built-in has, it is the earlier registration, edited. The base is read as
 // it is at registration; the registered palette does not follow it after.
 //
 // A patch is its units, or with no units, the built-in patch its Name names
@@ -100,7 +101,8 @@ func (pl *Palette) tracks() []*Patch {
 // registered with RegisterLead. A kit lane left zero, or marked Default,
 // plays the default kit's; a Default lane naming any other sound is refused.
 // The bass, unlike the bed's tracks, may be left empty: a theme's bass then
-// plays gridBass, the string pluck, and reads back naming it. A bass that
+// plays gridBass, the string pluck, and reads back naming it; with a Base, an
+// empty bass is the base's, so name pluck outright for the string. A bass that
 // builds exactly that patch is stored as the default, so a palette
 // registered from its own spec equals the one it copies.
 //
@@ -126,9 +128,13 @@ func (s PaletteSpec) build() (Palette, PaletteSpec, error) {
 		return pl, out, fmt.Errorf("a palette needs a name of letters, digits and dashes, as a keyword")
 	}
 	if s.Base != "" {
-		base, ok := builtinPaletteSpec(s.Base)
-		if s.Base != s.Name {
-			base, ok = PaletteSpecByName(s.Base)
+		base, ok := PaletteSpecByName(s.Base)
+		if s.Base == s.Name {
+			// its own name: the built-in it stands in for, or with none, the
+			// game's earlier registration, which this one then edits
+			if b, isBuiltin := builtinPaletteSpec(s.Base); isBuiltin {
+				base, ok = b, true
+			}
 		}
 		if !ok {
 			return pl, out, fmt.Errorf("unknown base palette %q", s.Base)

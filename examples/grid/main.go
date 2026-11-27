@@ -99,7 +99,14 @@ type paramsJSON struct {
 	// Feel is engine.Params.Feel, 0..1: how unevenly the lead and bass lanes
 	// are struck.
 	Feel float64 `json:"feel"`
+	// Arc turns on the motif spike for the bed: "phrasing", "memory" or
+	// "both", in the mood's temperament. Spike: to hear it under a grid.
+	Arc string `json:"arc"`
 }
+
+// temperaments holds each mood's temperament at one address, so that params
+// derived again point at the same phrasing and memory
+var temperaments = map[string]*engine.Temperament{}
 
 func (j gridJSON) grid() engine.Grid {
 	g := engine.Grid{Bed: j.Bed}
@@ -213,6 +220,21 @@ func derive(c paramsJSON) engine.Params {
 		p.DrumBusy = min(max(*c.Busy, 0), 1)
 	}
 	p.Feel = c.Feel
+	if c.Arc != "" {
+		t := temperaments[mood]
+		if t == nil {
+			if got, ok := engine.TemperamentFor(mood); ok {
+				t = &got
+				temperaments[mood] = t
+			}
+		}
+		if t != nil && c.Arc != "memory" {
+			p.Phrasing = &t.Phrasing
+		}
+		if t != nil && c.Arc != "phrasing" {
+			p.Memory = &t.Memory
+		}
+	}
 	return p
 }
 

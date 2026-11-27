@@ -386,6 +386,7 @@
       <button class="bed" id="mixbtn" title="show a strip of all four lanes over one another, their colours added; not saved in the link">mix</button>
       <button class="bed" id="echobtn" title="show a strip of the echo: what the shared delay returns, every lane's at once; not saved in the link">echo</button>
       <button class="bed" id="nextbtn" title="show, to the right of each lane, the four steps that play after this grid: its own first steps as it comes round, or in a chain the next slot's. To look at: it is not edited there.">next</button>
+      <button class="bed" id="arcbtn" title="spike: the bed's phrase arc and motif memory, in the mood's temperament. Click to step through off, phrasing, memory, both. Heard on the bed under the grid; not saved in the link.">arc off</button>
       <button class="bed" id="ednbtn" title="show the pattern and the settings as EDN over the grid (Esc closes it); not saved in the link">edn</button>
       <button class="bed" id="helpbtn" title="how it works, over the grid (Esc closes it)" aria-label="how it works">?</button></div>
   </div>
@@ -487,6 +488,10 @@
   let st = { bpm: 110, mood: "overworld", voice: "kalimba", bassVoice: "", seed: 1, bed: true, busy: null, tension: 0, feel: 0,
              lead: Array(STEPS).fill(0), bass: Array(STEPS).fill(0), pulse: Array(STEPS).fill(false), drums: lanes() };
   let playing = false, ready = false, linkHasDrums = false;
+  // Spike: the motif spike's arc for the bed, "" (off), "phrasing", "memory" or "both". Not in the link.
+  const ARCS = ["", "phrasing", "memory", "both"], ARCKEY = "undertone-grid-arc";
+  let arc = "";
+  try { const a = localStorage.getItem(ARCKEY); if (ARCS.includes(a)) arc = a; } catch {}
   // The chain: slots 1..chain play in order, and 0 plays the picked slot
   // alone, as does picking a slot past the chain's end. chainSlots is the
   // slot each grid last sent came from, empty while no chain plays;
@@ -938,7 +943,7 @@
   };
   const liveGrid = () => ({ lead: st.lead, bass: st.bass, pulse: st.pulse, drums: drumStrings(), bed: st.bed });
   const pushParams = () => {
-    if (ready) { undertoneGrid.setParams(JSON.stringify({ bpm: st.bpm, mood: st.mood, voice: st.voice, bass: st.bassVoice, seed: st.seed, busy: st.busy, tension: st.tension, feel: st.feel })); showKey(); showBusy(); showTension(); showFeel(); }
+    if (ready) { undertoneGrid.setParams(JSON.stringify({ bpm: st.bpm, mood: st.mood, voice: st.voice, bass: st.bassVoice, seed: st.seed, busy: st.busy, tension: st.tension, feel: st.feel, arc })); showKey(); showBusy(); showTension(); showFeel(); }
     history.replaceState(null, "", encode());
     remember();
   };
@@ -1757,6 +1762,9 @@
     return true;
   }
   slotsUp = true;
+  const showArc = () => { $("arcbtn").textContent = arc ? `arc: ${arc}` : "arc off"; $("arcbtn").classList.toggle("on", !!arc); };
+  $("arcbtn").onclick = () => { arc = ARCS[(ARCS.indexOf(arc) + 1) % ARCS.length]; store(ARCKEY, arc); showArc(); pushParams(); };
+  showArc();
   const NEXTKEY = "undertone-grid-next";
   function showNext(on) {
     document.documentElement.classList.toggle("next", on); $("nextbtn").classList.toggle("on", on);

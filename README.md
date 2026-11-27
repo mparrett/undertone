@@ -34,7 +34,7 @@ Everything there is to look at or listen to, in one place.
 | Page | What it is |
 |---|---|
 | [index](https://matt.parrett.us/undertone/) | The demos' landing page. |
-| [grid](https://matt.parrett.us/undertone/grid/) | A step sequencer: lead, bass, pulse and drum lanes over the generated bed, in any mood. A link carries the pattern. |
+| [grid](https://matt.parrett.us/undertone/grid/) | A step sequencer: lead, bass, pulse and drum lanes over the generated bed, in any mood. A link carries the pattern, or a chain of them. |
 | [grid-lg](https://matt.parrett.us/undertone/grid-lg/) | The grid with a mutate button whose variations are lg code; the GIF above. |
 | [player](https://matt.parrett.us/undertone/player/) | The engine alone, generative, with a four-band meter and query-string controls. |
 | [designer](https://matt.parrett.us/undertone/designer/) | Shape a mood by ear and export it as EDN. |

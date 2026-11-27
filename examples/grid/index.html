@@ -423,7 +423,7 @@
     <div><h3>playing</h3><ul>
       <li><kbd>space</kbd> plays and stops; <kbd>r</kbd> goes back to the first step.</li>
       <li>Edits are heard the next time the playhead passes them.</li>
-      <li><b>slot</b> keeps eight patterns in this browser. <b>chain</b> plays slots 1 to the number picked one after another, round and round, in the settings on screen, which every slot of the chain then keeps; a slot past the chain's end plays alone, and an edit is heard the next time round without the chain starting over. With <b>follow</b> on the grid shows whichever slot is playing, waiting a moment after an edit; picking a slot turns it off, and the grid stays there. Each slot has its own undo. With <b>edn</b> open the chain shows as a theme.</li>
+      <li><b>slot</b> keeps eight patterns in this browser. <b>chain</b> plays slots 1 to the number picked one after another, round and round, in the settings on screen, which every slot of the chain then keeps; a slot past the chain's end plays alone, and an edit is heard the next time round without the chain starting over. With <b>follow</b> on the grid shows whichever slot is playing, waiting a moment after an edit; picking a slot turns it off, and the grid stays there. Each slot has its own undo. With <b>edn</b> open the chain shows as a theme. In a chain, <b>copy link</b> copies a link to the whole chain; opening one puts its patterns in slots 1 on, asking first if that would replace any.</li>
       <li><b>next</b> shows, dimmed at the right of each lane, the four steps that play after this grid: its own first steps as it comes round, or the next slot's in a chain, with the slot's number over them. It is not edited there.</li>
       <li>A pick in the header opens its choices; <kbd>&larr;</kbd> <kbd>&rarr;</kbd> step through them while it is open, and <kbd>esc</kbd> closes it.</li>
       <li>A bass voice plays at the level of the pluck it replaces.</li>
@@ -508,6 +508,7 @@
   let groove = "";
 
   // ---- share links: #v1;t=110;m=o;v=kalimba;s=1;bed=1;L=...;B=...;P=hex;D=kick,clap,shaker ----
+  // A chain's link gives the settings once and each slot's lanes after a /: see writeChain.
   // bv=<voice> follows v when a bass voice is chosen; a link without it keeps the mood's bass.
   // D came later; a link without it takes its drums from the mood's groove.
   // g=<groove> names the groove its drums were picked from; dc=0 says they
@@ -524,6 +525,7 @@
   //   lanes     lead, bass, pulse, the three drum strings (null where the
   //             link has none that can be played), the bed, and g and dc.
   const SETKEYS = ["t", "m", "v", "bv", "s", "bz", "tn", "fl"];
+  const SLOTS = 8; // the slots kept, and so the most a chain's link is read for
   const pct = (x) => String(Math.round(x * 100));
   const current = () => ({
     settings: { t: String(st.bpm), m: st.mood, v: st.voice, bv: st.bassVoice || null, s: String(st.seed),
@@ -546,12 +548,28 @@
     return { settings, lanes: { lead: L, bass: B, pulse: [...Array(STEPS)].map((_, i) => !!(p & (1 << i))), drums, bed: kv.bed !== "0", g: kv.g ?? null, dc: kv.dc ?? null } };
   }
   // in one order always, so that two patterns are the same when their links are
+  const lanesKV = (l) => ({ bed: +l.bed, L: l.lead.join(""), B: l.bass.join(""), P: l.pulse.reduce((n, on, i) => n | (on ? 1 << i : 0), 0).toString(16),
+                            D: l.drums && l.drums.join(","), g: l.g, dc: l.dc });
+  const spell = (kv, keys) => keys.filter((k) => kv[k] != null).map((k) => `${k}=${kv[k]}`).join(";");
   function writeLink({ settings: c, lanes: l }) {
-    const kv = { ...c, bed: +l.bed, L: l.lead.join(""), B: l.bass.join(""), P: l.pulse.reduce((n, on, i) => n | (on ? 1 << i : 0), 0).toString(16),
-                 D: l.drums && l.drums.join(","), g: l.g, dc: l.dc };
-    return "#v1;" + ["t", "m", "v", "bv", "s", "bed", "L", "B", "P", "D", "g", "dc", "bz", "tn", "fl"]
-      .filter((k) => kv[k] != null).map((k) => `${k}=${kv[k]}`).join(";");
+    return "#v1;" + spell({ ...c, ...lanesKV(l) }, ["t", "m", "v", "bv", "s", "bed", "L", "B", "P", "D", "g", "dc", "bz", "tn", "fl"]);
   }
+  // A chain's link: #v1;<the settings>/<a slot's lanes>/<the next slot's>...
+  // The settings come once, as they are the chain's, and each / starts a
+  // slot's lanes, in the keys a pattern's link gives them. Empty slots are
+  // left out, so the link's slots are 1, 2, 3 wherever they came from.
+  const LANEKEYS = ["bed", "L", "B", "P", "D", "g", "dc"];
+  const writeChain = (c) => "#v1;" + spell(c.settings, SETKEYS) + c.slots.filter(Boolean).map((l) => "/" + spell(lanesKV(l), LANEKEYS)).join("");
+  // readChain is the patterns of a chain's link, each under its settings;
+  // null for what is not one. A slot that cannot be read is left out.
+  function readChain(h) {
+    if (!h?.startsWith("#v1;") || !h.includes("/")) return null;
+    const [head, ...rest] = h.slice(4).split("/");
+    const ps = rest.map((seg) => readLink(`#v1;${head};${seg}`)).filter(Boolean).slice(0, SLOTS);
+    return ps.length ? ps : null;
+  }
+  // linked is what a link holds: a chain's patterns, or the one, or null
+  const linked = (h) => readChain(h) || (readLink(h) && [readLink(h)]);
   const encode = () => writeLink(current());
   const same = (a, b) => writeLink(a) === writeLink(b);
   // lanesGrid is a pattern's lanes as the engine takes a grid, for a slot
@@ -571,11 +589,6 @@
            voice: VOICES.includes(kv.v) || kv.v === NONE ? kv.v : "kalimba", bassVoice: (VOICES.includes(kv.bv) && kv.bv !== "pluck") || kv.bv === NONE ? kv.bv : "", seed: Math.min(MAXSEED, Math.max(1, Math.round(+kv.s) || 1)),
            busy: kv.bz != null && isFinite(+kv.bz) ? Math.min(1, Math.max(0, +kv.bz / 100)) : null,
            tension: Math.min(1, Math.max(0, (+kv.tn || 0) / 100)), feel: Math.min(1, Math.max(0, (+kv.fl || 0) / 100)) };
-  }
-  function decode(h) {
-    const p = readLink(h);
-    if (p) applyPattern(p);
-    return !!p;
   }
 
   // ---- the grid ----
@@ -1177,10 +1190,14 @@
     st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = lanes(g.drums);
     paint(); pushGrid();
   };
+  // In a chain the link copied is the chain's. The address stays the
+  // pattern's, so that a reload opens this slot and leaves the others be;
+  // it takes the chain's only where the copy fails, to be copied by hand.
   $("share").onclick = async () => {
+    const c = theChain(), link = c && c.slots.filter(Boolean).length > 1 ? writeChain(c) : encode();
     history.replaceState(null, "", encode());
-    try { await navigator.clipboard.writeText(location.href); }
-    catch { status.textContent = "copy the address bar to share this pattern"; }
+    try { await navigator.clipboard.writeText(location.href.split("#")[0] + link); }
+    catch { history.replaceState(null, "", link); status.textContent = `copy the address bar to share this ${link === encode() ? "pattern" : "chain"}`; }
   };
 
   // The studio takes a theme by link (#theme=, a JSON map: its shape, not
@@ -1521,10 +1538,15 @@
     setListenVol(listenVol); // the engine's output starts at full scale
     MOODS = JSON.parse(undertoneGrid.moods()); chips("moods", MOODS, "mood"); // before any link is read: it may name one of them
     // A link's pattern goes into the picked slot, whose old state is the first
-    // step back; with no link, the slot is what opens.
+    // step back; with no link, the slot is what opens. A chain's link goes
+    // into the slots (openChain), and the picked one of them is what opens.
+    const got = linked(location.hash);
+    const opened = got?.length > 1 && openChain(got);
     const kept = slots[slot]?.lanes ? slots[slot] : null;
-    if (kept) undo = [kept];
-    if (!decode(location.hash) && !(kept && (applyPattern(kept), true))) {
+    if (kept && !opened) undo = [kept];
+    const first = !opened && got?.length === 1 ? got[0] : kept;
+    if (first) applyPattern(first);
+    else {
       const g = JSON.parse(undertoneGrid.initial);
       st.lead = g.lead; st.bass = g.bass; st.pulse = g.pulse; st.drums = lanes(g.drums);
       linkHasDrums = true;
@@ -1533,6 +1555,7 @@
     if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
     paint(); pushGrid();
     if (slot < chain) keep(snap()); // a chain from before its slots shared their settings
+    if (opened) paintChain();
     $("play").disabled = false;
     $("play").innerHTML = "&#9654; play";
     document.querySelector("main").classList.remove("loading");
@@ -1552,7 +1575,7 @@
   // through this session's changes to the slot, each slot having its own
   // steps; a burst of them (a drag across cells, a slide of the tempo) is
   // one step.
-  const SLOTS = 8, SLOTKEY = "undertone-grid-slots", CURKEY = "undertone-grid-slot";
+  const SLOTKEY = "undertone-grid-slots", CURKEY = "undertone-grid-slot";
   const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} }; // storage may be blocked
   let slots = [], slot = 0;
   // Storage holds each slot as { link }. An entry this page cannot read (a
@@ -1572,8 +1595,9 @@
   function keep(p) {
     slots = readSlots(); slots[slot] = p;
     if (slot < chain) for (let i = 0; i < chain; i++) if (i !== slot && slots[i]?.lanes) slots[i] = under(p.settings, slots[i]);
-    store(SLOTKEY, JSON.stringify(Array.from(slots, (e) => e ? e.raw || { link: writeLink(e) } : null)));
+    saveSlots();
   }
+  const saveSlots = () => store(SLOTKEY, JSON.stringify(Array.from(slots, (e) => e ? e.raw || { link: writeLink(e) } : null)));
   addEventListener("storage", (e) => { if (e.key === SLOTKEY) { slots = readSlots(); paintSlots(); pushChain(); } });
   // undo is the picked slot's history; the others' wait in undos, so that
   // coming back to a slot (as follow does every few seconds) finds its
@@ -1691,6 +1715,7 @@
   function paintChain() {
     document.documentElement.classList.toggle("chained", chain > 0);
     $("follow").hidden = !chain; $("follow").classList.toggle("on", follow);
+    $("share").title = slot < chain ? "copy a link that opens this chain: its slots in order, under these settings" : "copy a link that opens this pattern";
     document.querySelector(".pick.chain .pickbtn").textContent = !chain ? "chain off" : `chain 1–${chain}` + (slot >= chain ? `, not slot ${slot + 1}` : "");
     for (const c of document.querySelectorAll("#chain .chip")) c.classList.toggle("on", +c.dataset.v === chain);
     paintSlots();
@@ -1700,6 +1725,27 @@
     c.title = n ? `play slots 1 to ${n} in order, round and round, all under the settings on screen: tempo, mood, voices and the rest become the same in each` : "play the picked slot alone";
     c.onclick = () => { chain = n; store(CHAINKEY, String(n)); if (ready) keep(snap()); pushChain(); };
     $("chain").appendChild(c);
+  }
+  // openChain puts a chain link's patterns into slots 1 to their number and
+  // chains them. That is over whatever those slots held, so it asks first
+  // where one of them holds something else, and what it replaces is the
+  // first step back in that slot. false where the answer was no. The caller
+  // puts the picked slot on screen.
+  function openChain(ps) {
+    slots = readSlots();
+    const n = ps.length, differs = (i) => slots[i] && !(slots[i].lanes && same(slots[i], ps[i]));
+    if (ps.some((_, i) => differs(i)) &&
+        !confirm(`This link is a chain of ${n} patterns. Open it in slots 1 to ${n}, in place of what they hold? Undo in each slot brings back what was there, until the page is closed.`)) return false;
+    if (slot >= n) { undos[slot] = undo; slot = 0; store(CURKEY, "0"); undo = undos[0] || []; }
+    ps.forEach((p, i) => {
+      const old = differs(i) && slots[i].lanes ? slots[i] : null;
+      if (old && i === slot) { if (!undo.length || !same(undo[undo.length - 1], old)) undo.push(old); }
+      else if (old) undos[i] = [old];
+      slots[i] = p;
+    });
+    saveSlots();
+    chain = n; store(CHAINKEY, String(n));
+    return true;
   }
   slotsUp = true;
   const NEXTKEY = "undertone-grid-next";
@@ -1717,7 +1763,11 @@
   // An address that differs only after the # does not reload the page, so a
   // link pasted over this one arrives here and nowhere else.
   addEventListener("hashchange", () => {
-    if (!ready || !decode(location.hash)) return;
+    const got = ready && linked(location.hash);
+    if (!got) return;
+    if (got.length === 1) applyPattern(got[0]);
+    else if (openChain(got)) { lastAt = 0; applyPattern(slots[slot]); } // its own step back, not part of the last edit
+    else { history.replaceState(null, "", encode()); return; } // the address goes back to what is on screen
     pushParams();
     if (!linkHasDrums) st.drums = lanes(JSON.parse(undertoneGrid.seedGrid(st.seed)).drums);
     paint(); pushGrid();

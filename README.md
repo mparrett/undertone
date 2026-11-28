@@ -277,6 +277,11 @@ namespace from the package's `init`, so lg code can call it with no generated
 interop. It was `audio` until 2026-10-20; that name is left for let-go's own
 audio seam ([nooga/let-go#255](https://github.com/nooga/let-go/issues/255)).
 
+Each engine export has an lg counterpart, a native or a `set-parameters` key,
+or is Go-only on purpose, with the reason. `letgo/parity_test.go` keeps that
+decision: a new export, or a `Params` field without a key, fails it until
+someone records which.
+
 | native | |
 |---|---|
 | `undertone/set-parameters` | one map, merged over the current state, applied at the next pattern boundary; unknown keys are ignored |
